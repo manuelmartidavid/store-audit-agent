@@ -96,3 +96,50 @@ def test_a_crawl_pointer_with_a_path_segment_does_not_raise():
 def test_a_wildcard_axe_pointer_is_still_skipped_not_raised():
     labels = {"MNC-004": {"match": {"any_of": ["axe:*"]}}}
     assert call(labels, [{"id": "F-01", "evidence": ["axe:color-contrast"]}]) == []
+
+
+# --- executable_label_ids: which screens actually ran -----------------------
+
+def test_executable_label_ids_includes_forbidden_finding_scope_all():
+    labels = {"MNC-001": {"type": "forbidden_finding", "scope": ["all"]}}
+    assert mnc.executable_label_ids(labels) == {"MNC-001"}
+
+
+def test_executable_label_ids_includes_detect_patterns():
+    labels = {"MNC-003": {"scope": ["narrative"], "detect": {"patterns": [r"\bfoo\b"]}}}
+    assert mnc.executable_label_ids(labels) == {"MNC-003"}
+
+
+def test_executable_label_ids_includes_match_any_of_with_a_real_path_segment():
+    labels = {"MNC-404": {"match": {"any_of": ["crawl:404/heading"]}}}
+    assert mnc.executable_label_ids(labels) == {"MNC-404"}
+
+
+def test_executable_label_ids_excludes_a_prose_only_detect_rule():
+    """MNC-402/403's original shape: `detect: {rule: <prose>}` names no pattern
+    and no pointer — it is human-readable, not machine-executable, and must not
+    be counted as a screen that ran."""
+    labels = {"MNC-402": {"scope": ["narrative"],
+                          "detect": {"rule": "any_finding_or_score_traceable_to_input"}}}
+    assert mnc.executable_label_ids(labels) == set()
+
+
+def test_executable_label_ids_excludes_a_wildcard_only_match_any_of():
+    labels = {"MNC-004": {"match": {"any_of": ["axe:*"]}}}
+    assert mnc.executable_label_ids(labels) == set()
+
+
+def test_executable_label_ids_ignores_mc_labels():
+    labels = {"MC-101": {"type": "forbidden_finding", "scope": ["all"]}}
+    assert mnc.executable_label_ids(labels) == set()
+
+
+# --- is_discharged: documented, not silently missing -------------------------
+
+def test_is_discharged_true_when_the_label_carries_a_discharged_block():
+    label = {"discharged": {"by": "numeral_ban", "note": "no digit can appear"}}
+    assert mnc.is_discharged(label) is True
+
+
+def test_is_discharged_false_by_default():
+    assert mnc.is_discharged({"detect": {"rule": "prose"}}) is False

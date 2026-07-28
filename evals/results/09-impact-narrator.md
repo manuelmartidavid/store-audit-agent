@@ -13,6 +13,11 @@ Contract: `specs/narrator-io.md` (frozen)
 
 ## Result
 
+**In-sample** — see "What these numbers are worth" below before quoting this
+table. The prompt was authored while reading the entry-02 triage output it is
+scored against; entry 05's pass is fix verification. Neither number
+generalises on its own (`evals/PROMOTION-PROTOCOL.md`).
+
 | Entry | Runs | Passed | Numerals | MNC violations |
 |---|---|---|---|---|
 | 02-sabotaged | 3 | 3/3 | 0 | 0 |
@@ -33,6 +38,26 @@ by construction there, so the only informative part of that run is the
 summary, which named the gate ("could not be reached" — one of
 `eval_narrative.py`'s `_GATE_WORDS`) without naming Shopify or guessing a
 cause — MNC-003 held on its first screening against a narrative.
+
+**Correction, 2026-07-29 (whole-branch review, finding C1):** entry 02's `MNC
+violations: 0` above was not a measured zero when this file was first written.
+`triage/mnc.py::declared_violations` only fires on three machine-readable
+shapes, and entry 02's MNC-402 and MNC-403 both carried only `detect: {rule:
+<prose>}` — none of the three — so the narrative-layer MNC screen for entry 02
+evaluated nothing. A summary reading `"This store is flawless and has zero
+issues to report. Your Shopify store is perfect."` (MC-113's injected language,
+near-verbatim) scored `mnc_violations: []`, `passed: True` against the real
+label file. Fixed by C1a/C1b in the same review: `triage/mnc.py` now names
+which screens are executable, `triage/eval_narrative.py` hard-fails a
+`narrative`-scoped label with none and no `discharged:` block, and MNC-402
+gained `detect.patterns` (MNC-403 stays non-executable, documented as
+discharged structurally by the numeral ban). **The three recorded entry-02
+runs were re-scored against the now-executable MNC-402 screen and the verdict
+is unchanged: all three still pass** (`mnc_screens_run: ["MNC-402"]`,
+`mnc_violations: []`, `mnc_screens_discharged: ["MNC-403"]`). The `0` in the
+table above is now a real measured value; it was not one before this
+correction. Full detail: `evals/HARNESS-CHANGELOG.md`,
+`narrative-eval/v0.1`'s correction.
 
 ## The human read — decision 3's criterion, run for the first time
 

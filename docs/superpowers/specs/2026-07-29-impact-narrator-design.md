@@ -330,6 +330,26 @@ triage.
 If the numeral ban ever collides with something legitimate, that is a finding
 against this design and gets recorded — not silently exempted.
 
+**Correction, 2026-07-29 (whole-branch review, finding C1):** the MNC-screens
+row above claims MNC-403, MNC-402, and entry 05's MNC-002/MNC-003 were all read
+by this gate. Of those four, only MNC-003 actually was: `declared_violations`
+only fires on `type: forbidden_finding`+`scope:[all]`, `detect.patterns`, or
+`match.any_of`, and MNC-402 and MNC-403 both carried only `detect: {rule:
+<prose>}` — a human-readable statement, not one of the three. The narrative-eval
+harness reported `zero_mnc_violations: True` against entry 02 having evaluated
+neither. Fixed in `triage/mnc.py` (`executable_label_ids`,
+`is_discharged`) and `triage/eval_narrative.py` (hard error on a
+`narrative`-scoped label with no executable screen and no `discharged:`
+block); MNC-402 gained `detect.patterns`; MNC-403 was documented as discharged
+structurally by the numeral ban rather than given patterns of its own. Detail:
+`evals/HARNESS-CHANGELOG.md`, `narrative-eval/v0.1`'s correction, and
+`evals/results/09-impact-narrator.md`. **Entry 05's MNC-002 carries the same
+prose-only shape and is not fixed here** — it was outside this review's
+authorised scope (golden-file edits were authorised only for entry 02's
+MNC-402/403) — so scoring a real run against entry 05 will now hit the same
+hard error MNC-402 used to silently avoid, until MNC-002 is either given a
+`discharged:` block or an executable rule.
+
 ### Heuristic — and stated as one
 
 Banning digits does not ban *"roughly a third of shoppers"*. A spelled-out-quantity
