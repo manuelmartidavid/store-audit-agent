@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -99,3 +100,238 @@ def test_the_21_recorded_runs_still_load():
         output, meta = eval_triage.load_run_output(path)
         assert output.get("schema") == "triage/v0.1", path.name
         assert meta is None, f"{path.name} was rewritten — recorded runs are frozen"
+
+
+# --- --via claude-cli backend -----------------------------------------------
+#
+# This second backend exists so the pipeline can be tested without spending
+# Console credits, by shelling out to the `claude` CLI on the repo owner's
+# personal subscription instead of calling the SDK. No test here may touch
+# the network or invoke the real CLI — the subprocess boundary is faked via
+# an injected `runner` callable with the same shape as `subprocess.run`.
+
+
+def test_run_meta_records_via_on_the_sdk_path(tmp_path):
+    # The existing anthropic-sdk path never set `via` before this change; a
+    # reader six months from now must not find it absent on either path.
+    rendered = tmp_path / "r.md"
+    rendered.write_text("prompt body", encoding="utf-8")
+    pack = tmp_path / "p.json"
+    pack.write_text('{"pack": "pack/v0.2"}', encoding="utf-8")
+
+    meta = run_triager.run_meta(
+        model="claude-opus-5", effort="high", max_tokens=32000,
+        rendered_path=rendered, pack_path=pack,
+        prompt_version="finding-triager/v1.0", started_at="2026-07-28T10:00:00+08:00")
+
+    assert meta["via"] == "anthropic-sdk"
+
+
+def test_run_meta_records_via_and_incomparability_on_the_cli_path(tmp_path):
+    rendered = tmp_path / "r.md"
+    rendered.write_text("prompt body", encoding="utf-8")
+    pack = tmp_path / "p.json"
+    pack.write_text('{"pack": "pack/v0.2"}', encoding="utf-8")
+
+    meta = run_triager.run_meta(
+        model="claude-opus-5", effort="high",
+        rendered_path=rendered, pack_path=pack,
+        prompt_version="finding-triager/v1.0", started_at="2026-07-28T10:00:00+08:00",
+        via="claude-code-cli",
+        system_prompt="You are being evaluated.", cli_version="2.1.218")
+
+    assert meta["via"] == "claude-code-cli"
+    assert meta["cli_version"] == "2.1.218"
+    assert meta["system_prompt"] == "You are being evaluated."
+    # A recorded value, not a comment — someone reading the run file must be
+    # able to tell, from the file alone, what this path does and doesn't support.
+    comparability = meta["comparability"]
+    assert "not comparable" in comparability.lower()
+    assert "max_tokens" in comparability
+    assert "thinking" in comparability
+    assert "1.7" in comparability or "1,700" in comparability  # ~1.7k harness tokens
+    assert "effort" in comparability.lower()
+
+
+class _FakeCompletedProcess:
+    def __init__(self, returncode=0, stdout="", stderr=""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def _fake_runner(response, captured):
+    def runner(argv, **kwargs):
+        captured["argv"] = argv
+        captured["kwargs"] = kwargs
+        return response
+
+    return runner
+
+
+_SUCCESS_PAYLOAD = {
+    "result": "OK",
+    "usage": {
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "cache_creation_input_tokens": 1718,
+        "cache_read_input_tokens": 0,
+    },
+    "modelUsage": {"claude-opus-5": {"inputTokens": 2, "outputTokens": 3}},
+    "total_cost_usd": 0.00097,
+    "session_id": "sess_abc123",
+    "stop_reason": "end_turn",
+    "num_turns": 1,
+    "is_error": False,
+    "subtype": "success",
+}
+
+
+def test_call_model_via_cli_builds_the_measured_argument_list(monkeypatch):
+    monkeypatch.setattr(run_triager.shutil, "which", lambda name: "/usr/bin/claude")
+    captured = {}
+    runner = _fake_runner(
+        _FakeCompletedProcess(0, json.dumps(_SUCCESS_PAYLOAD), ""), captured)
+
+    run_triager.call_model_via_cli(
+        "the rendered prompt", model="claude-opus-5", effort="high",
+        system_prompt="You are being evaluated.", runner=runner)
+
+    assert captured["argv"] == [
+        "claude", "-p",
+        "--model", "claude-opus-5",
+        "--effort", "high",
+        "--tools", "",
+        "--system-prompt", "You are being evaluated.",
+        "--strict-mcp-config",
+        "--output-format", "json",
+    ]
+
+
+def test_call_model_via_cli_sends_the_prompt_on_stdin_not_argv(monkeypatch):
+    # A ~145k-token rendered prompt as an argv element would blow past
+    # Windows' ~32k character command-line cap.
+    monkeypatch.setattr(run_triager.shutil, "which", lambda name: "/usr/bin/claude")
+    captured = {}
+    runner = _fake_runner(
+        _FakeCompletedProcess(0, json.dumps(_SUCCESS_PAYLOAD), ""), captured)
+
+    huge_prompt = "x" * 500_000
+    run_triager.call_model_via_cli(
+        huge_prompt, model="claude-opus-5", effort="high",
+        system_prompt="sys", runner=runner)
+
+    assert huge_prompt not in captured["argv"]
+    assert captured["kwargs"]["input"] == huge_prompt
+
+
+def test_call_model_via_cli_strips_anthropic_api_key_from_the_child_env_only(monkeypatch):
+    # This is the test that protects the user's wallet: if the child process
+    # sees ANTHROPIC_API_KEY, the CLI bills the Console API — the exact thing
+    # this backend exists to avoid.
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-should-not-reach-the-child")
+    monkeypatch.setattr(run_triager.shutil, "which", lambda name: "/usr/bin/claude")
+    captured = {}
+    runner = _fake_runner(
+        _FakeCompletedProcess(0, json.dumps(_SUCCESS_PAYLOAD), ""), captured)
+
+    run_triager.call_model_via_cli(
+        "prompt", model="claude-opus-5", effort="high",
+        system_prompt="sys", runner=runner)
+
+    child_env = captured["kwargs"]["env"]
+    assert "ANTHROPIC_API_KEY" not in child_env
+    # The parent process's environment must be untouched.
+    assert os.environ["ANTHROPIC_API_KEY"] == "sk-ant-should-not-reach-the-child"
+
+
+def test_call_model_via_cli_parses_a_realistic_success_payload(monkeypatch):
+    monkeypatch.setattr(run_triager.shutil, "which", lambda name: "/usr/bin/claude")
+    captured = {}
+    runner = _fake_runner(
+        _FakeCompletedProcess(0, json.dumps(_SUCCESS_PAYLOAD), "trust-dialog warning\n"),
+        captured)
+
+    text, usage = run_triager.call_model_via_cli(
+        "prompt", model="claude-opus-5", effort="high",
+        system_prompt="sys", runner=runner)
+
+    assert text == "OK"
+    assert usage["resolved_model"] == "claude-opus-5"
+    assert usage["total_cost_usd"] == 0.00097
+    assert usage["session_id"] == "sess_abc123"
+    assert usage["num_turns"] == 1
+    assert usage["input_tokens"] == 2
+    assert usage["output_tokens"] == 3
+
+
+def test_call_model_via_cli_raises_systemexit_on_nonzero_exit(monkeypatch):
+    monkeypatch.setattr(run_triager.shutil, "which", lambda name: "/usr/bin/claude")
+    captured = {}
+    runner = _fake_runner(_FakeCompletedProcess(1, "", "boom: auth failed"), captured)
+
+    with pytest.raises(SystemExit):
+        run_triager.call_model_via_cli(
+            "prompt", model="claude-opus-5", effort="high",
+            system_prompt="sys", runner=runner)
+
+
+def test_call_model_via_cli_raises_systemexit_on_non_json_stdout(monkeypatch):
+    monkeypatch.setattr(run_triager.shutil, "which", lambda name: "/usr/bin/claude")
+    captured = {}
+    runner = _fake_runner(
+        _FakeCompletedProcess(0, "not json at all", ""), captured)
+
+    with pytest.raises(SystemExit):
+        run_triager.call_model_via_cli(
+            "prompt", model="claude-opus-5", effort="high",
+            system_prompt="sys", runner=runner)
+
+
+def test_call_model_via_cli_raises_systemexit_when_is_error_true(monkeypatch):
+    monkeypatch.setattr(run_triager.shutil, "which", lambda name: "/usr/bin/claude")
+    payload = dict(_SUCCESS_PAYLOAD, is_error=True, subtype="error_during_execution")
+    captured = {}
+    runner = _fake_runner(
+        _FakeCompletedProcess(0, json.dumps(payload), ""), captured)
+
+    with pytest.raises(SystemExit):
+        run_triager.call_model_via_cli(
+            "prompt", model="claude-opus-5", effort="high",
+            system_prompt="sys", runner=runner)
+
+
+def test_call_model_via_cli_raises_systemexit_when_result_missing(monkeypatch):
+    monkeypatch.setattr(run_triager.shutil, "which", lambda name: "/usr/bin/claude")
+    payload = {k: v for k, v in _SUCCESS_PAYLOAD.items() if k != "result"}
+    captured = {}
+    runner = _fake_runner(
+        _FakeCompletedProcess(0, json.dumps(payload), ""), captured)
+
+    with pytest.raises(SystemExit):
+        run_triager.call_model_via_cli(
+            "prompt", model="claude-opus-5", effort="high",
+            system_prompt="sys", runner=runner)
+
+
+def test_call_model_via_cli_raises_systemexit_when_num_turns_exceeds_one(monkeypatch):
+    # Tools are off, so a multi-turn response means the harness did something
+    # other than answer — the run is not a clean single completion.
+    monkeypatch.setattr(run_triager.shutil, "which", lambda name: "/usr/bin/claude")
+    payload = dict(_SUCCESS_PAYLOAD, num_turns=2)
+    captured = {}
+    runner = _fake_runner(
+        _FakeCompletedProcess(0, json.dumps(payload), ""), captured)
+
+    with pytest.raises(SystemExit):
+        run_triager.call_model_via_cli(
+            "prompt", model="claude-opus-5", effort="high",
+            system_prompt="sys", runner=runner)
+
+
+def test_call_model_via_cli_raises_systemexit_when_cli_absent_from_path(monkeypatch):
+    monkeypatch.setattr(run_triager.shutil, "which", lambda name: None)
+
+    with pytest.raises(SystemExit):
+        run_triager.call_model_via_cli(
+            "prompt", model="claude-opus-5", effort="high", system_prompt="sys")
