@@ -1,0 +1,74 @@
+"""Precision bars — the ones the harness never had.
+
+Recall has six bars; precision has none. `unlabeled` findings are counted and
+gate nothing, so a run emitting 24 findings of which 7 are plausible-but-wrong
+passes everything. The project's stated top risk is a plausible-but-wrong claim
+reaching a client.
+
+The gates are declared per entry (`expect.gates`) rather than inferred, because
+turning them on for entry 02 retroactively would re-judge 18 recorded runs on a
+bar they were never measured against — a decision for a person, not for a
+default.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import sys
+from pathlib import Path
+
+import yaml
+
+ROOT = Path(__file__).resolve().parent.parent
+
+_spec = importlib.util.spec_from_file_location("eval_triage", ROOT / "triage" / "eval_triage.py")
+eval_triage = importlib.util.module_from_spec(_spec)
+sys.modules["eval_triage"] = eval_triage
+_spec.loader.exec_module(eval_triage)
+
+
+def _findings(count: int, severity: str = "low") -> list[dict]:
+    return [{"id": f"F-{n:02d}", "severity": severity, "category": "seo",
+             "confidence": "high", "templates": ["home"]} for n in range(count)]
+
+
+def test_no_gates_declared_means_no_precision_bars():
+    bars = eval_triage.expect_bars(_findings(40), {"score": 10}, {"max_findings": 3})
+    assert bars == {}
+
+
+def test_max_findings_gate():
+    expect = {"gates": ["max_findings"], "max_findings": 3}
+    assert eval_triage.expect_bars(_findings(3), {"score": 95}, expect)["max_findings_respected"]
+    assert not eval_triage.expect_bars(_findings(4), {"score": 95}, expect)["max_findings_respected"]
+
+
+def test_findings_above_medium_gate():
+    expect = {"gates": ["findings_above_medium"], "findings_above_medium": 0}
+    clean = eval_triage.expect_bars(_findings(3, "medium"), {"score": 95}, expect)
+    assert clean["findings_above_medium_respected"]
+    noisy = eval_triage.expect_bars(_findings(1, "high"), {"score": 95}, expect)
+    assert not noisy["findings_above_medium_respected"]
+
+
+def test_score_range_gate_including_the_blocked_store():
+    expect = {"gates": ["score_range"], "score_min": 90, "score_max": 100}
+    assert eval_triage.expect_bars([], {"score": 95}, expect)["score_within_expect"]
+    assert not eval_triage.expect_bars([], {"score": 60}, expect)["score_within_expect"]
+
+    blocked = {"gates": ["score_range"], "score_min": None, "score_max": None}
+    assert eval_triage.expect_bars([], {"score": None}, blocked)["score_within_expect"]
+    assert not eval_triage.expect_bars([], {"score": 0}, blocked)["score_within_expect"]
+
+
+def test_entry_02_declares_no_gates_and_says_why():
+    text = (ROOT / "evals" / "golden" / "02-sabotaged" / "context.yaml").read_text(encoding="utf-8")
+    data = yaml.safe_load(text)
+    assert data["eval"]["expect"]["gates"] == []
+    assert "18 recorded runs" in text
+
+
+def test_entry_05_gates_max_findings():
+    data = yaml.safe_load(
+        (ROOT / "evals" / "golden" / "05-password-gated" / "context.yaml").read_text(encoding="utf-8"))
+    assert "max_findings" in data["eval"]["expect"]["gates"]

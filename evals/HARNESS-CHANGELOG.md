@@ -37,6 +37,47 @@ entry carries the same shape.
 
 ---
 
+## eval/v0.2 — 2026-07-28 — precision bars, declared per entry
+
+**Direction: stricter.** The first bar in this harness that a run can fail for
+emitting too much rather than too little.
+
+Recall had six bars (eval/v0.1) and precision had none: `unlabeled` findings
+were counted in `evaluate()`'s output and gated nothing, and `expect.score` /
+`score_min` / `score_max` were read only by `--self-test`, never when scoring a
+run. A run emitting 24 findings of which 7 were plausible-but-wrong passed
+every bar, on a project whose stated top risk is a plausible-but-wrong claim
+reaching a client. No run demonstrated this failing — the motivating fact is
+the absence of a bar that could have caught it, not a run that slipped past
+one.
+
+`expect_bars()` adds three gates — `max_findings`, `findings_above_medium`,
+`score_range` — checked against the `expect` values a `context.yaml` already
+records. They are opt-in per entry via `expect.gates`, not on by default:
+turning them on for entry 02 would re-judge its 18 recorded runs against a bar
+they were never measured on, which is a decision for a person with the numbers
+in front of them, not a default this change should make silently.
+
+| # | Date | Change | Motivated by | Direction |
+|---|---|---|---|---|
+| 1 | 2026-07-28 | `expect_bars()` added: `max_findings_respected`, `findings_above_medium_respected`, `score_within_expect`, merged into `evaluate().bars` when an entry's `expect.gates` names them | none — the absence of a precision bar, not a failing run | Stricter (new capability, opt-in) |
+| 2 | 2026-07-28 | Entry 05 `context.yaml` declares `gates: [max_findings, score_range]` | none — a blocked store already has hard MNC-001/MNC-002 pass conditions; this closes the case where a future harness change stops evaluating them | Stricter |
+| 3 | 2026-07-28 | Entry 02 `context.yaml` declares `gates: []`; the three `expect` values keep being reported, not enforced | none — enforcing now would re-judge 18 recorded runs (v0.1–v0.6, 3 each) against a bar they were never measured on; deferred to the step-12 recapture | Not enforced here, deliberately |
+
+Re-scoring entry 05's three recorded runs under `eval/v0.2` surfaced a
+pre-existing fact this change did not create: only run 3 behaves as labeled.
+Runs 1 and 2 each emit one finding for a blocked store ("store unreachable"),
+which fails MNC-001, auto-fail #2 (the pointer `crawl:home` does not resolve),
+and auto-fail #3 (blocked-store fabrication) — all under `eval/v0.1`, before
+this change existed. `eval/v0.2` adds `max_findings_respected=False` and
+`score_within_expect=True` to those two runs' bars; it changes no verdict.
+This is the rubric/label contradiction on MNC-001 recorded at capture time
+(`evals/results/05-blocked-path.md`): entry 05 requires an empty findings
+array, while rubric §1 lists "store unreachable" as representative critical
+evidence, and the prompt inlines §1. Open, not resolved here.
+
+---
+
 ## eval/v0.1 — 2026-07-28 (the state at first versioning)
 
 Not a change. This records what the harness already did when it was first

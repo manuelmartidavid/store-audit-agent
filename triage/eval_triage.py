@@ -53,7 +53,7 @@ PROMPTS_DIR = ROOT / "prompts"
 #: and v1.0 of the prompt this file's bars changed six times — most, but not
 #: every one, motivated by a failing run — and nothing recorded that they had
 #: moved until this pin existed.
-HARNESS_VERSION = "eval/v0.1"
+HARNESS_VERSION = "eval/v0.2"
 
 SEVERITY_WEIGHT = {"critical": 15, "high": 6, "medium": 2, "low": 1}
 SEVERITY_ORDER = ["low", "medium", "high", "critical"]
@@ -629,8 +629,47 @@ def _level_gap(a: str | None, b: str | None, order: list[str]) -> int | None:
 # the run
 # ---------------------------------------------------------------------------
 
+def expect_bars(findings: list[dict[str, Any]], comp: dict[str, Any],
+                expect: dict[str, Any] | None) -> dict[str, bool]:
+    """Precision bars, declared per entry by `expect.gates`.
+
+    The harness has six recall bars and had no precision bar at all: `unlabeled`
+    findings were counted and gated nothing, so a run emitting 24 findings of
+    which seven were plausible-but-wrong passed everything.
+
+    Gates are opt-in per entry rather than on by default, and that is a
+    deliberate limit rather than timidity. Turning them on for entry 02 would
+    re-judge 18 recorded runs against a bar they were never measured on — a
+    call for a person to make with the numbers in front of them. Entry 01, whose
+    whole purpose is the false-positive test (rubric §5: <= 3 findings, none
+    above medium, score >= 90), declares all three from the start, so its grader
+    exists before its answers do.
+    """
+    expect = expect or {}
+    gates = set(expect.get("gates") or [])
+    bars: dict[str, bool] = {}
+
+    if "max_findings" in gates and expect.get("max_findings") is not None:
+        bars["max_findings_respected"] = len(findings) <= expect["max_findings"]
+
+    if "findings_above_medium" in gates and expect.get("findings_above_medium") is not None:
+        above = sum(1 for f in findings if f.get("severity") in ("critical", "high"))
+        bars["findings_above_medium_respected"] = above <= expect["findings_above_medium"]
+
+    if "score_range" in gates:
+        low, high, score = expect.get("score_min"), expect.get("score_max"), comp.get("score")
+        if low is None and high is None:
+            # An entry that expects no score at all — the blocked store. `null` is
+            # the pass condition (rubric §4 rule 3); 0 is the failure it exists for.
+            bars["score_within_expect"] = score is None
+        else:
+            bars["score_within_expect"] = score is not None and low <= score <= high
+
+    return bars
+
+
 def evaluate(output: dict[str, Any], labels: dict[str, dict[str, Any]],
-             fixture: Fixture) -> dict[str, Any]:
+             fixture: Fixture, expect: dict[str, Any] | None = None) -> dict[str, Any]:
     findings = [f for f in (output.get("findings") or []) if isinstance(f, dict)]
     mc = {k: v for k, v in labels.items() if k.startswith("MC-")}
 
@@ -831,6 +870,7 @@ def evaluate(output: dict[str, Any], labels: dict[str, dict[str, Any]],
         "ceilings_total_respected": ceilings["total_ok"],
         "schema_valid": not schema_errors,
     }
+    bars.update(expect_bars(findings, comp, expect))
 
     return {
         "schema_errors": schema_errors,
@@ -1055,9 +1095,14 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("an output file is required unless --self-test")
 
     labels = parse_labels(args.entry / "expected" / "findings.md")
+    context = args.entry / "context.yaml"
+    expect = {}
+    if context.exists():
+        data = yaml.safe_load(context.read_text(encoding="utf-8")) or {}
+        expect = (data.get("eval") or {}).get("expect") or {}
     fixture = Fixture(args.fixtures)
     output, run_meta = load_run_output(args.output)
-    result = evaluate(output, labels, fixture)
+    result = evaluate(output, labels, fixture, expect=expect)
 
     record = {
         "provenance": provenance(args.entry, args.fixtures, args.prompt_version,

@@ -44,4 +44,10 @@ eval:
     findings_above_medium: 0
     categories_required: []
 
+    # A blocked store has exactly one correct output: no findings and no score.
+    # Both are already hard pass conditions in the labels (MNC-001, MNC-002), so
+    # gating them here costs nothing and closes the case where a future harness
+    # change stops evaluating them.
+    gates: [max_findings, score_range]
+
   portfolio_safe: false

@@ -82,4 +82,13 @@ eval:
     categories_required: [performance, seo, accessibility, conversion]
     caps_binding: [seo, accessibility] # see expected/findings.md — open, not resolved
 
+    # Precision gates this entry ENFORCES. Empty, deliberately: the three values
+    # above are measured and reported on every run, but gating them here would
+    # re-judge the 18 recorded runs against a bar they were never measured on.
+    # That is a decision for a person with the numbers in front of them, and the
+    # right moment is the step-12 recapture, when every number is being redone.
+    # Entry 01 — the actual false-positive test — declares all three from the
+    # start (rubric §5).
+    gates: []
+
   portfolio_safe: false          # disposable, but sabotaged — never demo this one
