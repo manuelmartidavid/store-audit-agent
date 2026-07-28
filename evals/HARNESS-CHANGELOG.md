@@ -218,3 +218,45 @@ passing it. The three entry-02 narrator runs recorded against this harness
 executable MNC-402 screen: all three still pass (`mnc_screens_run:
 ["MNC-402"]`, `mnc_violations: []`). Full detail:
 `evals/results/09-impact-narrator.md`.
+
+**Correction, 2026-07-29 (later the same day, verification review, finding
+V1): C1c's discharge above was itself false.** It claimed the numeral ban
+makes quantification unreachable at this layer. It does not — the ban
+(`eval_narrative.numeral_violations()`) is on digit *characters*, and a
+quantity spelled out in words carries none. Demonstrated against the real
+entry-02 label file, under the discharged version of MNC-403:
+`summary = "Broken navigation costs this store roughly a third of its mobile
+revenue, and twice as many shoppers abandon their carts as would otherwise."`
+scored `passed: True`, `mnc_violations: []` — a fabricated, uncited, quantified
+impact claim, exactly what MNC-403 forbids, passing a screen recorded as
+structurally closed. Fixed: MNC-403 now carries `detect.patterns` built from
+`eval_narrative.QUANTITY_GATE_WORDS` — `QUANTITY_WORDS` (the module's existing
+spelled-out-quantity vocabulary) minus `"most of"`, which is excluded because it
+names no specific proportion and is what all three real recorded entry-02 runs
+actually contain (see the module-level comment on `QUANTITY_GATE_WORDS` for the
+full argument). The `discharged:` block is removed rather than rewritten:
+MNC-403 is now executable, and a discharge on an executable screen would
+contradict itself (visible in both `mnc_screens_run` and
+`mnc_screens_discharged` at once). Re-scored: the same sentence above now
+returns `mnc_violations` naming MNC-403 and `passed: False`; the three real
+recorded entry-02 runs (`mnc_screens_run: ["MNC-402", "MNC-403"]`) still pass —
+their "most of" occurrences surface only in `advisory`, never in
+`mnc_violations`. `quantity_word_notes()` (the advisory check) is unchanged and
+still fires on the full `QUANTITY_WORDS` list, including `"most of"` — the
+overlap between it and MNC-403's hard gate, for the words they now share, is
+intentional and explained in that function's docstring, not left unstated.
+Full detail: `evals/results/09-impact-narrator.md`.
+
+**Correction, 2026-07-29 (later the same day, verification review, finding
+V4): the paragraph above never recorded that entry 05's MNC-002 got the same
+`discharged:` treatment C1c gave MNC-403.** Commit `cddd64c` ("entry 05's
+MNC-002 is discharged, not screened") landed one commit after the C1 fix above
+and closed exactly the gap the design doc flagged as open at the time
+(`docs/superpowers/specs/2026-07-29-impact-narrator-design.md`'s C1 correction,
+now itself corrected — see that file). `narrative/v0.1` has no score field to
+carry a null or zero one (`specs/narrator-io.md` §3), so MNC-002 is discharged
+structurally the same way MNC-403 was — `by: schema_has_no_score_field`. Entry
+05's recorded run re-scores clean: `mnc_screens_run: ["MNC-001", "MNC-003"]`,
+`mnc_screens_discharged: ["MNC-002"]`, `passed: True`. Recorded here now
+because this file's `narrative-eval/v0.1` entry is the one place that should
+have said so and did not.

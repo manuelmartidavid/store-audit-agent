@@ -86,6 +86,26 @@ measured value for entry 05 too, reproducible via:
       --brief briefs/05.brief.json --entry evals/golden/05-password-gated \
       --prompt-version impact-narrator/v0.1
 
+**Correction, 2026-07-29 (later the same day, verification review, finding
+V1): the first correction above says MNC-403 "stays non-executable, documented
+as discharged structurally by the numeral ban" — that premise was false.** The
+numeral ban is on digit characters; a spelled-out quantity like "roughly a
+third of its mobile revenue" or "twice as many shoppers" carries none, and
+scored `passed: True`, `mnc_violations: []` against the discharged label — a
+fabricated, uncited, quantified impact claim passing a screen recorded as
+closed. MNC-403 now carries `detect.patterns` (`eval_narrative.QUANTITY_GATE_WORDS`
+— the module's spelled-out-quantity vocabulary, minus `"most of"`, which names
+no specific proportion and is what all three real recorded entry-02 runs
+actually contain) and is executable, not discharged. Re-scored:
+`mnc_screens_run: ["MNC-402", "MNC-403"]`, `mnc_screens_discharged: []`,
+`mnc_violations: []` — all three runs still pass; the "most of" phrase in
+`F-05.affects`/`F-07.affects` (run 1) and the summary (runs 2 and 3) surfaces
+only in `advisory`. The table's `MNC violations: 0` for entry 02 is unchanged
+by this correction, but the label that produced it is a different, wider
+screen than the one that produced it when this file was first corrected. Full
+detail: `evals/HARNESS-CHANGELOG.md`, `narrative-eval/v0.1`'s second
+correction.
+
 ## The human read — decision 3's criterion, run for the first time
 
 Full note: `docs/superpowers/notes/2026-07-29-narrator-human-read.md`.
