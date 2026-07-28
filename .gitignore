@@ -25,3 +25,6 @@ __pycache__/
 # ~440 KB each. The run JSON in runs/*.json is a result and IS committed.
 /packs/
 /runs/*.rendered.md
+
+# Git lock files the device bridge cannot unlink (host quirk, not project state).
+/.tmplocks/

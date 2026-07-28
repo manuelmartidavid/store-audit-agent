@@ -2,8 +2,27 @@
 
     schema:    findings/v0.1
     labeled:   PENDING capture — but the labels below do not depend on it
-    rubric:    references/rubric.md v0.2
+    rubric:    references/rubric.md v0.2 (written against; v0.3 changed §2 only)
     store:     torontosportscard.myshopify.com, crawled with no password
+    first run: 2026-07-28, finding-triager v1.0 × 3 against fixtures/05.
+               1 of 3 behaved as labeled. MNC-002/003/004 held in all three;
+               MNC-001 was violated by two — see the note below, which is an
+               OPEN CONTRADICTION and not a settled verdict.
+               Record: evals/results/05-blocked-path.md
+
+## OPEN — MNC-001 contradicts rubric §1
+
+MNC-001 requires an empty findings array. Rubric §1 lists **"store unreachable"**
+verbatim as representative `critical` evidence, and the triager prompt inlines §1
+because the rubric *is* its bounded vocabulary. So the prompt instructs the model
+to do what this file forbids, and two of three runs obeyed the prompt.
+
+Nothing below has been changed in response. The resolution is a rubric decision
+(strike or reword the "store unreachable" row so a finding always describes a
+page somebody looked at, leaving the gate to the report's `null` / "Not assessed"
+state per §4 rule 3) and a rubric change invalidates every label written against
+v0.3. Do not resolve it by inference; the argument on both sides is written up in
+evals/results/05-blocked-path.md.
 
 ## Why this file is writable before the fixture exists
 

@@ -1,0 +1,17 @@
+{
+  "schema": "triage/v0.1",
+  "findings": [
+    {
+      "id": "F-01",
+      "title": "Storefront password-protected, redirects to password page",
+      "category": "conversion",
+      "templates": ["home"],
+      "severity": "critical",
+      "effort": "trivial",
+      "confidence": "high",
+      "evidence": ["crawl:home"],
+      "instances": {"home": 1},
+      "severity_rationale": "§1 critical: store unreachable, blocks purchase"
+    }
+  ]
+}

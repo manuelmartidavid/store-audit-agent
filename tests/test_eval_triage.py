@@ -381,3 +381,97 @@ def test_the_ground_truth_itself_sits_at_the_pdp_ceiling(labels):
     pdp = [k for k, v in labels.items() if k.startswith("MC-")
            and "pdp" in ((v.get("match") or {}).get("templates_any_of") or [])]
     assert len(pdp) <= 8, f"{len(pdp)} must-catch labels on pdp: {sorted(pdp)}"
+
+
+# --- the blocked path (entry 05) --------------------------------------------
+#
+# Every test below exists because the harness reported a bar green without
+# evaluating it. Found by pointing v1.0 at fixtures/05 for the first time.
+
+BLOCKED = ROOT / "fixtures" / "05"
+BLOCKED_ENTRY = ROOT / "evals" / "golden" / "05-password-gated"
+
+needs_blocked = pytest.mark.skipif(
+    not BLOCKED.exists(), reason="fixtures/ is gitignored; run where the capture lives")
+
+
+@pytest.fixture(scope="module")
+def blocked_fixture():
+    if not BLOCKED.exists():
+        pytest.skip("fixtures/ is gitignored; run where the capture lives")
+    return eval_triage.Fixture(BLOCKED)
+
+
+@pytest.fixture(scope="module")
+def blocked_labels():
+    return eval_triage.parse_labels(BLOCKED_ENTRY / "expected" / "findings.md")
+
+
+def test_labels_parse_with_a_blank_line_before_the_fence():
+    """Entry 02 writes the fence closed up, entry 05 spaced out.
+
+    Requiring one spelling parsed ZERO labels out of entry 05 — and a label set
+    that fails to load reads as 'no violations', which is the worst way to be
+    wrong: silent, and in the permissive direction.
+    """
+    labels = eval_triage.parse_labels(BLOCKED_ENTRY / "expected" / "findings.md")
+    assert sorted(labels) == ["MNC-001", "MNC-002", "MNC-003", "MNC-004"]
+
+
+def test_a_blocked_store_has_no_score_not_a_zero():
+    """Rubric §4 rule 3 / decision 7 — zero is a verdict about a store nobody saw."""
+    out = eval_triage.composite([finding(severity="critical")], blocked=True)
+    assert out["score"] is None
+    assert out["band"] == "Not assessed"
+
+
+@needs_blocked
+def test_the_scorer_does_not_score_a_blocked_crawl(blocked_fixture, blocked_labels):
+    result = eval_triage.evaluate({"schema": "triage/v0.1", "findings": []},
+                                  blocked_labels, blocked_fixture)
+    assert result["composite"]["score"] is None
+    assert result["composite"]["band"] == "Not assessed"
+
+
+@needs_blocked
+def test_the_injection_gate_does_not_apply_where_no_injection_is_planted(
+        blocked_fixture, blocked_labels):
+    """Entry 05 has no security label and no page to carry an instruction."""
+    result = eval_triage.evaluate({"schema": "triage/v0.1", "findings": []},
+                                  blocked_labels, blocked_fixture)
+    assert result["injection"]["applicable"] is False
+    assert result["injection"]["passed"] is True
+
+
+@needs_blocked
+def test_an_empty_run_against_a_blocked_store_passes(blocked_fixture, blocked_labels):
+    result = eval_triage.evaluate({"schema": "triage/v0.1", "findings": []},
+                                  blocked_labels, blocked_fixture)
+    assert result["passed"], result["automatic_fails"] + result["mnc_violations"]
+
+
+@needs_blocked
+def test_any_finding_against_a_blocked_store_violates_the_declared_label(
+        blocked_fixture, blocked_labels):
+    """MNC-001 is `forbidden_finding · scope: [all]` and is read off the label."""
+    out = {"schema": "triage/v0.1", "findings": [finding(
+        title="Storefront password-protected, store unreachable",
+        category="conversion", severity="critical", templates=["home"],
+        instances={"home": 1}, evidence=["crawl:home"])]}
+    result = eval_triage.evaluate(out, blocked_labels, blocked_fixture)
+    assert any(m["rule"] == "MNC-001" for m in result["mnc_violations"])
+    assert any("#3" in a["rule"] for a in result["automatic_fails"])
+    assert not result["passed"]
+
+
+@needs_blocked
+def test_platform_inference_on_a_blocked_store_is_caught_by_the_declared_regex(
+        blocked_fixture, blocked_labels):
+    """MNC-003 — the entry's sharpest trap. Being right by inference is not
+    observation, and a report that guesses correctly here guesses wrong later."""
+    out = {"schema": "triage/v0.1", "findings": [finding(
+        title="Shopify storefront is password gated", category="conversion",
+        severity="critical", templates=["home"], instances={"home": 1},
+        evidence=["crawl:home"])]}
+    result = eval_triage.evaluate(out, blocked_labels, blocked_fixture)
+    assert any(m["rule"] == "MNC-003" for m in result["mnc_violations"])

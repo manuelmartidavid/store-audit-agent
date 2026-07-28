@@ -1,6 +1,6 @@
 # Store Audit Agent — project state
 
-    updated:  2026-07-28 (step 7 COMPLETE — v1.0 frozen; repo consolidated, decision 28)
+    updated:  2026-07-28 (v1.0 frozen · repo consolidated · entry 05 first-run)
     supersedes: phase-numbering in 02-store-audit-brief.md (workflow detached from
                 numbered phases by explicit decision; gates kept, sequence dropped)
     for Claude: treat this file as ground truth for decisions. Do not re-open
@@ -191,7 +191,7 @@ sees it.
     not after. The freeze is one recapture with the app enabled, so tuning
     without it tunes against a configuration that will not exist — and P-02's
     3.0–3.8s window cannot absorb a widget added afterwards.
-- Prompts written: `finding-triager` v0.1–v0.6 + **v1.0 frozen**.
+- Prompts written: `finding-triager` v0.1–v0.6 + **v1.0 frozen**. Runs recorded:\n  18 against entry 02, 3 against entry 05.
   `impact-narrator` and `report-composer` still none.
 - Entries 01 (clean theme demo) and 04 (WooCommerce, reduced path + null-AOV
   trap): stores not yet selected. Entry 03 candidate: makerlab (captured).
@@ -450,19 +450,17 @@ reported, never once obeyed.
     narrator's harness: a bar belongs to the layer that can act on it. **This is
     the loop's one relaxed bar — flagged, not buried.**
 
-### Still open after step 7
+### Open decisions — need a call, not an inference
 
-- **Two category caps bind** (`seo` by 4, `accessibility` by 1). Rubric §4 rule 2
-  says that means the weights are wrong, not the cap — but this store has two
-  `critical`s in two categories, which is close to the pathological case the cap
-  exists for. The cheap check is entry 01: a cap binding on the clean-theme test
-  would settle it. Changing weights is a rubric change and invalidates every
-  label, so it waits for that evidence.
-- **MC-116 severity: label `medium`, two of three runs `low`.** Two independent
-  runs agreeing against the label is worth one look.
-- **The false-positive side is still unmeasured.** Every number in this result
-  measures recall against a store built to be found out. Entry 01 has no store
-  selected. This is the largest remaining hole.
+1. **MNC-001 vs rubric §1 "store unreachable"** (entry 05, above). Rubric change.
+2. **Two category caps bind** (`seo` by 4, `accessibility` by 1). Rubric §4 rule 2
+   says that means the weights are wrong, not the cap — but this store has two
+   `critical`s in two categories, close to the pathological case the cap exists
+   for. Entry 01 settles it cheaply: a cap binding on a clean theme means the
+   weights are wrong. Rubric change, so it waits for that evidence.
+3. **MC-116 severity: label `medium`, two of three runs `low`.** Two independent
+   runs agreeing against the label is worth one look before assuming the label is
+   right.
 
 ### Blocking-adjacent findings from the loop
 
@@ -533,28 +531,129 @@ the duplicates are in `_to_delete/consolidation-2026-07-28/` for you to remove �
 the device bridge cannot delete. `triager/` is retired: it was an export, and an
 export that is not regenerated goes stale silently.
 
+## Entry 05 first-run (2026-07-28) — and an open contradiction
+
+Ran v1.0 against `fixtures/05` (blocked) three times while assessing readiness.
+Record: `evals/results/05-blocked-path.md`.
+
+1 of 3 runs behaved as labeled (empty findings). **MNC-003 held in all three** —
+no run inferred platform or vertical from a Shopify-branded password page, which
+the label calls the entry's sharpest test. MNC-004 held too. The blocked pack is
+correct: 3.1 KB, six templates `blocked`, `platform: "unknown"`, 0 nodes stamped.
+
+**OPEN DECISION — MNC-001 contradicts rubric §1.** Entry 05's MNC-001 requires an
+empty findings array; rubric §1 lists **"store unreachable"** verbatim as
+representative `critical` evidence, and the prompt inlines §1 because the rubric
+*is* its bounded vocabulary. Two of three runs did what §1 told them. The argument
+(written up in the result file, not acted on): the gate is a **report-level
+state** — §4 rule 3 already gives it `null` / "Not assessed" — and a finding
+should always describe a page somebody looked at. Mechanically the finding also
+cannot cite anything, since `crawl:home` does not resolve on a blocked crawl.
+Resolution means striking or rewording one row of rubric §1, which invalidates
+every label written against v0.3. **Do not resolve by inference.**
+
+**Four harness bugs found and fixed** (none visible from entry 02, all with
+tests): a blocked store was scored **85 / "Healthy"** — fabrication by arithmetic
+inside the tool built to catch it; `zero_mnc_violations` reported True having
+evaluated nothing, because the screens were hardcoded to entry 02's MNC rules;
+the label parser matched **zero** labels in entry 05 because its regex demanded
+the yaml fence immediately after the heading; and the injection gate fired on an
+entry with no injection. The MNC evaluator now reads detection rules off the
+label (`forbidden_finding · scope: [all]`, `detect.patterns`, `match.any_of`) —
+which matters disproportionately for entries 01/03/04, all of which bring MNC
+labels this harness has never seen.
+
+## Readiness — where the agent actually stands (2026-07-28)
+
+**Recall is proven. Precision has never been measured.** Every number in this
+project comes from one store built to be found out. On a sabotaged store almost
+anything you find is real, so the unlabeled bucket falling from 8 to 2-3 per run
+says nothing about a healthy store. Point v1.0 at a well-built Shopify store today
+and it might emit 3 findings or 15 - nothing here would catch the difference, and
+the project's stated top risk is a plausible-but-wrong claim reaching a client.
+
+Not ready for a client deliverable. Ready for **shadow runs** - point it at a real
+store, read the output, send nothing. That is also how the entry-01 candidate gets
+found.
+
+Blocking a real deliverable, in order:
+
+1. **Entry 01 does not exist.** Rubric §5's false-positive pass condition
+   (<= 3 findings, none above `medium`, score >= 90) has never run once.
+2. **No narrator, no composer** - there is no client artifact, so decision 3's
+   kill criterion (>30% editing cost) is untested for want of anything to edit.
+3. **The distiller drops rendered prices and stock state**, so the prompt has to
+   instruct the model *not* to check two purchase-decision affordances - a hole in
+   exactly the conversion axis a merchant pays for.
+4. **One theme, one vertical.** `tsc-theme-v3` is a hand-built dev theme; only
+   `collectibles` exercises the material-facts table. `makerlab` (real, app-heavy,
+   7 apps) is captured but stale under crawler 0.1.0.
+5. **No runner, no cost data.** ~145k input tokens per store per run; latency and
+   spend unmeasured. The 21 recorded runs were agent sessions.
+
+### Sequencing note - v1.0's numbers have a shelf life
+
+The distiller fix (item 3) changes capture output, which retires fixture
+`b219afac...`, which is one of the four provenance pins on every v1.0 result. So
+the entry-02 measurement must be redone after it: recapture -> re-freeze ->
+re-label (price and stock become *detectable*, so the presence checklist gains
+back two items and the label set probably grows again) -> re-run -> re-measure.
+
+**Therefore: do not capture entry 01 before the distiller fix, or it gets captured
+twice.** Select the store now - selection is free - and capture in one wave.
+
+Work genuinely unblocked today, because it depends on no fixture:
+
+- **`impact-narrator`.** Its input contract `triage/v0.1` is frozen, so it can be
+  written and reviewed against 21 recorded run JSONs now. It also carries the
+  highest guardrail density in the project (automatic-fail #1, fabricated
+  statistics) and inherits the per-template report ceiling from decision 27.
+- Resolving the three open decisions.
+- Selecting the entry-01 and entry-04 stores.
+
 ## Next steps, in order
 
-1. (done) Crawler acceptance tests — suite green.
-2. (done) Captured entry 05 (blocked) and the TSCC pre-sabotage baseline
-   (`fixtures/05`, `fixtures/02`).
-3. (done) Resolved both open questions — decisions 13 and 14.
-4. (done) Theme-side planting: 12 of 14 defects committed on `sabotage/entry-02`.
-5. (done) Admin-side planting + metric loop. All 13 planted defects landed;
-   P-04 downgraded to MNC (deferred app), S-02 dropped (meta-autofill conflict).
-6. (done) Recapture → `fixtures/02-sabotaged` (pinned PDP), password grep clean,
-   provenance filled, `expected/findings.md` labeled from the frozen fixture.
-   **Entry 02 is the project's first exact ground truth.**
-7. **(DONE) `finding-triager` v1.0 frozen** — 3 of 3 runs at 17/17 recall against
-   entry 02. `evals/results/07-finding-triager.md`, decisions 19–27.
-8. Recapture `fixtures/makerlab` and `fixtures/05` under the current crawler
-   (distiller + fingerprint changes staled both); confirm makerlab as entry 03.
-   **Fix the distiller's short-text gap first** — rendered prices and stock
-   badges are dropped today, which makes two purchase-decision affordances
-   undetectable and generates false positives. It changes capture output, so it
-   belongs in the same recapture, and `fixtures/02-sabotaged` will need
-   re-freezing and re-labeling after it.
-9. Select and capture entries 01 (clean demo) and 04 (WooCommerce, null-AOV trap).
+Reordered 2026-07-28 around one constraint: **the distiller fix retires the frozen
+fixture, so everything needing a capture should happen in one wave after it.**
+Steps 1-7 are done; see the sections above.
+
+### Now — no capture required, nothing blocked
+
+8. **Resolve the three open decisions above.** #1 gates entry 05; #2 waits on
+   entry 01; #3 is a ten-minute read.
+9. **Write `impact-narrator`.** Input contract `triage/v0.1` is frozen and 21 run
+   JSONs are recorded, so it can be built and evaluated without touching a
+   fixture. Highest guardrail density in the project: automatic-fail #1
+   (fabricated statistic) is *its* gate, since the triage schema has no number
+   field. Also inherits the per-template report ceiling (decision 27) — it is the
+   layer that can truncate by roadmap rank.
+10. **Select the entry-01 store** (clean theme demo — the false-positive test) and
+    the **entry-04 store** (WooCommerce, reduced path, null-AOV trap). Selection
+    is free; capture is not.
+
+### Then — one capture wave
+
+11. **Fix the distiller short-text gap.** Rendered prices and stock badges are
+    dropped (`$149.99` is 7 chars, below `TEXT_KEEP_MIN_CHARS` 20, and a price
+    span is not interactive). Verified: zero `$` in any distilled template. Same
+    shape as C-01, one layer out. Bump crawler to 0.3.0 — it changes capture
+    output.
+12. **Recapture everything under 0.3.0 in one pass:** `02-sabotaged` (re-freeze,
+    re-label — price and stock become detectable, so the presence checklist gains
+    back two items and the label set likely grows), `05`, `makerlab` (confirm as
+    entry 03), and capture `01` and `04` fresh.
+13. **Re-run and re-measure v1.0** against the new entry-02 fixture; restore the
+    two removed presence-checklist items in a v1.1. Then run entry 01 — the first
+    real precision measurement the project will have.
+
+### Then — the deliverable
+
+14. `report-composer`, including ceiling truncation by roadmap rank and the
+    "N additional minor items" line (rubric §5).
+15. End-to-end on a real store; test decision 3's kill criterion (>30% editing
+    cost) for the first time.
+16. Scripted API runner + cost/latency measurement, so a run stops depending on a
+    session.
 
 ## Learnings — durable, from building entry 02 (2026-07-27)
 
