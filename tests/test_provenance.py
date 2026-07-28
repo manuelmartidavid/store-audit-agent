@@ -24,10 +24,12 @@ sys.modules["eval_triage"] = eval_triage
 _spec.loader.exec_module(eval_triage)
 
 
-def _entry(tmp_path: Path, pin: str | None) -> Path:
+def _entry(tmp_path: Path, pin: str | None, *, self_derived: bool = False) -> Path:
     entry = tmp_path / "entry"
     (entry / "expected").mkdir(parents=True)
     fixtures_line = f'    manifest_sha256: "{pin}"\n' if pin else ""
+    if self_derived:
+        fixtures_line += "    pin_derived_after_labeling: true\n"
     (entry / "context.yaml").write_text(
         "store:\n  origin: https://example.test/\n"
         "eval:\n  fixtures:\n" + (fixtures_line or "    captured_at: null\n"),
@@ -172,7 +174,9 @@ def test_the_harness_version_is_a_fifth_pin(tmp_path):
     digest = hashlib.sha256((fixtures / "manifest.yaml").read_bytes()).hexdigest()
     entry = _entry(tmp_path, digest)
     record = eval_triage.provenance(entry, fixtures, "finding-triager/v1.0", "pack/v0.2")
-    assert record["harness_version"] == eval_triage.HARNESS_VERSION
+    # The declared version is still the semantic claim, so the record must lead
+    # with it; the digest is what binds the claim to the file (see below).
+    assert record["harness_version"].startswith(eval_triage.HARNESS_VERSION + "+")
     assert eval_triage.HARNESS_VERSION.startswith("eval/v")
 
 
@@ -181,3 +185,77 @@ def test_every_harness_version_has_a_changelog_entry():
     assert f"## {eval_triage.HARNESS_VERSION}" in changelog, (
         "the current harness version has no changelog entry — a bar change with "
         "no record is how an eval drifts toward the model")
+
+
+def test_the_harness_pin_is_bound_to_the_file_it_versions(tmp_path):
+    """A bump with no changelog entry was caught; an edit with no bump was not.
+
+    `HARNESS_VERSION` was the only one of the five pins that named nothing it
+    could be checked against. The digest is the same device `rubric_version()`
+    uses, and it is honest about the same limit: it moves on any edit, including
+    one that changes no bar.
+    """
+    live = eval_triage.harness_version()
+    version, _, sha8 = live.partition("+")
+    assert version == eval_triage.HARNESS_VERSION
+    assert len(sha8) == 8 and all(c in "0123456789abcdef" for c in sha8)
+
+    edited = tmp_path / "eval_triage_copy.py"
+    edited.write_bytes((ROOT / "triage" / "eval_triage.py").read_bytes() + b"\n# a bar moved\n")
+    assert eval_triage.harness_version(edited).startswith(eval_triage.HARNESS_VERSION + "+")
+    assert eval_triage.harness_version(edited) != live
+
+
+def test_the_prompt_pin_says_existence_and_not_more(tmp_path):
+    """`prompt_pin: exists` is the whole of what is checkable.
+
+    The run files carry no prompt identity, so there is nothing to compare the
+    asserted version against — only the file it names, which must be there.
+    Saying `matched` here would be the overstatement this key exists to stop.
+    """
+    fixtures = _fixtures(tmp_path, "crawler_version: 0.2.0\n")
+    digest = hashlib.sha256((fixtures / "manifest.yaml").read_bytes()).hexdigest()
+    entry = _entry(tmp_path, digest)
+    record = eval_triage.provenance(entry, fixtures, "finding-triager/v1.0", "pack/v0.2")
+    assert record["prompt_pin"] == "exists"
+
+
+def test_every_pin_in_the_record_carries_a_status(tmp_path):
+    """Two of five used to carry none, and silence reads as verification."""
+    fixtures = _fixtures(tmp_path, "crawler_version: 0.2.0\n")
+    digest = hashlib.sha256((fixtures / "manifest.yaml").read_bytes()).hexdigest()
+    entry = _entry(tmp_path, digest)
+    record = eval_triage.provenance(entry, fixtures, "finding-triager/v1.0", "pack/v0.2")
+    for key in ("fixture_pin", "prompt_pin", "pack_pin", "harness_pin"):
+        assert record[key] in {"matched", "self-derived", "asserted", "exists", "absent"}, key
+    # rubric_version carries its status in the value: the +sha8 suffix is the
+    # check, so a separate key would restate it.
+    assert "+" in record["rubric_version"]
+    assert record["harness_pin"] == "asserted"
+
+
+def test_a_pin_the_entry_declares_self_derived_does_not_read_as_matched(tmp_path):
+    """Entry 05's shape: the pin was computed from a capture that already existed.
+
+    Byte-equality still holds — a mismatch is still fatal — but equality with a
+    hash derived from those same bytes says "one capture", not "the capture the
+    labels were written against". The entry says so in prose; the status is the
+    machine-readable half of the same sentence.
+    """
+    fixtures = _fixtures(tmp_path, "crawler_version: 0.2.0\n")
+    digest = hashlib.sha256((fixtures / "manifest.yaml").read_bytes()).hexdigest()
+
+    honest = eval_triage.provenance(_entry(tmp_path, digest, self_derived=True),
+                                    fixtures, "finding-triager/v1.0", "pack/v0.2")
+    assert honest["fixture_pin"] == "self-derived"
+
+    plain = eval_triage.provenance(_entry(tmp_path / "b", digest),
+                                   fixtures, "finding-triager/v1.0", "pack/v0.2")
+    assert plain["fixture_pin"] == "matched"
+
+
+def test_the_golden_entries_declare_the_pin_status_they_actually_have():
+    """Entry 05 self-derived, entry 02 not — read off the entries, not asserted here."""
+    golden = ROOT / "evals" / "golden"
+    assert eval_triage.fixture_pin_is_self_derived(golden / "05-password-gated")
+    assert not eval_triage.fixture_pin_is_self_derived(golden / "02-sabotaged")

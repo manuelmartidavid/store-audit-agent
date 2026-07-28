@@ -367,8 +367,9 @@ capacity one) · `prompts/finding-triager/v0.1–v0.4` + registry ·
 matcher, tiered recall, severity/effort agreement, composite, MNC screens,
 automatic fails) · 48 new tests.
 
-**The 7.4 gate passed before any model ran:** the scorer recomputes score 35 and
-band "Significant work needed" from `expected/findings.md` alone.
+**The 7.4 gate passed before any model ran:** the scorer recomputed score 35 and
+band "Significant work needed" from `expected/findings.md` alone (the label set
+then).
 
 **Result — v1.0 FROZEN, 3 runs, all three clear every bar at 17/17 recall (in-sample — `evals/PROMOTION-PROTOCOL.md` rule 3).**
 Zero unresolvable pointers, zero MNC violations, MC-113 both halves every run.

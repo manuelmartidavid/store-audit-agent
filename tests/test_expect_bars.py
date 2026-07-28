@@ -13,7 +13,9 @@ default.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -126,3 +128,141 @@ def test_unknown_gate_name_raises():
     expect = {"gates": ["max_findigns"], "max_findigns": 3}  # typo'd gate name
     with pytest.raises(SystemExit, match="not a known gate"):
         eval_triage.expect_bars(_findings(1), {"score": 95}, expect)
+
+
+# ---------------------------------------------------------------------------
+# The wiring, which every test above this line went around
+#
+# `expect_bars()` was called directly nine times and never once through
+# `evaluate()`. Two lines connect it to reality — `bars.update(expect_bars(...))`
+# in `evaluate()` and the block in `main()` that reads `eval.expect` out of the
+# entry's context.yaml — and both could be deleted with the whole suite green.
+# A bar that passes without running is worse than a bar that fails; a bar whose
+# wiring is untested is the same failure one level out.
+#
+# The capture below is built here rather than read from `fixtures/`, which is
+# gitignored: a wiring test that skips on a fresh clone reports coverage it does
+# not have.
+# ---------------------------------------------------------------------------
+
+PRECISION_BARS = {"max_findings_respected", "findings_above_medium_respected",
+                  "score_within_expect"}
+
+
+def _capture(tmp_path: Path) -> Path:
+    capture = tmp_path / "capture"
+    capture.mkdir()
+    (capture / "crawl.json").write_text(json.dumps({
+        "status": "ok",
+        "templates": {"home": {"url": "https://example.test/",
+                               "distilled": {"tag": "html", "children": []}}},
+    }), encoding="utf-8")
+    (capture / "lighthouse.json").write_text("[]", encoding="utf-8")
+    (capture / "axe.json").write_text("[]", encoding="utf-8")
+    return capture
+
+
+def _output(count: int, severity: str = "low") -> dict:
+    """A schema-valid run whose every pointer resolves, so only the gates move."""
+    return {"schema": "triage/v0.1", "findings": [
+        {"id": f"F-{n:02d}", "title": "Home hero image is oversized",
+         "category": "seo", "templates": ["home"], "severity": severity,
+         "effort": "small", "confidence": "high", "evidence": ["crawl:home"],
+         "instances": {"home": 1}, "severity_rationale": "rubric §1 as labeled"}
+        for n in range(count)]}
+
+
+def test_a_declared_gate_reaches_the_bars_through_evaluate(tmp_path):
+    """Declared, and failing when it should — not merely present in the dict."""
+    fixture = eval_triage.Fixture(_capture(tmp_path))
+    expect = {"gates": ["max_findings"], "max_findings": 3}
+
+    within = eval_triage.evaluate(_output(3), {}, fixture, expect=expect)
+    assert within["bars"]["max_findings_respected"] is True
+    assert within["passed"]
+
+    over = eval_triage.evaluate(_output(4), {}, fixture, expect=expect)
+    assert over["bars"]["max_findings_respected"] is False
+    assert not over["passed"], "a failed precision bar must fail the run, not just report"
+
+
+def test_the_score_gate_is_checked_against_evaluates_own_composite(tmp_path):
+    """The bar reads the score `evaluate()` computed, not one handed to it."""
+    fixture = eval_triage.Fixture(_capture(tmp_path))
+    expect = {"gates": ["score_range"], "score_min": 90, "score_max": 100}
+
+    clean = eval_triage.evaluate(_output(2, "low"), {}, fixture, expect=expect)
+    assert clean["composite"]["score"] == 98
+    assert clean["bars"]["score_within_expect"] is True
+
+    heavy = eval_triage.evaluate(_output(2, "critical"), {}, fixture, expect=expect)
+    assert heavy["composite"]["score"] == 75          # 30 penalties, capped at 25
+    assert heavy["bars"]["score_within_expect"] is False
+    assert not heavy["passed"]
+
+
+def test_no_precision_bar_appears_when_expect_is_omitted(tmp_path):
+    """The default is silence, not a bar reported green having checked nothing."""
+    fixture = eval_triage.Fixture(_capture(tmp_path))
+    result = eval_triage.evaluate(_output(12), {}, fixture)
+    assert not PRECISION_BARS & set(result["bars"])
+    assert result["passed"]
+
+
+def test_entry_02s_empty_gates_list_produces_no_precision_bar(tmp_path):
+    """Entry 02 records `expect` values and gates none of them, deliberately.
+
+    Its `max_findings` would fail the 12-finding run below if `gates: []` were
+    read as "all of them" — which is exactly the accident that would re-judge 18
+    recorded runs against a bar they were never measured on.
+    """
+    context = yaml.safe_load(
+        (ROOT / "evals" / "golden" / "02-sabotaged" / "context.yaml").read_text(encoding="utf-8"))
+    expect = context["eval"]["expect"]
+    assert expect["gates"] == [] and expect.get("max_findings") is not None
+
+    fixture = eval_triage.Fixture(_capture(tmp_path))
+    result = eval_triage.evaluate(_output(12), {}, fixture, expect=expect)
+    assert not PRECISION_BARS & set(result["bars"])
+
+
+def test_main_carries_the_entrys_gates_from_context_yaml_into_the_bars(tmp_path, capsys):
+    """The second untested line: `main()` reading `eval.expect` and passing it on.
+
+    End to end through the CLI, because that is the only path a recorded score
+    ever takes.
+    """
+    capture = _capture(tmp_path)
+    (capture / "manifest.yaml").write_text("crawler_version: 0.2.0\n", encoding="utf-8")
+    digest = hashlib.sha256((capture / "manifest.yaml").read_bytes()).hexdigest()
+
+    entry = tmp_path / "entry"
+    (entry / "expected").mkdir(parents=True)
+    (entry / "expected" / "findings.md").write_text("# labels\n", encoding="utf-8")
+    (entry / "context.yaml").write_text(
+        "eval:\n"
+        "  fixtures:\n"
+        f'    manifest_sha256: "{digest}"\n'
+        "  expect:\n"
+        "    max_findings: 1\n"
+        "    gates: [max_findings]\n", encoding="utf-8")
+
+    run = tmp_path / "run.json"
+    run.write_text(json.dumps(_output(2)), encoding="utf-8")
+
+    code = eval_triage.main([str(run), "--entry", str(entry), "--fixtures", str(capture),
+                             "--prompt-version", "finding-triager/v1.0"])
+    printed = capsys.readouterr().out
+    assert "max_findings_respected=False" in printed
+    assert code == 1
+
+    # …and the same run under an entry that declares no gate is silent about it.
+    (entry / "context.yaml").write_text(
+        "eval:\n  fixtures:\n"
+        f'    manifest_sha256: "{digest}"\n'
+        "  expect:\n    max_findings: 1\n    gates: []\n", encoding="utf-8")
+    code = eval_triage.main([str(run), "--entry", str(entry), "--fixtures", str(capture),
+                             "--prompt-version", "finding-triager/v1.0"])
+    printed = capsys.readouterr().out
+    assert "max_findings_respected" not in printed
+    assert code == 0

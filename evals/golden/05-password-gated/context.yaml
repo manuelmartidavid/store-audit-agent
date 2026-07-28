@@ -34,6 +34,10 @@ eval:
     # written against these bytes; it attests only that scoring is now
     # anchored to one capture.
     manifest_sha256: "12899ce706b92f3ff9d300d6036dd8231460904de8e53e6f53a718c1336dbba5"
+    # The sentence above, in a key the scorer can read: the record prints
+    # `fixture_pin: self-derived` rather than `matched`, so it stops claiming a
+    # correspondence the comment beside it disclaims.
+    pin_derived_after_labeling: true
     throttling: "mobile-4g-slow"
     templates_captured: []       # none reachable — this is the expected state
 

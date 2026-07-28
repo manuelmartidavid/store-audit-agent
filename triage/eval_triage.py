@@ -22,7 +22,7 @@ Two rules that are easy to get wrong and expensive to get wrong:
   not get its own second spelling of the rule.
 
 Usage:
-    python triage/eval_triage.py --self-test          # the gate: 35 from the labels alone
+    python triage/eval_triage.py --self-test          # the gate: 24 (Critical) from the labels alone
     python triage/eval_triage.py runs/v0.1-run1.json \
         --entry evals/golden/02-sabotaged --fixtures fixtures/02-sabotaged \
         --prompt-version finding-triager/v0.1
@@ -47,6 +47,7 @@ from crawler import pointers as ptr  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 RUBRIC_PATH = ROOT / "rubric.md"
 PROMPTS_DIR = ROOT / "prompts"
+HARNESS_PATH = Path(__file__).resolve()
 
 #: The fifth provenance pin. Bump on ANY change to a bar, a matcher rule, or the
 #: label contract, and add an entry to evals/HARNESS-CHANGELOG.md. Between v0.1
@@ -160,6 +161,28 @@ def rubric_version(path: Path = RUBRIC_PATH) -> str:
     return f"rubric.md v{version}+{digest}"
 
 
+def harness_version(path: Path = HARNESS_PATH) -> str:
+    """`eval/v0.2+<sha8>` — the declared version bound to the file it versions.
+
+    Mirrors `rubric_version()` deliberately, and for the same reason. Of the five
+    pins this was the only one with no binding to what it names: a test catches a
+    bump with no changelog entry, but nothing caught an *edit with no bump* —
+    which is the direction the changelog says the pressure runs. `HARNESS_VERSION`
+    is the semantic claim ("a bar, a matcher rule or the label contract moved");
+    the digest is only the "something moved" signal.
+
+    Accept that the digest also moves on edits that change no bar — a comment fix
+    shifts the pin, and two runs with identical bars can carry different suffixes.
+    That is the same trade `rubric_version()` makes, and it is the cheap side of
+    the trade: a pin that moves too often is noisy, a pin that fails to move is
+    a comment. `evals/HARNESS-CHANGELOG.md` says which movements mattered.
+
+    Read at call time, not at import, so the digest describes the bytes on disk.
+    """
+    digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()[:8]
+    return f"{HARNESS_VERSION}+{digest}"
+
+
 def resolve_prompt_version(name: str, prompts_dir: Path = PROMPTS_DIR) -> str:
     """`finding-triager/v1.0` must name a prompt file that exists."""
     if not name or name == "unpinned":
@@ -192,6 +215,27 @@ def expected_manifest_sha256(entry: Path) -> str | None:
         if match:
             return match.group(1)
     return None
+
+
+def fixture_pin_is_self_derived(entry: Path) -> bool:
+    """Does the entry declare that its own pin was computed after the labels?
+
+    Entry 05's `manifest_sha256` was computed from a capture that already
+    existed, so it anchors scoring to one set of bytes and attests nothing about
+    which bytes the labels were written against. That distinction was stated in
+    prose beside the value and nowhere the record could carry it, so scoring
+    entry 05 printed `fixture … (matched)` — the machine-readable pin claiming a
+    correspondence the comment next to it explicitly disclaimed.
+
+    Driven by `eval.fixtures.pin_derived_after_labeling`, a key, because a
+    comment is not readable by the thing that prints the status.
+    """
+    context = Path(entry) / "context.yaml"
+    if not context.exists():
+        return False
+    data = yaml.safe_load(context.read_text(encoding="utf-8")) or {}
+    return bool(((data.get("eval") or {}).get("fixtures") or {})
+                .get("pin_derived_after_labeling"))
 
 
 _PACK_VERSION_RE = re.compile(r"^pack/v\d+\.\d+$")
@@ -248,14 +292,36 @@ def provenance(entry: Path, fixtures: Path, prompt_version: str, pack_version: s
                 "Rebuild the pack, or pass the --pack-version it actually carries.")
         pack_pin = "matched"
 
+    # Every pin carries a status of the same shape, because two of them used to
+    # carry none and silence reads as verification. The vocabulary, and what each
+    # word is allowed to mean:
+    #
+    #   matched       compared against something independent, and equal
+    #   self-derived  derived from the artifact itself; equal by construction,
+    #                 so it says "one capture" and not "the labeled capture"
+    #   asserted      the operator's claim, unchecked here
+    #   exists        the named file is present; nothing further was compared
+    #
+    # `prompt_pin` is `exists` and cannot honestly be more: the run files carry
+    # no prompt identity to compare the pin against — the 21 recorded runs are
+    # the model's bare JSON — so existence is the whole of what is checkable.
+    # `harness_pin` is `asserted` because `HARNESS_VERSION` is a self-declared
+    # number; its `+sha8` suffix (see `harness_version()`) signals that the file
+    # moved, which is not the same as corroborating the version.
+    fixture_pin = "absent"
+    if pinned:
+        fixture_pin = "self-derived" if fixture_pin_is_self_derived(entry) else "matched"
+
     return {
         "fixture_manifest_sha256": computed,
-        "fixture_pin": "matched" if pinned else "absent",
+        "fixture_pin": fixture_pin,
         "prompt_version": resolve_prompt_version(prompt_version),
+        "prompt_pin": "exists",
         "rubric_version": rubric_version(),
         "pack_version": pack_version,
         "pack_pin": pack_pin,
-        "harness_version": HARNESS_VERSION,
+        "harness_version": harness_version(),
+        "harness_pin": "asserted",
     }
 
 
@@ -1169,8 +1235,13 @@ def main(argv: list[str] | None = None) -> int:
 
     r = result
     prov = record["provenance"]
-    print(f"== {args.output.name} · {prov['prompt_version']} · {prov['rubric_version']} "
+    # Same register for every pin: value, then how far it was checked. A pin
+    # printed without its status invites the reader to assume the strongest
+    # reading available, which is the failure this header exists to prevent.
+    print(f"== {args.output.name} · {prov['prompt_version']} ({prov['prompt_pin']}) "
+          f"· {prov['rubric_version']} "
           f"· {prov['pack_version']} ({prov['pack_pin']}) "
+          f"· {prov['harness_version']} ({prov['harness_pin']}) "
           f"· fixture {prov['fixture_manifest_sha256'][:12]} ({prov['fixture_pin']})")
     if r["schema_errors"]:
         print("\nSCHEMA ERRORS")

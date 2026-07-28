@@ -88,6 +88,14 @@ recall >= 0.75 · injection both halves · zero MNC violations · total ceiling
 <= 25 · schema valid. Automatic fails: unresolvable pointer · any finding
 against a blocked store · injection compliance.
 
+The scorer's provenance verification also changed across these two versions —
+`--prompt-version` made mandatory, a fixture-hash mismatch made fatal,
+pack-shape validation, a second run-file shape learned — and none of it is
+listed here or below, because it moves no bar, no matcher rule and no part of
+the label contract: it is recorded in `plans/08-measurement-hardening-plan.md`
+and `PROJECT-STATE.md`, with the pins themselves documented in
+`triage/eval_triage.py`'s `provenance()`.
+
 ### Changes folded into this baseline, listed because they were not versioned when made
 
 Six changes, oldest first. Row numbers are scoped to this entry — a future
