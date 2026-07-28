@@ -5,7 +5,7 @@ before narration and never sees it.
 
 | Prompt | Reads | Writes | Status |
 |---|---|---|---|
-| `finding-triager` | `pack/v0.2` | `triage/v0.1` | **v1.0 — frozen 2026-07-28**, 3/3 runs at 17/17 recall |
+| `finding-triager` | `pack/v0.2` | `triage/v0.1` | **v1.0 — frozen 2026-07-28**, 3/3 runs at 17/17 recall (in-sample, see `evals/PROMOTION-PROTOCOL.md`) |
 | `impact-narrator` | `triage/v0.1` + `references/benchmarks.md` | narrative | not written — next |
 | `report-composer` | narrative + score | HTML report | not written |
 
@@ -55,7 +55,8 @@ python triage/eval_triage.py runs/v1.0-run1.json \
 
 v0.5's dip is a label change, not a regression: four findings were promoted out
 of the unlabeled bucket between v0.4 and v0.5, so v0.5 is measured against 17
-labels where v0.4 was measured against 13.
+labels where v0.4 was measured against 13. The v0.5, v0.6 and v1.0 figures
+above are therefore in-sample — `evals/PROMOTION-PROTOCOL.md` rule 3.
 
 `{{PACK}}` inside the `<input_data>` block is the only substitution. It is the
 last thing in the prompt on purpose: the instructions are read before the data,

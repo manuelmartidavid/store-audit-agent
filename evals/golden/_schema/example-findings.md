@@ -9,7 +9,7 @@ Scenario: a hypothetical public app-heavy Shopify store.
 
     schema:    findings/v0.1
     status:    EXAMPLE — no fixtures, no labeler, no provenance
-    rubric:    references/rubric.md v0.2
+    rubric:    rubric.md v0.2
 
 ## Format
 

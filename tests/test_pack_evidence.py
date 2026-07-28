@@ -25,6 +25,10 @@ pack_evidence = importlib.util.module_from_spec(_spec)
 sys.modules["pack_evidence"] = pack_evidence
 _spec.loader.exec_module(pack_evidence)
 
+# Reached through the packer rather than imported separately, so this test sees
+# the same module object the packer estimates with.
+token_estimate = pack_evidence.token_estimate
+
 pytestmark = pytest.mark.skipif(not FIXTURE.exists(),
                                 reason="fixtures/ is gitignored; run where the capture lives")
 
@@ -37,13 +41,26 @@ def pack():
 def test_pack_fits_a_single_pass(pack):
     """Capacity is not what decides granularity — but it has to be true first.
 
-    pack/v0.2 costs ~33k tokens more than v0.1 for the per-node pointers. The
-    headroom left over the 200k window is what this guards: if a future entry
-    pushes past it, the granularity decision (one pass vs per-template) reopens
-    on capacity grounds rather than determinism grounds.
+    pack/v0.2 buys per-node pointers with tokens, and the headroom left over the
+    target model's context window is what this guards: if a future entry pushes
+    past it, the granularity decision (one pass vs per-template) reopens on
+    capacity grounds rather than determinism grounds.
+
+    Both of this test's numbers were corrected 2026-07-28; what it guards did not
+    change. The window is 1M, not the 200k this docstring used to name —
+    `claude-opus-5` is a 1M-context model by default (claude-api skill,
+    `shared/models.md`). And the bound is now derived rather than typed: the old
+    `< 150_000` came from a 4-chars-per-token prose rule that measured 2.16x low
+    on this pack, so it was nominally guarding a ceiling the pack had in fact
+    already crossed. Half the window, not all of it, because the rendered prompt
+    is the pack plus a template and the model's reply has to fit as well.
     """
     stats = pack_evidence.pack_stats(pack)
-    assert stats["approx_tokens"] < 150_000, stats
+    window = token_estimate.CONTEXT_WINDOWS["claude-opus-5"]
+    assert stats["approx_tokens"] < window // 2, stats
+    # The estimate is inferred from a counted number; keep both, so a reader who
+    # distrusts the ratio can redo the division rather than take it on faith.
+    assert stats["total_chars"] == pytest.approx(stats["total_kb"] * 1024, rel=0.001)
 
 
 def test_eval_block_never_reaches_the_prompt(pack):

@@ -3,7 +3,7 @@
     date:     2026-07-28
     entry:    evals/golden/05-password-gated
     fixture:  fixtures/05 (TSCC, no password — status: blocked, 0/6 captured)
-    rubric:   references/rubric.md v0.3 at run time; RESCORED under v0.4, which
+    rubric:   rubric.md v0.3 at run time; RESCORED under v0.4, which
               renamed the blocked band. Verdicts unchanged (1 of 3 pass).
     pack:     pack/v0.2 — 3.1 KB, ~800 tokens, 0 nodes stamped
     prompt:   finding-triager/v1.0, 3 runs

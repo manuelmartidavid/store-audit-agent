@@ -14,8 +14,9 @@ from pathlib import Path
 
 import pytest
 
-# scripts/ is not a package; put it on the path the way measure.py expects.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+# planting/ is not a package; put it on the path the way measure.py expects.
+# (Was `scripts/` until decision 28 split that grab-bag by concern.)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "planting"))
 
 import measure  # noqa: E402
 

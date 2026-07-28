@@ -78,6 +78,10 @@ evals/golden/             the hand-labeled evaluation set
   02-sabotaged/           TSCC with deliberately planted defects (exact ground truth)
   05-password-gated/      the same store with no password — the blocked-store case
 
+triage/                   the eval loop — pack_evidence · render_prompt · eval_triage
+planting/                 defect-planting tooling (measure · inspect_lcp · fit_image)
+prompts/                  finding-triager v0.1 … v1.0, registry-versioned
+
 tests/                    unit + browser-integration tests for the crawler
 ```
 
@@ -106,13 +110,16 @@ details and internals are in [`crawler/README.md`](crawler/README.md).
 ### Setup
 
 ```bash
-pip install -r requirements.txt        # playwright, pyyaml, pytest
+python -m pip install --user -r requirements.txt   # exact pins — see the file
 python -m playwright install chromium
-npm install                            # lighthouse + axe-core (pinned)
+npm ci                                             # ci, not install: honours the lock
 ```
 
-> On this machine global pip is broken; use `python -m pip install --user -r requirements.txt`
-> and call tools as modules (`python -m pytest`, `python -m playwright`).
+> On this machine global pip is broken; use `python -m pip install --user` and
+> call tools as modules (`python -m pytest`, `python -m playwright`).
+>
+> Use `npm ci`, never `npm install`. The pinned Lighthouse and axe-core versions
+> are an input to the golden labels, and `npm install` may resolve past them.
 
 ### The storefront password
 
@@ -165,6 +172,47 @@ It makes **real requests to the live store**, politely: ≥1s between fetches, o
 request at a time, an identifying user-agent, and `robots.txt` respected. TSCC is
 the disposable dev store the spec designates for this.
 
+### Backing up a capture
+
+`fixtures/` is gitignored and the store it came from has drifted, so a capture
+is not reproducible — only restorable.
+
+```bash
+python -m crawler.archive fixtures/02-sabotaged -o archives/02-sabotaged.tar.gz
+python -m crawler.archive --check archives/02-sabotaged.tar.gz --expect <manifest sha256>
+```
+
+Copy `archives/` somewhere off this machine. The `--expect` value is the
+`manifest:` line in that entry's `expected/findings.md`.
+
+### Running the triager
+
+`triage/run_triager.py` calls the model directly (requires `ANTHROPIC_API_KEY`)
+and writes a run file that records what produced it — model, effort, thinking,
+max_tokens, the SDK version, token usage, and a digest of the exact rendered
+prompt and pack fed in — instead of just the model's bare JSON:
+
+```bash
+python triage/pack_evidence.py fixtures/02-sabotaged \
+    --context evals/golden/02-sabotaged/context.yaml -o packs/02-sabotaged.pack.json
+python triage/render_prompt.py prompts/finding-triager/v1.0.md \
+    --pack packs/02-sabotaged.pack.json --indent 0 -o runs/v1.0.rendered.md
+python triage/run_triager.py runs/v1.0.rendered.md --pack packs/02-sabotaged.pack.json \
+    --prompt-version finding-triager/v1.0 -o runs/v1.0-run4.json
+python triage/eval_triage.py runs/v1.0-run4.json --prompt-version finding-triager/v1.0 \
+    --pack-version pack/v0.2
+```
+
+`--pack-version` has no default: the recorded corpus spans `pack/v0.1` and
+`pack/v0.2` (see `evals/results/07-finding-triager.md` for which runs carry
+which), so any default would be wrong for some of it. A pack built just above
+is `pack/v0.2` — pass `--pack packs/02-sabotaged.pack.json` too to verify the
+claim against the pack file itself rather than merely asserting it.
+
+`triage/eval_triage.py` reads both this wrapped shape and the bare `{schema,
+findings}` shape the 21 recorded runs use — the frozen runs are read unchanged,
+never rewritten.
+
 ---
 
 ## Tests
@@ -189,11 +237,13 @@ machinery beneath them.
 | Component | State |
 |---|---|
 | Crawler (`crawler/`) | **Implemented and tested** — `specs/crawler.md` v0.1 |
-| Scoring rubric (`rubric.md`) | Drafted (v0.2), pending calibration freeze against entry 02 |
-| Golden set (`evals/golden/`) | Entries 02 & 05 specified; entry 05 labels written; 02 labels pending capture; entries 01/03/04 not yet present |
-| Triager / narrator / report | Specified in the rubric and briefs; **not yet implemented** |
-| `references/benchmarks.md` | Referenced by the rubric; **not yet present** |
-| Eval harness / matcher | Contract defined (evidence-pointer grammar, §9); **not yet implemented** |
+| Scoring rubric (`rubric.md`) | v0.4; calibrated against entry 02, not yet frozen |
+| Golden set (`evals/golden/`) | Entries 02 (17 MC / 4 MNC, frozen) & 05 (labeled); 01/03/04 not yet present |
+| Triager (`prompts/finding-triager/`) | **v1.0 frozen** — 21 recorded runs: 18 against entry 02, in-sample; 3 against entry 05, out-of-sample (see `evals/PROMOTION-PROTOCOL.md`) |
+| Narrator / report composer | Specified; **not yet implemented** |
+| `references/benchmarks.md` | Referenced by the rubric; **not yet present**  <!-- STALE-OK --> |
+| Eval harness (`triage/eval_triage.py`) | **Implemented** — matcher, tiered recall, composite, MNC screens |
+| Scripted runner (`triage/run_triager.py`) | **Implemented, not yet run** — the 21 recorded runs to date were executed as interactive agent sessions and carry no model, parameters, or timestamp; this runner calls the API directly and records all three alongside the model's JSON |
 
 The evidence-pointer matcher and `crawl.json` schema check that the harness will
 need already ship inside the crawler (`crawler/pointers.py`, `crawler/schema.py`)

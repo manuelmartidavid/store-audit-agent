@@ -3,7 +3,11 @@
     fixtures/<entry>/{crawl,lighthouse,axe}.json + manifest.yaml
     evals/golden/<entry>/context.yaml        (store: block only)
         ↓
-    pack/v0.1  ≈ 100k tokens for a six-template Shopify capture
+    pack/v0.1  ≈ 220k tokens est. for a six-template Shopify capture
+               (396 KB; estimated at the calibrated ratio in
+                triage/token_estimate.py — this line used to read "≈ 100k",
+                which was the same 396 KB divided by a 4-chars-per-token prose
+                rule that measured 2.16x low on this content)
 
 Governing rule: scripts measure, the model judges. Nothing here decides whether
 something is a finding. The packer's whole job is to remove bytes that no finding
@@ -33,6 +37,10 @@ import json
 import sys
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from triage import token_estimate  # noqa: E402
 
 try:  # pyyaml is in requirements.txt; keep the import survivable for --stats
     import yaml
@@ -382,18 +390,23 @@ def build_pack(fixture_dir: Path, context_path: Path | None = None) -> dict[str,
 # ---------------------------------------------------------------------------
 
 def pack_stats(pack: dict[str, Any]) -> dict[str, Any]:
-    def kb(obj: Any) -> float:
-        return len(json.dumps(obj, separators=(",", ":"), default=str)) / 1024
+    def chars(obj: Any) -> int:
+        return len(json.dumps(obj, separators=(",", ":"), default=str))
 
-    total = kb(pack)
+    total = chars(pack)
     return {
-        "crawl_kb": round(kb(pack["crawl"]), 1),
-        "lighthouse_kb": round(kb(pack["lighthouse"]), 1),
-        "axe_kb": round(kb(pack["axe"]), 1),
-        "total_kb": round(total, 1),
-        # ~4 chars/token is the working rule; this is a budget check, not a
-        # tokenizer, and it is labeled as an estimate everywhere it is printed.
-        "approx_tokens": int(total * 1024 / 4),
+        "crawl_kb": round(chars(pack["crawl"]) / 1024, 1),
+        "lighthouse_kb": round(chars(pack["lighthouse"]) / 1024, 1),
+        "axe_kb": round(chars(pack["axe"]) / 1024, 1),
+        "total_kb": round(total / 1024, 1),
+        # `total_chars` is counted; `approx_tokens` is inferred from it. Both are
+        # reported so the second can be rederived from the first — the reason
+        # this pair exists at all is that the previous estimate (4 chars/token,
+        # a prose rule of thumb) was 2.16x low on this pack and nothing printed
+        # alongside it let a reader notice. The calibration and its single
+        # measured datapoint are in triage/token_estimate.py.
+        "total_chars": total,
+        "approx_tokens": token_estimate.estimate_tokens(total),
     }
 
 
@@ -432,7 +445,8 @@ def main(argv: list[str] | None = None) -> int:
         args.out.write_text(
             json.dumps(pack, indent=args.indent, separators=separators, default=str),
             encoding="utf-8")
-        print(f"wrote {args.out} ({stats['total_kb']} KB, ~{stats['approx_tokens'] // 1000}k tokens est.)")
+        print(f"wrote {args.out} ({stats['total_kb']} KB, {stats['total_chars']:,} chars, "
+              f"~{token_estimate.thousands(stats['approx_tokens'])} tokens est.)")
     return 0
 
 

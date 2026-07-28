@@ -22,7 +22,7 @@ Two rules that are easy to get wrong and expensive to get wrong:
   not get its own second spelling of the rule.
 
 Usage:
-    python triage/eval_triage.py --self-test          # the gate: 35 from the labels alone
+    python triage/eval_triage.py --self-test          # the gate: 24 (Critical) from the labels alone
     python triage/eval_triage.py runs/v0.1-run1.json \
         --entry evals/golden/02-sabotaged --fixtures fixtures/02-sabotaged \
         --prompt-version finding-triager/v0.1
@@ -44,7 +44,17 @@ import yaml  # noqa: E402
 
 from crawler import pointers as ptr  # noqa: E402
 
-RUBRIC_VERSION = "references/rubric.md v0.4"
+ROOT = Path(__file__).resolve().parent.parent
+RUBRIC_PATH = ROOT / "rubric.md"
+PROMPTS_DIR = ROOT / "prompts"
+HARNESS_PATH = Path(__file__).resolve()
+
+#: The fifth provenance pin. Bump on ANY change to a bar, a matcher rule, or the
+#: label contract, and add an entry to evals/HARNESS-CHANGELOG.md. Between v0.1
+#: and v1.0 of the prompt this file's bars changed six times — most, but not
+#: every one, motivated by a failing run — and nothing recorded that they had
+#: moved until this pin existed.
+HARNESS_VERSION = "eval/v0.2"
 
 SEVERITY_WEIGHT = {"critical": 15, "high": 6, "medium": 2, "low": 1}
 SEVERITY_ORDER = ["low", "medium", "high", "critical"]
@@ -125,6 +135,209 @@ def status_for(score: int | None) -> str:
     field alone.
     """
     return STATUS_INACCESSIBLE if score is None else STATUS_ASSESSED
+
+
+# ---------------------------------------------------------------------------
+# provenance — decision 12's four pins, verified rather than printed
+# ---------------------------------------------------------------------------
+#
+# The scorer used to compute the fixture hash and never compare it, name the
+# rubric in a string constant that could not notice a rubric edit, and accept
+# any text at all as a prompt version. All four pins were operator-asserted.
+# A pin nobody checks is a comment.
+
+def rubric_version(path: Path = RUBRIC_PATH) -> str:
+    """`rubric.md v0.4+<sha8>` — derived from the file, so an edit shows up.
+
+    The version number is the rubric's own header claim; the digest is what
+    makes the pin honest. Two runs whose rubric text differed by one clause
+    carry different pins even if nobody bumped the version.
+    """
+    text = path.read_text(encoding="utf-8")
+    header = text.split("\n---", 1)[0]
+    match = re.search(r"\bv(\d+\.\d+)\b", header)
+    version = match.group(1) if match else "unknown"
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()[:8]
+    return f"rubric.md v{version}+{digest}"
+
+
+def harness_version(path: Path = HARNESS_PATH) -> str:
+    """`eval/v0.2+<sha8>` — the declared version bound to the file it versions.
+
+    Mirrors `rubric_version()` deliberately, and for the same reason. Of the five
+    pins this was the only one with no binding to what it names: a test catches a
+    bump with no changelog entry, but nothing caught an *edit with no bump* —
+    which is the direction the changelog says the pressure runs. `HARNESS_VERSION`
+    is the semantic claim ("a bar, a matcher rule or the label contract moved");
+    the digest is only the "something moved" signal.
+
+    Accept that the digest also moves on edits that change no bar — a comment fix
+    shifts the pin, and two runs with identical bars can carry different suffixes.
+    That is the same trade `rubric_version()` makes, and it is the cheap side of
+    the trade: a pin that moves too often is noisy, a pin that fails to move is
+    a comment. `evals/HARNESS-CHANGELOG.md` says which movements mattered.
+
+    Read at call time, not at import, so the digest describes the bytes on disk.
+    """
+    digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()[:8]
+    return f"{HARNESS_VERSION}+{digest}"
+
+
+def resolve_prompt_version(name: str, prompts_dir: Path = PROMPTS_DIR) -> str:
+    """`finding-triager/v1.0` must name a prompt file that exists."""
+    if not name or name == "unpinned":
+        raise SystemExit(
+            "--prompt-version is required: a run scored without a prompt pin is not "
+            "a result (decision 12)")
+    path = prompts_dir / f"{name}.md"
+    if not path.exists():
+        raise SystemExit(f"--prompt-version {name!r} names no prompt file ({path})")
+    return name
+
+
+def expected_manifest_sha256(entry: Path) -> str | None:
+    """The fixture hash the labels were written against.
+
+    `context.yaml eval.fixtures.manifest_sha256` is authoritative; the label
+    file's `manifest:` header is the fallback, because entry 02 carries both and
+    a future entry might carry only one.
+    """
+    context = Path(entry) / "context.yaml"
+    if context.exists():
+        data = yaml.safe_load(context.read_text(encoding="utf-8")) or {}
+        pin = ((data.get("eval") or {}).get("fixtures") or {}).get("manifest_sha256")
+        if pin:
+            return str(pin).strip()
+    labels = Path(entry) / "expected" / "findings.md"
+    if labels.exists():
+        match = re.search(r"^\s*manifest:\s*([0-9a-f]{64})\s*$",
+                          labels.read_text(encoding="utf-8"), re.M)
+        if match:
+            return match.group(1)
+    return None
+
+
+def fixture_pin_is_self_derived(entry: Path) -> bool:
+    """Does the entry declare that its own pin was computed after the labels?
+
+    Entry 05's `manifest_sha256` was computed from a capture that already
+    existed, so it anchors scoring to one set of bytes and attests nothing about
+    which bytes the labels were written against. That distinction was stated in
+    prose beside the value and nowhere the record could carry it, so scoring
+    entry 05 printed `fixture … (matched)` — the machine-readable pin claiming a
+    correspondence the comment next to it explicitly disclaimed.
+
+    Driven by `eval.fixtures.pin_derived_after_labeling`, a key, because a
+    comment is not readable by the thing that prints the status.
+    """
+    context = Path(entry) / "context.yaml"
+    if not context.exists():
+        return False
+    data = yaml.safe_load(context.read_text(encoding="utf-8")) or {}
+    return bool(((data.get("eval") or {}).get("fixtures") or {})
+                .get("pin_derived_after_labeling"))
+
+
+_PACK_VERSION_RE = re.compile(r"^pack/v\d+\.\d+$")
+
+
+def provenance(entry: Path, fixtures: Path, prompt_version: str, pack_version: str,
+               *, allow_unpinned: bool = False, pack_path: Path | None = None) -> dict[str, Any]:
+    """All four pins, verified. Raises SystemExit rather than scoring blind."""
+    manifest = Path(fixtures) / "manifest.yaml"
+    computed = (hashlib.sha256(manifest.read_bytes()).hexdigest()
+                if manifest.exists() else None)
+    pinned = expected_manifest_sha256(entry)
+
+    if pinned and computed and pinned != computed:
+        raise SystemExit(
+            f"fixture manifest hash does not match the pin.\n"
+            f"  labels pin: {pinned}\n"
+            f"  {manifest}: {computed}\n"
+            "The labels describe a different capture than the one being scored. "
+            "Re-label, or point --fixtures at the archived capture "
+            "(python -m crawler.archive --check).")
+    if not pinned and not allow_unpinned:
+        raise SystemExit(
+            f"{entry} records no fixture manifest hash, so this run cannot be pinned "
+            "(decision 12). Record eval.fixtures.manifest_sha256 in context.yaml, or "
+            "pass --allow-unpinned-fixture and accept that the result is not a result.")
+    if not computed:
+        raise SystemExit(f"{manifest} is missing — nothing to pin.")
+
+    # Free text today means a typo silently becomes the pin. The shape is all
+    # that is enforced — v0.1 and v0.2 both have to remain scoreable, because
+    # evals/results/07-finding-triager.md records real runs against each.
+    if not _PACK_VERSION_RE.match(pack_version):
+        raise SystemExit(
+            f"--pack-version {pack_version!r} is not shaped like pack/vMAJOR.MINOR "
+            "(decision 12: an unpinned or malformed pack version is not a result).")
+
+    # Unlike the fixture hash, there is no single "current" pack version to
+    # check against: entry 07's recorded runs legitimately span pack/v0.1 and
+    # pack/v0.2, so equality with pack_evidence.PACK_VERSION would reject
+    # history rather than describe it. What can be checked is internal
+    # consistency — does the pack file on disk claim the version the operator
+    # asserted — and that check only runs when a pack file is actually given.
+    pack_pin = "asserted"
+    if pack_path is not None:
+        pack_data = json.loads(Path(pack_path).read_text(encoding="utf-8"))
+        pack_claim = pack_data.get("pack")
+        if pack_claim != pack_version:
+            raise SystemExit(
+                f"pack version does not match the pack file.\n"
+                f"  --pack-version: {pack_version}\n"
+                f"  {pack_path} pack: {pack_claim!r}\n"
+                "The pack being scored was not built at the version asserted. "
+                "Rebuild the pack, or pass the --pack-version it actually carries.")
+        pack_pin = "matched"
+
+    # Every pin carries a status of the same shape, because two of them used to
+    # carry none and silence reads as verification. The vocabulary, and what each
+    # word is allowed to mean:
+    #
+    #   matched       compared against something independent, and equal
+    #   self-derived  derived from the artifact itself; equal by construction,
+    #                 so it says "one capture" and not "the labeled capture"
+    #   asserted      the operator's claim, unchecked here
+    #   exists        the named file is present; nothing further was compared
+    #
+    # `prompt_pin` is `exists` and cannot honestly be more: the run files carry
+    # no prompt identity to compare the pin against — the 21 recorded runs are
+    # the model's bare JSON — so existence is the whole of what is checkable.
+    # `harness_pin` is `asserted` because `HARNESS_VERSION` is a self-declared
+    # number; its `+sha8` suffix (see `harness_version()`) signals that the file
+    # moved, which is not the same as corroborating the version.
+    fixture_pin = "absent"
+    if pinned:
+        fixture_pin = "self-derived" if fixture_pin_is_self_derived(entry) else "matched"
+
+    return {
+        "fixture_manifest_sha256": computed,
+        "fixture_pin": fixture_pin,
+        "prompt_version": resolve_prompt_version(prompt_version),
+        "prompt_pin": "exists",
+        "rubric_version": rubric_version(),
+        "pack_version": pack_version,
+        "pack_pin": pack_pin,
+        "harness_version": harness_version(),
+        "harness_pin": "asserted",
+    }
+
+
+def load_run_output(path: Path) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Read a run file. Returns (triage output, run_meta or None).
+
+    Two shapes, deliberately. The 21 runs recorded before `triage/run_triager.py`
+    existed are the model's bare JSON, and they are frozen evidence — rewriting
+    them to a new shape would edit the record to suit the tool. Runs produced by
+    the runner wrap that same JSON in `output` and put the model, the parameters
+    and the digests beside it in `run_meta`.
+    """
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if isinstance(data.get("output"), dict) and "run_meta" in data:
+        return data["output"], data["run_meta"]
+    return data, None
 
 
 def _enum(value: Any) -> Any:
@@ -482,8 +695,98 @@ def _level_gap(a: str | None, b: str | None, order: list[str]) -> int | None:
 # the run
 # ---------------------------------------------------------------------------
 
+#: The only gate names `expect.gates` may declare. A name outside this set is a
+#: typo, not a new gate the module happens not to implement yet.
+_KNOWN_GATES = {"max_findings", "findings_above_medium", "score_range"}
+
+
+def expect_bars(findings: list[dict[str, Any]], comp: dict[str, Any],
+                expect: dict[str, Any] | None) -> dict[str, bool]:
+    """Precision bars, declared per entry by `expect.gates`.
+
+    The harness has six recall bars and had no precision bar at all: `unlabeled`
+    findings were counted and gated nothing, so a run emitting 24 findings of
+    which seven were plausible-but-wrong passed everything.
+
+    Gates are opt-in per entry rather than on by default, and that is a
+    deliberate limit rather than timidity. Turning them on for entry 02 would
+    re-judge 18 recorded runs against a bar they were never measured on — a
+    call for a person to make with the numbers in front of them. Entry 01, whose
+    whole purpose is the false-positive test (rubric §5: <= 3 findings, none
+    above medium, score >= 90), declares all three from the start, so its grader
+    exists before its answers do.
+
+    A gate that is declared but produces no bar is worse than no gate: it reads
+    as measured coverage that was never actually checked — the same failure this
+    task exists to close, just smaller. So a name in `gates` that is not one of
+    the three above, or a known gate with no value to check findings against,
+    stops the run rather than passing it quietly (decision 12's rule for the
+    provenance pins, applied here to the gates).
+    """
+    expect = expect or {}
+    gates = set(expect.get("gates") or [])
+    bars: dict[str, bool] = {}
+
+    unknown = gates - _KNOWN_GATES
+    if unknown:
+        raise SystemExit(
+            f"eval.expect.gates names {sorted(unknown)}, not a known gate.\n"
+            f"  known gates: {sorted(_KNOWN_GATES)}\n"
+            "A typo in gates: is a silent pass otherwise, not a caught error. Fix the "
+            "name in context.yaml, or remove it from gates.")
+
+    if "max_findings" in gates:
+        if expect.get("max_findings") is None:
+            raise SystemExit(
+                "eval.expect.gates declares 'max_findings' but eval.expect.max_findings "
+                "is not set.\n"
+                "A declared gate with no value checks nothing and reports nothing — a "
+                "green run that measured nothing. Set eval.expect.max_findings in "
+                "context.yaml, or remove 'max_findings' from gates.")
+        bars["max_findings_respected"] = len(findings) <= expect["max_findings"]
+
+    if "findings_above_medium" in gates:
+        if expect.get("findings_above_medium") is None:
+            raise SystemExit(
+                "eval.expect.gates declares 'findings_above_medium' but "
+                "eval.expect.findings_above_medium is not set.\n"
+                "A declared gate with no value checks nothing and reports nothing — a "
+                "green run that measured nothing. Set eval.expect.findings_above_medium "
+                "in context.yaml, or remove 'findings_above_medium' from gates.")
+        above = sum(1 for f in findings if f.get("severity") in ("critical", "high"))
+        bars["findings_above_medium_respected"] = above <= expect["findings_above_medium"]
+
+    if "score_range" in gates:
+        if "score_min" not in expect or "score_max" not in expect:
+            raise SystemExit(
+                "eval.expect.gates declares 'score_range' but eval.expect.score_min "
+                "and/or score_max is not set.\n"
+                "Both keys must be present — null is a real value here (no bound on "
+                "that side; both null together is the blocked-store pass condition), "
+                "not a stand-in for absent. Set both in context.yaml, or remove "
+                "'score_range' from gates.")
+        low, high, score = expect.get("score_min"), expect.get("score_max"), comp.get("score")
+        if low is None and high is None:
+            # An entry that expects no score at all — the blocked store. `null` is
+            # the pass condition (rubric §4 rule 3); 0 is the failure it exists for.
+            bars["score_within_expect"] = score is None
+        else:
+            # Each bound applies independently: a null score_min means "no lower
+            # bound", a null score_max means "no upper bound" — not "compare
+            # against None", which used to raise TypeError mid-scoring instead of
+            # returning a verdict. Entry 01's own pass condition is one-sided
+            # exactly this way: rubric §5 wants score >= 90 with no ceiling.
+            bars["score_within_expect"] = (
+                score is not None
+                and (low is None or score >= low)
+                and (high is None or score <= high)
+            )
+
+    return bars
+
+
 def evaluate(output: dict[str, Any], labels: dict[str, dict[str, Any]],
-             fixture: Fixture) -> dict[str, Any]:
+             fixture: Fixture, expect: dict[str, Any] | None = None) -> dict[str, Any]:
     findings = [f for f in (output.get("findings") or []) if isinstance(f, dict)]
     mc = {k: v for k, v in labels.items() if k.startswith("MC-")}
 
@@ -684,6 +987,7 @@ def evaluate(output: dict[str, Any], labels: dict[str, dict[str, Any]],
         "ceilings_total_respected": ceilings["total_ok"],
         "schema_valid": not schema_errors,
     }
+    bars.update(expect_bars(findings, comp, expect))
 
     return {
         "schema_errors": schema_errors,
@@ -893,7 +1197,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--entry", type=Path, default=Path("evals/golden/02-sabotaged"))
     parser.add_argument("--fixtures", type=Path, default=Path("fixtures/02-sabotaged"))
     parser.add_argument("--prompt-version", default="unpinned")
-    parser.add_argument("--pack-version", default="pack/v0.2")
+    # No default: the recorded corpus spans pack/v0.1 and pack/v0.2 (see
+    # evals/results/07-finding-triager.md for which runs carry which), so any
+    # default is wrong for some fraction of it. `--prompt-version` already
+    # refuses to guess (`resolve_prompt_version` rejects "unpinned"); this
+    # mirrors that rather than silently stamping a version the operator never
+    # asserted. Checked in `main()`, not via argparse `required=True`, so
+    # `--self-test` — which never builds a provenance record — is unaffected.
+    parser.add_argument("--pack-version", default=None)
+    parser.add_argument("--pack", type=Path, default=None,
+                        help="pack JSON to verify --pack-version against (else the pin is asserted, not checked)")
+    parser.add_argument("--allow-unpinned-fixture", action="store_true",
+                        help="score against a fixture the entry does not pin (not a result)")
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--json", action="store_true", help="emit the run record only")
     args = parser.parse_args(argv)
@@ -902,22 +1217,30 @@ def main(argv: list[str] | None = None) -> int:
         return self_test(args.entry, args.fixtures)
     if not args.output:
         parser.error("an output file is required unless --self-test")
+    if not args.pack_version:
+        raise SystemExit(
+            "--pack-version is required: the recorded corpus spans pack/v0.1 and "
+            "pack/v0.2, so any default would be wrong for some of it (decision 12). "
+            "See evals/results/07-finding-triager.md for which runs carry which "
+            "version. Pass --pack <file> too to verify the claim against the pack "
+            "file itself, rather than merely asserting it.")
 
     labels = parse_labels(args.entry / "expected" / "findings.md")
+    context = args.entry / "context.yaml"
+    expect = {}
+    if context.exists():
+        data = yaml.safe_load(context.read_text(encoding="utf-8")) or {}
+        expect = (data.get("eval") or {}).get("expect") or {}
     fixture = Fixture(args.fixtures)
-    output = json.loads(args.output.read_text(encoding="utf-8"))
-    result = evaluate(output, labels, fixture)
+    output, run_meta = load_run_output(args.output)
+    result = evaluate(output, labels, fixture, expect=expect)
 
-    manifest = args.fixtures / "manifest.yaml"
     record = {
-        "provenance": {
-            "fixture_manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest()
-            if manifest.exists() else None,
-            "prompt_version": args.prompt_version,
-            "rubric_version": RUBRIC_VERSION,
-            "pack_version": args.pack_version,
-            "run_file": str(args.output),
-        },
+        "provenance": provenance(args.entry, args.fixtures, args.prompt_version,
+                                 args.pack_version,
+                                 allow_unpinned=args.allow_unpinned_fixture,
+                                 pack_path=args.pack)
+                      | {"run_file": str(args.output), "run_meta": run_meta},
         "result": result,
     }
     if args.json:
@@ -925,7 +1248,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if result["passed"] else 1
 
     r = result
-    print(f"== {args.output.name} · {args.prompt_version} · {RUBRIC_VERSION} · {args.pack_version}")
+    prov = record["provenance"]
+    # Same register for every pin: value, then how far it was checked. A pin
+    # printed without its status invites the reader to assume the strongest
+    # reading available, which is the failure this header exists to prevent.
+    print(f"== {args.output.name} · {prov['prompt_version']} ({prov['prompt_pin']}) "
+          f"· {prov['rubric_version']} "
+          f"· {prov['pack_version']} ({prov['pack_pin']}) "
+          f"· {prov['harness_version']} ({prov['harness_pin']}) "
+          f"· fixture {prov['fixture_manifest_sha256'][:12]} ({prov['fixture_pin']})")
     if r["schema_errors"]:
         print("\nSCHEMA ERRORS")
         for e in r["schema_errors"]:

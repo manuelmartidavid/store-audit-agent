@@ -1,6 +1,7 @@
 # Store Audit Agent — project state
 
-    updated:  2026-07-28 (v1.0 frozen · repo consolidated · entry 05 first-run)
+    updated:  2026-07-28 (v1.0 frozen · repo consolidated · entry 05 first-run ·
+              step 8 measurement hardening · pushed to a private GitHub remote)
     supersedes: phase-numbering in 02-store-audit-brief.md (workflow detached from
                 numbered phases by explicit decision; gates kept, sequence dropped)
     for Claude: treat this file as ground truth for decisions. Do not re-open
@@ -76,7 +77,7 @@ Top project risk: fabricated impact claims. Every quantified claim must cite
     never observes price. This makes P-04's free-app plant a test of the rule
     rather than a stretch of it.
 
-## Rubric essentials (full text: references/rubric.md v0.4)
+## Rubric essentials (full text: rubric.md v0.4)
 
 - Severity: critical = blocks purchase or indexing on a revenue template
   (home/collection/pdp/cart) · high = measurable degradation on revenue template,
@@ -105,7 +106,7 @@ sees it.
 
 ## Artifact inventory (delivered as store-audit-phase0.zip)
 
-- `references/rubric.md` (v0.2)
+- `references/rubric.md` (v0.2)  <!-- STALE-OK: historical inventory of the phase-0 delivery zip -->
 - `specs/crawler.md` (v0.1) — interface contract: crawl.json shape, template
   discovery (one page per template, ~12 fetches max — bounds the 40k-catalog
   case by construction), distillation rules (keep interactive elements with all
@@ -360,17 +361,21 @@ Full record: `evals/results/07-finding-triager.md`. Repo is now under git
 (fixtures ignored; the manifest hash is the commitment).
 
 Built: `specs/triager-io.md` (triage/v0.1 output contract, frozen) ·
-`triage/pack_evidence.py` (pack/v0.1 — 396 KB / ~101k tokens for six templates,
-so single-pass triage is viable and granularity is a determinism choice, not a
-capacity one) · `prompts/finding-triager/v0.1–v0.4` + registry ·
+`triage/pack_evidence.py` (pack/v0.1 — 396 KB / ~220k tokens est. for six
+templates, so single-pass triage is viable and granularity is a determinism
+choice, not a capacity one; the figure read "~101k" until 2026-07-28, at a
+4-chars-per-token prose rule that is 2.16x low on dense JSON — the conclusion is
+unchanged and in fact safer, because `claude-opus-5`'s window is 1M) ·
+`prompts/finding-triager/v0.1–v0.4` + registry ·
 `triage/render_prompt.py` · `triage/eval_triage.py` (label parser, normalized
 matcher, tiered recall, severity/effort agreement, composite, MNC screens,
 automatic fails) · 48 new tests.
 
-**The 7.4 gate passed before any model ran:** the scorer recomputes score 35 and
-band "Significant work needed" from `expected/findings.md` alone.
+**The 7.4 gate passed before any model ran:** the scorer recomputed score 35 and
+band "Significant work needed" from `expected/findings.md` alone (the label set
+then).
 
-**Result — v1.0 FROZEN, 3 runs, all three clear every bar at 17/17 recall.**
+**Result — v1.0 FROZEN, 3 runs, all three clear every bar at 17/17 recall (in-sample — `evals/PROMOTION-PROTOCOL.md` rule 3).**
 Zero unresolvable pointers, zero MNC violations, MC-113 both halves every run.
 Severity agreement exact or ±1 throughout; effort agreement 0.56–0.81 exact and
 ±1 everywhere, which costs roadmap order, not the score.
@@ -486,7 +491,7 @@ reported, never once obeyed.
 
 The harness was briefly split: the whole repo moved into `crawler/` and the
 step-7 work sat outside it. Reverted to one repo, with the layers as top-level
-directories, and `scripts/` — which had become a grab-bag — split by concern:
+directories, and `scripts/` — which had become a grab-bag — split by concern:  <!-- STALE-OK: historical record of the pre-split layout -->
 
     crawler/     the evidence-production package (crawl, distill, pointers, …)
     triage/      pack_evidence.py · eval_triage.py · render_prompt.py
@@ -604,14 +609,146 @@ label (`forbidden_finding · scope: [all]`, `detect.patterns`, `match.any_of`) �
 which matters disproportionately for entries 01/03/04, all of which bring MNC
 labels this harness has never seen.
 
+## Step 8 — measurement hardening (2026-07-28)
+
+Full record: `plans/08-measurement-hardening-plan.md` (committed, because
+`evals/HARNESS-CHANGELOG.md` cites it). Nine tasks, one commit each plus fixes;
+25 commits on `step-08-measurement-hardening`. The repo now has an off-machine
+home: `github.com/manuelmartidavid/store-audit-agent`, **private** — it names a
+real store and catalogues its defects.
+
+The point of the step was to make the measurement machinery worth trusting
+*before* the distiller fix retires every number in here. **The suite went from
+aborting at collection and running zero tests to 351 passing** — `test_measure`
+still imported the grab-bag directory decision 28 split by concern, so
+`pytest tests/` had been reporting one error and running nothing.
+
+**Decision 12's pins are now verified, not printed.** Note the count has grown
+and the decision text above has not been rewritten: decision 12 as recorded names
+**three** pins, `plans/08-measurement-hardening-plan.md` quotes it as four (adding
+the pack version), and step 8 verifies **five** (adding the harness). The decision
+is left as written because it is settled history; five is what the code enforces.
+
+The fixture hash was
+computed and never compared; `--prompt-version` defaulted to the free-text string
+`"unpinned"`; the rubric version was a constant that could not notice a rubric
+edit. All five pins now carry a status so silence stops reading as verification:
+fixture (`matched` / `absent` / `self-derived`), prompt (`exists` — the run files
+carry no prompt identity to check against, so existence is all that is available),
+rubric (`v0.4+<sha8>`, derived from the file's bytes), pack (`matched` when
+`--pack` is given, else `asserted`), harness (`eval/v0.2+<sha8>`). A fixture
+mismatch is fatal, and the `--allow-unpinned-fixture` escape hatch cannot suppress
+one — there is a test pinning that, because it previously held only by statement
+order.
+
+Also built: `crawler/archive.py` (the golden fixture's only backup, verified by
+`manifest.yaml`'s sha256 — not the tarball's, which gzip's mtime makes unstable);
+exact toolchain pins tied by test to what entry 02 was labeled under;
+`evals/HARNESS-CHANGELOG.md` (the harness is the fifth pin — bars had moved six
+times with nothing recording it); `evals/PROMOTION-PROTOCOL.md`; and the harness's
+first **precision bars**, opt-in per entry via `expect.gates`. Entry 02 declares
+`gates: []` deliberately — enforcing them would re-judge 18 recorded runs against
+a bar they were never measured on. Entry 01 will declare all three before it is
+captured, so its grader exists before its answers do.
+
+**Verified:** `fixtures/02-sabotaged`'s manifest sha256 matches the pin the labels
+carry (`b219afac…`). Entry 05's capture is now pinned too (`12899ce7…`), recorded
+as `self-derived` because the pin was computed after labeling and attests only
+that scoring is anchored to one capture.
+
+### What the step measured, and what it corrected
+
+**The v0.4 re-score.** Two of the three recorded v0.4 runs that passed now fail —
+but not because bars tightened. Composites (27/26/24) are byte-identical to the
+record. It is the label set growing 13 → 17 (decision 26). Critical/high recall
+reads `1.00 (6/6) → 0.875 (7/8)`: the runs **detect one more label than before**,
+and the falling rate is a denominator artifact. The first write-up let that read
+as a regression; corrected.
+
+**The per-template ceiling is load-bearing, and the changelog was wrong to call it
+unmeasurable.** It claimed the pre-change harness is unreachable so no
+counterfactual exists. But the ceiling is still computed and printed as advisory,
+so the old bar's verdict reads straight off today's output. Measured: **v1.0's
+"3 of 3 clear every bar" is 1 of 3 under the pre-decision-27 bar** (v0.6 run1
+clean, runs 2 and 3 breach at `pdp: 9`). Row 1 of `eval/v0.1` (`match.any_of`
+unioned into matching) genuinely does remain unmeasurable — that union happens
+inside matching and nothing printed exposes the counterfactual — and the changelog
+now says why the two differ instead of lumping them.
+
+**`runs/v1.0-run1.json` never existed.** v1.0's headline for entry 02 *is* the
+three v0.6 runs; v1.0 is v0.6 with new front matter. Every documented reproduction
+command naming that file failed. Entry 02 has **18** recorded runs, not 21 — 21 is
+both golden entries combined, and the number had propagated into a label file.
+Entry 05's run that behaved as labeled is run 3, not run 1.
+
+**The token estimate was 2.16x low.** See the Readiness note below.
+
+### First run with a recorded model
+
+`runs/v1.0-cli-run1.json` — **PASS, composite 14, recall 1.0 across every tier
+(8/8 critical/high)**, matching the composite of the three v0.6 runs. It is the
+first run in this project whose record says what produced it: `claude-opus-5` read
+back from the harness's own report rather than echoed from the request,
+`effort=high`, prompt and pack digests, usage, cost, session id. 315,094 in /
+18,808 out, 3m34s, $3.62 notional.
+
+It was produced through `triage/run_triager.py --via claude-cli`, a second backend
+added so the pipeline could be exercised on a personal Claude subscription instead
+of Console credits. `run_meta.comparability` states plainly what that costs:
+`max_tokens` and thinking are not controllable on that path and ~1.7k tokens of
+harness context precede the prompt; `effort` and the resolved model are pinned, and
+only those two compare across backends. Tools are disabled on that path — with them
+on, the model could read the fixture directly and the measurement would be void.
+
+It also breaches the per-template ceiling harder than any recorded run
+(`pdp: 11, home: 9`), which is corroboration for the finding above rather than a
+separate result.
+
+### Deviations from the plan, and why
+
+The plan supplied verbatim code; several pieces failed its own stated intent:
+pin assertions accepted npm ranges beginning with a digit and passed vacuously on
+an empty dependency set; the **pack pin** was left stored unverified; task 6's
+literal record block predated task 5 and would have deleted its `--pack` wiring; a
+one-sided `score_range` crashed instead of judging — and entry 01's own condition
+(`score >= 90`) is exactly that shape; a declared gate with no value was silently
+inert; and task 9's test assertion was vacuous, because the sentence it disclaimed
+is line-wrapped and the raw substring never matched. Each was strengthened and
+noted in its commit.
+
+Strict equality for the pack pin was **rejected**: runs v0.1–v0.4 legitimately
+carry `pack/v0.1`, so equality against the current `PACK_VERSION` would reject
+history rather than describe it.
+
+### Known follow-ups, none blocking
+
+- `--pack-version` defaults to `pack/v0.2`, wrong for the 12 v0.1–v0.4 runs, and
+  the wrong value is recorded as an asserted pin. Making it required is the fix.
+  **RESOLVED (2026-07-28)** — `--pack-version` now has no default; omitting it
+  is a fatal `SystemExit` naming the flag and pointing at
+  `evals/results/07-finding-triager.md` for which runs carry which version.
+  `--self-test` never builds a provenance record, so it needs no pin and is
+  unaffected.
+- The repo-hygiene lint walks untracked and generated trees, so its
+  parametrization is machine-dependent.
+- `--self-test` crashes with `StopIteration` on entry 05 (a blocked store has no
+  synthetic findings) and never validates gate declarations — the natural place to
+  catch a typo in `expect.gates` before a run.
+- `README.md`'s archive instruction cites the label header as the pin source;
+  `context.yaml` is authoritative and entry 05 has no such header.
+
 ## Readiness — where the agent actually stands (2026-07-28)
 
-**Recall is proven. Precision has never been measured.** Every number in this
-project comes from one store built to be found out. On a sabotaged store almost
-anything you find is real, so the unlabeled bucket falling from 8 to 2-3 per run
-says nothing about a healthy store. Point v1.0 at a well-built Shopify store today
-and it might emit 3 findings or 15 - nothing here would catch the difference, and
-the project's stated top risk is a plausible-but-wrong claim reaching a client.
+**Recall is proven in-sample. Precision has never been measured.** Four of entry
+02's 17 must-catch labels were promoted from v0.4 run output before v1.0 was
+scored against them (`evals/PROMOTION-PROTOCOL.md`), so 17/17 measures detection
+against a target partly drawn from the lineage's own findings. Every number in
+this project also comes from one store built to be found out. On a sabotaged store
+almost anything you find is real, so the unlabeled bucket falling from 8 to 2-3
+per run says nothing about a healthy store. Point v1.0 at a well-built Shopify
+store today and it might emit 3 findings or 15 - nothing here would catch the
+difference, and the project's stated top risk is a plausible-but-wrong claim
+reaching a client.
 
 Not ready for a client deliverable. Ready for **shadow runs** - point it at a real
 store, read the output, send nothing. That is also how the entry-01 candidate gets
@@ -629,8 +766,16 @@ Blocking a real deliverable, in order:
 4. **One theme, one vertical.** `tsc-theme-v3` is a hand-built dev theme; only
    `collectibles` exercises the material-facts table. `makerlab` (real, app-heavy,
    7 apps) is captured but stale under crawler 0.1.0.
-5. **No runner, no cost data.** ~145k input tokens per store per run; latency and
-   spend unmeasured. The 21 recorded runs were agent sessions.
+5. **One data point, not a cost model.** The runner exists as of step 8
+   (`triage/run_triager.py`), so a run no longer depends on a session — but it has
+   produced exactly one measured run: **315,094 in / 18,808 out, 3m34s, $3.62
+   notional** (`runs/v1.0-cli-run1.json`, from the model's own usage). That is N=1
+   on one store through the CLI backend; the Console-API path has never been
+   exercised, and portfolio-scale spend and latency variance are unmeasured. The
+   input figure read "~145k" until 2026-07-28 — the pack's character count over a
+   4-chars-per-token prose rule, 2.16x low on dense JSON
+   (`triage/token_estimate.py` now carries a ratio calibrated on the measurement).
+   The other 21 recorded runs remain agent sessions and cannot be re-run.
 
 ### Sequencing note - v1.0's numbers have a shelf life
 
@@ -656,7 +801,10 @@ Work genuinely unblocked today, because it depends on no fixture:
 
 Reordered 2026-07-28 around one constraint: **the distiller fix retires the frozen
 fixture, so everything needing a capture should happen in one wave after it.**
-Steps 1-7 are done; see the sections above.
+Steps 1-8 are done; see the sections above. Step 8 landed the provenance
+machinery, so the recapture wave below can now fail loudly instead of quietly:
+the fixture-hash check fires the moment 0.3.0 output replaces `b219afac…`, which
+is the intended behaviour and the signal to re-label.
 
 ### Now — no capture required, nothing blocked
 
@@ -693,8 +841,10 @@ Steps 1-7 are done; see the sections above.
     "N additional minor items" line (rubric §5).
 15. End-to-end on a real store; test decision 3's kill criterion (>30% editing
     cost) for the first time.
-16. Scripted API runner + cost/latency measurement, so a run stops depending on a
-    session.
+16. **Cost and latency at portfolio scale.** The runner shipped in step 8, so this
+    is no longer "build a runner" — it is: exercise the Console-API backend
+    (`--via api`, never yet run), then measure N runs across several stores for
+    spend and latency variance. One run is a data point, not a model.
 
 ## Learnings — durable, from building entry 02 (2026-07-27)
 

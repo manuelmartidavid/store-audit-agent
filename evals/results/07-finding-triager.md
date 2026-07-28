@@ -3,11 +3,15 @@
     date:     2026-07-28
     entry:    evals/golden/02-sabotaged
     fixture:  manifest b219afac6f8234ff98ce6c4eaf004bdb4063aaf1155de78b0fe19c6512946d20
-    rubric:   references/rubric.md v0.3 — the pin these runs were measured under.
+    rubric:   rubric.md v0.3 — the pin these runs were measured under.
               v0.4 (2026-07-28) changed §4 rule 3 presentation only; §1–§3 are
               byte-identical, so every number below stands unrecomputed.
     prompts:  finding-triager v0.1 → v1.0, 3 runs each, nothing else varied within a version
-    status:   **v1.0 FROZEN 2026-07-28** — 3 of 3 runs clear every bar at 17/17 recall
+    status:   **v1.0 FROZEN 2026-07-28** — 3 of 3 runs clear every bar at 17/17 recall,
+              in-sample (four of the 17 labels were promoted from v0.4 run output —
+              `evals/PROMOTION-PROTOCOL.md`). Under the per-template ceiling as it
+              stood before decision 27, the same runs are 1 of 3 — see "The ceiling
+              counterfactual" below.
     packs:    pack/v0.1 for v0.1–v0.4 · pack/v0.2 for v0.5–v1.0
     labels:   13 must-catch for v0.1–v0.4 · 17 for v0.5–v1.0 (four promoted 2026-07-28)
 
@@ -88,6 +92,12 @@ an artefact of how MC-118 got promoted rather than a distinction the rubric draw
 
 Result: **17/17 recall in all three v0.6 runs.** v1.0 is v0.6, frozen.
 
+> **In-sample.** Four of the 17 must-catch labels (MC-114…MC-117) were promoted
+> from the unlabeled bucket of v0.4 runs before v1.0 was measured against them.
+> Each is verified in the fixture, but the selection came from model output, so
+> 17/17 is an in-sample recall figure. `evals/PROMOTION-PROTOCOL.md` sets the
+> rule; entry 01 is the first out-of-sample measurement this project will have.
+
 ## Final run table — v0.5 and v1.0-lineage
 
 | run | findings | crit/high | med/low | overall | sev exact | eff exact | score | unlabeled | dead ptrs | MNC | |
@@ -124,7 +134,9 @@ a bar belongs to the layer that can act on it. It is also, unavoidably, a bar
 being relaxed by the person whose runs it was failing — so it is flagged here as
 the fourth judgment call, alongside the three below, and
 `test_the_ground_truth_itself_sits_at_the_pdp_ceiling` now guards the labels so a
-future promotion past eight is a decision rather than a discovery.
+future promotion past eight is a decision rather than a discovery. What that
+relaxation is worth to this document's headline result is measured below, under
+"The ceiling counterfactual".
 
 ## What each version changed, and why
 
@@ -299,16 +311,212 @@ through. See the correction note above about the landmark row's frequency claim.
 ## Reproducing
 
 ```sh
-python scripts/eval_triage.py --self-test          # 35 from the labels alone
-python scripts/pack_evidence.py fixtures/02-sabotaged \
+python triage/eval_triage.py --self-test          # the composite, from the labels alone
+python triage/pack_evidence.py fixtures/02-sabotaged \
     --context evals/golden/02-sabotaged/context.yaml -o packs/02-sabotaged.pack.json
-python scripts/render_prompt.py prompts/finding-triager/v1.0.md \
+python triage/render_prompt.py prompts/finding-triager/v1.0.md \
     --pack packs/02-sabotaged.pack.json --indent 0 -o runs/v1.0.rendered.md
 # run the rendered prompt, capture the JSON, then:
-python scripts/eval_triage.py runs/v1.0-run1.json --prompt-version finding-triager/v1.0
+python triage/eval_triage.py runs/v0.6-run1.json --prompt-version finding-triager/v0.6 \
+    --pack-version pack/v0.2
 ```
+
+`--pack-version` has no default and must be stated: the recorded corpus below
+spans `pack/v0.1` (v0.1–v0.4) and `pack/v0.2` (v0.5–v1.0), per the header
+above, so any default would be wrong for roughly two-thirds of it. `v0.6-run1`
+is a `pack/v0.2` run.
+
+> Paths corrected 2026-07-28: decision 28 split `scripts/` by concern.  <!-- STALE-OK -->
+> The commands above are the ones that run today; the results in this file
+> were produced by the same code under its former path.
+>
+> v1.0 is v0.6 frozen with new front matter; the recorded runs against entry 02 are the `v0.6-run*.json` files.
+> No `runs/v1.0-run*.json` exists for entry 02, so the reproduction command names the underlying measured run.
 
 Runs were executed as independent agent sessions against the rendered prompt,
 each one told to read nothing else in the repository. There is no scripted API
-runner yet (`.env` holds no API key); `scripts/render_prompt.py` exists so that
+runner yet (`.env` holds no API key); `triage/render_prompt.py` exists so that
 adding one is a small job and the rendered artefact is identical either way.
+
+## Re-score under `eval/v0.1` (2026-07-28) — how much of v0.4 → v1.0 was the harness?
+
+The harness changed six times across v0.1 → v1.0 (`evals/HARNESS-CHANGELOG.md`
+lists them and numbers the rows): four moved in the direction that let a failing
+run pass, two moved back toward strict. Each was argued from something concrete —
+a run that failed a bar, a label that would not resolve — though not every one is
+traceable to a failing run; the changelog's eval/v0.1 row 3 records no
+motivating run at all. No result in this file was measured under the
+pre-change harness.
+
+This re-scores the three recorded v0.4 runs (`runs/v0.4-run1.json`
+through `run3.json`) under the current one, with `--pack-version pack/v0.1` — the
+pack version these runs were actually built against, per this file's header — so
+the pack pin is not misrecorded in the process. The prompt is identical; only the
+harness differs.
+
+**One caveat that bears directly on the crit/high column below: the recorded v0.4
+numbers were measured against the 13-label must-catch set, and this re-score is
+measured against the 17-label set current today (decision 26 promoted four), so
+this is not a clean prompt-held-constant comparison — the ground truth moved too,
+and that move is itself one of the changes `evals/HARNESS-CHANGELOG.md` lists.**
+
+| Run | Recall c/h — as recorded | under eval/v0.1 | Verdict — as recorded | under eval/v0.1 |
+|---|---|---|---|---|
+| v0.4-run1 | 1.00 (6/6) | 0.875 (7/8) | PASS | FAIL |
+| v0.4-run2 | 1.00 (6/6) | 0.875 (7/8) | PASS | FAIL |
+| v0.4-run3 | 1.00 (6/6) | 0.875 (7/8) | FAIL | FAIL |
+
+**Read the fractions, not the rates.** The two sides of the recall column have
+different denominators, and the rate falls while detection rises: every one of
+these runs catches *seven* critical/high labels under `eval/v0.1` where six were
+all that existed when they were scored. Two of decision 26's four promotions
+(MC-114, MC-117) landed in the critical/high band; the runs had already been
+finding MC-114 and get credit for it now, and miss only MC-117. A 12.5-point
+drop in the rate is a band that grew by two against a run that gained one — not
+a prompt that got worse. The verdict columns carry no denominator, so that same
+rate artifact does not touch them — a boolean has nothing for a growing label
+set to dilute. That is the only sense in which they compare directly. They are
+not otherwise the same test scored twice: the left-hand verdicts were computed
+under the harness as it stood before eval/v0.1 rows 5 and 6, when the
+per-template ceiling was still a hard bar and the MNC evaluator still
+hardcoded entry 02's rules, so the two sides are booleans measured against
+different bar sets.
+
+All three misses under `eval/v0.1` are the same label: MC-117 (sixteen home CTAs
+and category cards linking to `#`), one of the four promoted labels, and one the
+v0.4 prompt was never instructed to look for — the `href="#"` check was added in
+the v0.5 → v0.6 step, after v0.4 was frozen.
+
+`recall.overall` moved from 1.00 (13/13) / 1.00 (13/13) / 0.92 (12/13) as
+recorded to 0.882 (15/17) / 0.882 (15/17) / 0.824 (14/17) — the same shape again,
+a falling rate over a rising numerator and a denominator that grew by four —
+driven by the same promoted pair (MC-117 and, in medium/low, MC-116, the missing
+`main` landmark — also added by a v0.5 → v0.6 prompt change, also missed in all
+three re-scored runs).
+`ceilings.per_template_breaches` is empty (`{}`) in all three re-scored runs, and
+the composite score is unchanged from what is recorded — 27, 26, 24 — so none of
+the delta above came from the ceiling or the score. v0.4-run3's automatic fail is
+also unchanged (the same dead pointer that failed it originally still resolves to
+nothing), but it now also trips `zero_mnc_violations`: MNC-404, in its current
+decision-25 (reverted, stricter) state, flags one of run3's unlabeled findings as
+a negative-control violation. Run3's recorded score carries no such violation, so
+one of the two stricter changes on the changelog's list introduced it. Which one
+is an inference, not a check: the decision-25 revert is the obvious candidate
+because it is the change that touches MNC-404's screen, but the MNC-evaluator bug
+fix on the same list also changes what that bar evaluates, and the harness code as
+it stood when run3 was scored is not reachable — so neither the run output nor the
+diff can settle it. What is verified is the current behaviour: run3's FAIL verdict
+is unchanged, but under today's harness it fails for one more reason than
+originally recorded.
+
+Read it this way: two of three v0.4 runs that passed at the time no longer pass —
+not because the prompt regressed, but because the label contract they are measured
+against grew by four after those runs were scored, and two of the four (MC-116,
+MC-117) are ones the v0.4 prompt had no instruction to find. v1.0's 17/17 was
+measured against the same 17-label set this re-score uses, so on the label-set
+axis — and only that axis — v1.0's number is clean where these are not.
+
+**What this re-score does not touch.** The concern the harness version exists to
+answer is not only that the label contract grew. It is that two of the bars
+themselves were loosened and are still that way — the per-template ceiling
+downgraded from a bar to advisory, and `match.any_of` unioned into matching
+(eval/v0.1 rows 5 and 1) — and that **v1.0's 17/17 was measured only on the
+loosened side of those two.** (MNC-404 was also narrowed, eval/v0.1 row 2, but
+row 3 reverted that before v1.0 froze — see above, where the revert is exactly
+why run3 now trips `zero_mnc_violations`. It is not a standing loosening, so
+there is nothing left of it to measure.) This re-score cannot test the two that
+stand, and does not. The harness code as it stood before eval/v0.1 rows 1 and 5
+is not reachable, so what ran here is today's harness against old runs, which
+isolates the label-contract growth (eval/v0.1 row 4) and nothing else. Nothing
+in this section addresses rows 1 and 5, and no number above is evidence about
+them in either direction.
+
+> **Correction to this paragraph, 2026-07-28.** It used to go further and say
+> the two could not be measured at all — that closing the gap needed a run
+> scored under both harnesses, so a future prompt version rather than a re-score
+> of frozen ones. That is wrong for eval/v0.1 row 5, which the next section
+> measures without any old code and without a new run. It still holds for
+> eval/v0.1 row 1, and the next section ends by saying precisely why the two
+> differ.
+
+## The ceiling counterfactual (2026-07-28) — what `eval/v0.1` row 5 costs the headline
+
+**Method, and why no old harness code is needed.** Decision 27 did not stop the
+scorer computing the per-template ceiling; it moved where the ceiling binds. The
+scorer still counts breaches per template and prints them on every run —
+
+```
+ceilings  20/25 total, per-template over 8: {'pdp': 9} (advisory — report layer)
+```
+
+— it just no longer folds that map into `bars`. Under the pre-decision-27
+harness, a non-empty breach map is exactly what failed a run. So the old rule
+applies to today's output directly: reading the counterfactual is reading that
+one line. No unreachable harness code is involved, and no new run is needed.
+
+What that isolates is one change and no more — the eval/v0.1 row 5 bar,
+re-applied to today's scoring. The matcher, the 17-label contract and the MNC
+evaluator are all held at today's state, exactly as they are in the re-score
+above. This is not a run scored under the whole pre-v1.0 harness and does not
+claim to be.
+
+**The four runs of the v1.0 lineage, each scored today** with
+`python triage/eval_triage.py runs/<file> --prompt-version finding-triager/<v> --pack-version pack/v0.2`
+— all four rows below are `pack/v0.2` runs (`v0.6-run*` per this file's header,
+`v1.0-cli-run1` because it was produced against a freshly built pack):
+
+| run | per-template over 8 | total | every bar today |
+|---|---|---|---|
+| `runs/v0.6-run1.json` | none | 20/25 | PASS |
+| `runs/v0.6-run2.json` | `{'pdp': 9}` | 20/25 | PASS |
+| `runs/v0.6-run3.json` | `{'pdp': 9}` | 19/25 | PASS |
+| `runs/v1.0-cli-run1.json` | `{'pdp': 11, 'home': 9}` | 21/25 | PASS |
+
+Every other bar reads `True` on every one of these runs — both recall bands,
+injection, MNC, total ceiling, schema — and none of them trips an automatic
+fail, which is what the `RESULT: PASS` in the last column reports. That is what
+makes the reading clean: a breaching run would have failed on the per-template
+bar and on nothing else, so the breach map alone decides the old verdict.
+
+**Headline: this document's "3 of 3 runs clear every bar" is 1 of 3 under the
+per-template ceiling as it stood before decision 27.** Only run 1 keeps its
+PASS. Runs 2 and 3 each put nine findings on the PDP against a cap of eight.
+
+**What this rests on.** The three recorded v0.6 runs alone — one prompt, one
+pack, one backend, the three runs the freeze was declared on.
+`runs/v1.0-cli-run1.json` is a fourth data point and is deliberately not part of
+that basis: it was produced through a different execution backend
+(`run_meta.via = "claude-code-cli"`), and its own `run_meta.comparability` says
+only `effort` and the resolved model compare across backends — `max_tokens` and
+thinking are not controllable on that path, and roughly 1.7k tokens of harness
+context precede the prompt on every request. Findings-per-template is not on the
+short list it says is comparable, so it is cited here as corroboration, not as a
+fourth measurement. It is worth citing anyway for one reason: it breaches harder
+than any recorded run — eleven findings on the PDP and nine on home, two
+templates rather than one — which is some evidence that the breach is a standing
+property of a prompt at full recall against this ground truth rather than a
+fluke of one recorded sample.
+
+**Two things are true at once, and the write-up needs both.** The argument for
+the downgrade is above, under "The fourth harness judgment call", and nothing
+measured here weakens it: the 17-label ground truth itself puts eight must-catch
+findings on the PDP, so a run at full recall has zero headroom; both recorded
+breaches were presence-checklist item 5, a real defect this prompt instructs the
+model to look for; and rubric §5's cap is a report behaviour the triager cannot
+perform, because it does not compute roadmap rank. The bar was moved to the
+layer that can act on it, for reasons that stand. It is also **load-bearing for
+the headline**: v1.0's clean sweep is the prompt and that harness change
+together, and two thirds of it would not survive the change being undone. A
+reader who takes "3 of 3 runs clear every bar" as a fact about the prompt alone
+is concluding more than these runs support, which is why it is stated here in
+the same section as the argument that justifies it.
+
+**What this still does not measure: `eval/v0.1` row 1.** The `match.any_of`
+union happens inside matching, and the scorer reports what matching concluded,
+not what it would have concluded with the union off — no printed line
+distinguishes a label matched through `evidence` from one matched through
+`any_of`. Row 5 was readable because the quantity the old bar acted on is still
+computed and still printed; row 1's is neither. So row 1 is not measurable by
+this method and remains unmeasured, and getting a number for it means running
+the matcher both ways over the same runs — harness code that does not exist
+today — not reading recorded output more carefully.

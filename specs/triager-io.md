@@ -2,8 +2,11 @@
 
     file:     specs/triager-io.md · v0.1
     schema:   triage/v0.1
-    rubric:   references/rubric.md v0.4
-    pack:     pack/v0.2 (specs §4 below, implemented by scripts/pack_evidence.py)
+    rubric:   rubric.md v0.4
+    pack:     pack/v0.2 (specs §4 below, implemented by triage/pack_evidence.py)
+    amended:  2026-07-28 — paths only. `scripts/` → `triage/` (decision 28)  <!-- STALE-OK -->
+              and `references/rubric.md` → `rubric.md`. No clause, field or  <!-- STALE-OK -->
+              rule changed; the contract this file freezes is untouched.
     status:   frozen — the matcher, the scorer and the narrator code against this
               file, not against the prompt. Moving it after runs are recorded
               invalidates every recorded result (decision 12).
@@ -166,7 +169,7 @@ reasoning as recall and severity agreement being independent (rubric §7).
 
 ## 4. Input — `pack/v0.2`
 
-Produced by `scripts/pack_evidence.py` from a fixture directory. The pack version
+Produced by `triage/pack_evidence.py` from a fixture directory. The pack version
 joins the provenance set: **fixture manifest hash + prompt version + rubric
 version + pack version.** A green run without all four pinned is not a result.
 
@@ -210,7 +213,7 @@ both implemented:
    the rubric's thresholds are numeric, so a metric's number is evidence whether
    or not Lighthouse scored it green.
 
-The list of payload-only audit IDs lives in `scripts/pack_evidence.py` as
+The list of payload-only audit IDs lives in `triage/pack_evidence.py` as
 `PAYLOAD_ONLY`, is dumped into `pack_dropped.lighthouse.payload_only_audits`, and
 must be re-derived against the labels whenever a new golden entry is added.
 
@@ -237,10 +240,21 @@ impossible by construction.
 
 Costs, both recorded rather than assumed:
 
-- **+126 KB**, pack 396 → 522 KB (~133k tokens minified, ~145k as rendered).
-  Bounded — sibling-collapse caps tree breadth — but it is the first real
-  pressure on the single-pass decision, and `test_pack_fits_a_single_pass`
-  guards the headroom.
+- **+126 KB**, pack 396 → 522 KB (~220k → ~290k tokens est.; the prompt rendered
+  around the v0.2 pack **measured 315,094 tokens** — `runs/v1.0-cli-run1.json`).
+  Bounded — sibling-collapse caps tree breadth — and
+  `test_pack_fits_a_single_pass` guards the headroom.
+
+  *Corrected 2026-07-28.* This bullet read "~133k tokens minified, ~145k as
+  rendered" and called the increase "the first real pressure on the single-pass
+  decision". The KB figures were counted and stand; the token figures were the
+  same KB divided by a 4-chars-per-token prose rule, 2.16x low on dense JSON.
+  The pressure claim went with them: it was written against an assumed 200k
+  window, and `claude-opus-5` — the model this runs on — has a 1M context window
+  by default (claude-api skill, `shared/models.md`). At 290k est. the v0.2 pack
+  sits at 29% of the window, not 72%. Single-pass is not under capacity pressure;
+  the granularity argument has to stand on determinism, which is where §9 puts it
+  anyway.
 - **Pointer construction stops being a capability under test.** That is the right
   trade if pointers are plumbing: the join key exists so evidence can be checked,
   not to measure DOM navigation. Stated here so a later reader can disagree with
