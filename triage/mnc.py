@@ -8,6 +8,14 @@ findings array and against a narrative object.
 The bug this shape exists to prevent is recorded in
 evals/results/05-blocked-path.md: the screens were hardcoded to entry 02's rules,
 so entry 05 reported `zero_mnc_violations: True` having evaluated nothing.
+
+A `crawl:` pointer needs a template *and* at least one semantic-path segment
+(spec §9) — `crawler.pointers.matches` returns False whenever either side has
+zero path segments. A `match.any_of` entry like `crawl:404`, with nothing after
+the template, can therefore never match anything: the label would contribute
+zero violations forever, which is the same silent-pass failure by a different
+route. Such a pointer is rejected loudly at load time rather than shipped as a
+screen that always passes.
 """
 
 from __future__ import annotations
@@ -60,6 +68,15 @@ def declared_violations(labels: dict[str, dict[str, Any]], *, blob: str,
 
         forbidden = [p for p in ((label.get("match") or {}).get("any_of") or [])
                      if isinstance(p, str) and not p.endswith("*")]
+        for p in forbidden:
+            if p.startswith("crawl:"):
+                path = p.split("/", 1)[1] if "/" in p else ""
+                if not path:
+                    raise ValueError(
+                        f"{label_id}: match.any_of pointer {p!r} has no path "
+                        f"segment after the template — it is grammar-invalid "
+                        f"per specs/crawler.md §9 and can never match anything, "
+                        f"so this label would silently contribute zero violations")
         if forbidden:
             for f in findings:
                 cited = [p for p in (f.get("evidence") or [])

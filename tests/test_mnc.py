@@ -62,10 +62,37 @@ def test_findings_without_evidence_contribute_nothing_to_the_pointer_screen():
     """The narrator's 'findings' carry prose, not pointers. The pointer screen must
     simply not fire there rather than crash — that is what lets one evaluator serve
     both layers."""
-    labels = {"MNC-404": {"match": {"any_of": ["crawl:404"]}}}
+    labels = {"MNC-404": {"match": {"any_of": ["crawl:404/main/heading"]}}}
     assert call(labels, [{"id": "F-01", "consequence": "a shopper cannot check out"}]) == []
 
 
 def test_mc_labels_are_ignored():
     labels = {"MC-101": {"type": "forbidden_finding", "scope": ["all"]}}
     assert call(labels, [{"id": "F-01"}]) == []
+
+
+def test_a_bare_crawl_pointer_with_no_path_segment_raises():
+    """crawl:404 has no semantic-path segment (spec §9) — ptr.matches() always
+    returns False for it, so as `forbidden` it would silently never fire. That is
+    exactly the zero_mnc_violations failure mode this module exists to prevent, so
+    the label must be rejected loudly instead of shipped as a screen that always
+    passes."""
+    labels = {"MNC-404": {"match": {"any_of": ["crawl:404"]}}}
+    try:
+        call(labels, [{"id": "F-01", "evidence": ["crawl:404/main/heading"]}])
+    except ValueError as e:
+        assert "MNC-404" in str(e)
+        assert "crawl:404" in str(e)
+    else:
+        raise AssertionError("expected ValueError for a dead crawl: pointer")
+
+
+def test_a_crawl_pointer_with_a_path_segment_does_not_raise():
+    labels = {"MNC-404": {"match": {"any_of": ["crawl:404/main/heading"]}}}
+    hits = call(labels, [{"id": "F-01", "evidence": ["crawl:404/main/heading"]}])
+    assert [h["rule"] for h in hits] == ["MNC-404"]
+
+
+def test_a_wildcard_axe_pointer_is_still_skipped_not_raised():
+    labels = {"MNC-004": {"match": {"any_of": ["axe:*"]}}}
+    assert call(labels, [{"id": "F-01", "evidence": ["axe:color-contrast"]}]) == []
