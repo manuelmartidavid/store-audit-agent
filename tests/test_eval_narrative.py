@@ -131,11 +131,29 @@ def test_spelled_out_quantities_are_reported_not_failed():
 
 
 def test_template_containment_is_advisory_and_tolerates_add_to_cart():
-    """'cannot add this product to the cart' on a PDP finding is correct English and
-    a naive containment check fails it. Advisory, never a gate."""
-    n = narrative(findings={"F-01": {"consequence": "A shopper cannot add it to the cart.",
-                                     "affects": "b", "change": "c"}})
-    result = eval_narrative.evaluate(n, brief(roadmap=(("F-01", ["pdp"]),)), {})
+    """'cannot add this product to the cart' on a PDP finding is correct English, so
+    the containment check must fire a note (proving it actually inspected the text)
+    and still leave the run passing (proving the note never gates it).
+
+    A single-finding brief cannot exercise this: with only F-01/["pdp"] in play,
+    the vocabulary equals F-01's own templates, `vocabulary - own` is empty, and
+    the inner loop never runs — the check would look advisory while doing nothing.
+    A second finding on ["cart"] puts "cart" in the vocabulary without putting it
+    in F-01's own set, so the check has something to find.
+    """
+    b = brief(roadmap=(("F-01", ["pdp"]), ("F-02", ["cart"])))
+    n = narrative(findings={
+        "F-01": {"consequence": "A shopper cannot add it to the cart.",
+                 "affects": "b", "change": "c"},
+        "F-02": {"consequence": "Checkout confirmation emails never arrive after purchase.",
+                 "affects": "Every customer who completes an order.",
+                 "change": "Fix the transactional email trigger."},
+    })
+
+    notes = eval_narrative.template_containment_notes(n, b)
+    assert any("F-01" in note and "cart" in note for note in notes)
+
+    result = eval_narrative.evaluate(n, b, {})
     assert result["passed"] is True
 
 
@@ -153,6 +171,17 @@ def test_a_blocked_summary_must_name_the_gate():
         {"schema": "narrative/v0.1", "summary": "Nothing to report.", "findings": {}},
         brief(status="INACCESSIBLE", roadmap=()))
     assert any("gate" in e.lower() for e in errors)
+
+
+def test_a_blocked_summary_still_obeys_the_word_cap():
+    """A blocked audit's summary is the entire deliverable on that path — the one
+    thing a client reads — so the 80-word cap must not be silently skipped just
+    because the early return on the blocked path bypasses the cap loop."""
+    long_summary = "This store is blocked. " + " ".join(["word"] * 110)
+    errors = eval_narrative.validate(
+        {"schema": "narrative/v0.1", "summary": long_summary, "findings": {}},
+        brief(status="INACCESSIBLE", roadmap=()))
+    assert any("summary" in e and "80" in e for e in errors)
 
 
 def test_a_correct_blocked_narrative_passes():

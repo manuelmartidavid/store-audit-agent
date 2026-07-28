@@ -80,6 +80,17 @@ def validate(narrative: dict[str, Any], brief: dict[str, Any]) -> list[str]:
         errors.append("findings must be an object keyed by finding id")
         return errors
 
+    # The word cap applies unconditionally — including on the blocked path, where
+    # the summary is the entire deliverable — so it runs before the blocked early
+    # return below. Coverage and per-finding checks stay gated on `blocked`: a
+    # blocked run has no findings to cover.
+    for name, value in _values(narrative):
+        field = name.split(".")[-1]
+        cap = CAPS[field]
+        words = len(value.split())
+        if words > cap:
+            errors.append(f"{name} is {words} words, cap is {cap}")
+
     blocked = brief.get("store_status") == "INACCESSIBLE"
     if blocked:
         if findings:
@@ -106,13 +117,6 @@ def validate(narrative: dict[str, Any], brief: dict[str, Any]) -> list[str]:
             value = str(body.get(field) or "").strip()
             if not value:
                 errors.append(f"{fid}.{field} is missing or empty")
-
-    for name, value in _values(narrative):
-        field = name.split(".")[-1]
-        cap = CAPS[field]
-        words = len(value.split())
-        if words > cap:
-            errors.append(f"{name} is {words} words, cap is {cap}")
 
     return errors
 
