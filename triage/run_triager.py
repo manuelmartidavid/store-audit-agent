@@ -177,14 +177,70 @@ def _stderr_tail(stderr: str, chars: int = 2000) -> str:
     return (stderr or "")[-chars:]
 
 
-def cli_version(runner=subprocess.run) -> str:
+# `runner=subprocess.run` as a default *parameter* value gets resolved once,
+# at function-definition time, and baked into the function object — so
+# `monkeypatch.setattr(run_triager.subprocess, "run", fake)` never reaches a
+# call made through that default; it already captured the original object.
+# `_RUNNER` is looked up by name inside each function body instead, which
+# Python resolves fresh on every call — so patching this module attribute
+# (`run_triager._RUNNER`) actually intercepts the next call. This indirection
+# is the only thing standing between a forgotten test double and a real
+# subprocess spawn that spends the subscription.
+_RUNNER = subprocess.run
+
+# Env vars that route or bill a child `claude` process somewhere other than
+# the operator's own Claude subscription — the entire reason this backend
+# exists. Every child this module spawns must have all of these stripped:
+#   ANTHROPIC_API_KEY       - bills the Console API directly.
+#   ANTHROPIC_AUTH_TOKEN    - an alternate credential for the same Console billing.
+#   ANTHROPIC_BASE_URL      - repoints the CLI at a different (possibly billed) endpoint.
+#   CLAUDE_CODE_USE_BEDROCK - routes the request, and its billing, through AWS Bedrock.
+#   CLAUDE_CODE_USE_VERTEX  - routes the request, and its billing, through GCP Vertex.
+_BILLING_ROUTING_ENV_VARS = frozenset({
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+    "CLAUDE_CODE_USE_BEDROCK",
+    "CLAUDE_CODE_USE_VERTEX",
+})
+
+
+def _child_env() -> dict[str, str]:
+    """`os.environ` with every billing/routing var stripped, for any child
+    this module spawns under --via claude-cli.
+
+    One of those vars may be present even though the user never set it
+    directly — `dotenv.load()` in main() can put ANTHROPIC_API_KEY there from
+    `.env`. Built as a fresh dict rather than a mutation of `os.environ` so
+    the parent process's own environment is untouched.
+    """
+    return {key: value for key, value in os.environ.items()
+            if key not in _BILLING_ROUTING_ENV_VARS}
+
+
+def _require_cli_on_path() -> None:
+    """Guard every child this module spawns under --via claude-cli.
+
+    Must run before *any* subprocess reaches a shell — including
+    cli_version()'s own `claude --version` — or an absent CLI surfaces as a
+    raw `FileNotFoundError` traceback instead of this actionable exit.
+    """
+    if shutil.which("claude") is None:
+        raise SystemExit(
+            "the `claude` CLI is not on PATH — install Claude Code and confirm "
+            "`claude --version` works before using --via claude-cli.")
+
+
+def cli_version(runner=None) -> str:
     """`claude --version`, captured for the run record — not asserted, run."""
-    proc = runner(["claude", "--version"], capture_output=True, text=True)
+    runner = runner if runner is not None else _RUNNER
+    proc = runner(["claude", "--version"], capture_output=True, text=True,
+                   encoding="utf-8", env=_child_env())
     return (proc.stdout or proc.stderr).strip()
 
 
 def call_model_via_cli(prompt: str, *, model: str, effort: str, system_prompt: str,
-                        runner=subprocess.run) -> tuple[str, dict]:
+                        runner=None) -> tuple[str, dict]:
     """One `claude -p` invocation via the Claude Code CLI. Returns (text, usage).
 
     Exists to test the pipeline without spending Console credits — it runs on
@@ -193,18 +249,8 @@ def call_model_via_cli(prompt: str, *, model: str, effort: str, system_prompt: s
     otherwise either silently bill the Console API or hand back a run that
     looks clean but isn't a single completion.
     """
-    if shutil.which("claude") is None:
-        raise SystemExit(
-            "the `claude` CLI is not on PATH — install Claude Code and confirm "
-            "`claude --version` works before using --via claude-cli.")
-
-    # ANTHROPIC_API_KEY may be in this process's environment even though
-    # ANTHROPIC_API_KEY was never set by the user directly — `dotenv.load()`
-    # in main() puts it there from `.env`. If the child sees it, the CLI
-    # bills the Console API, the exact thing this backend exists to avoid.
-    # Build a fresh dict rather than mutating os.environ so the parent
-    # process's environment is untouched.
-    child_env = {key: value for key, value in os.environ.items() if key != "ANTHROPIC_API_KEY"}
+    runner = runner if runner is not None else _RUNNER
+    _require_cli_on_path()
 
     argv = [
         "claude", "-p",
@@ -217,7 +263,15 @@ def call_model_via_cli(prompt: str, *, model: str, effort: str, system_prompt: s
     ]
     # The prompt goes on stdin, never argv — Windows caps a command line near
     # 32k characters, and the rendered triager prompt is ~145k tokens.
-    proc = runner(argv, input=prompt, capture_output=True, text=True, env=child_env)
+    #
+    # encoding="utf-8" is not cosmetic: without it, text=True falls back to
+    # locale.getpreferredencoding(), which is cp1252 on this machine. Every
+    # rendered triager prompt contains U+2264 ('≤'), unencodable in cp1252 —
+    # stdin would raise UnicodeEncodeError before the CLI is ever reached.
+    # The same fallback would also mangle UTF-8 stdout on decode, silently
+    # corrupting a measured artifact rather than raising at all.
+    proc = runner(argv, input=prompt, capture_output=True, text=True,
+                   encoding="utf-8", env=_child_env())
 
     if proc.returncode != 0:
         raise SystemExit(
@@ -249,18 +303,35 @@ def call_model_via_cli(prompt: str, *, model: str, effort: str, system_prompt: s
             "answer — this is not a clean single completion and cannot be recorded "
             "as one.")
 
+    # The resolved model id must be read back out of what actually ran, not
+    # merely echo the one requested — that is the entire point of this
+    # field: catching a silent model substitution. modelUsage absent, empty,
+    # or holding more than one key all mean the same thing: there is no
+    # single unambiguous read-back available. Falling back to the requested
+    # model in any of those cases would fabricate a read-back that never
+    # happened, and silently picking an arbitrary key on a tie would be just
+    # as unaccountable. Fail instead of recording a plausible-looking guess.
     model_usage = data.get("modelUsage") or {}
-    # The resolved model id, read back out of what actually ran — not merely
-    # the one requested. If the CLI silently resolves to a different model,
-    # this is what shows it.
-    resolved_model = next(iter(model_usage), model)
+    if len(model_usage) != 1:
+        raise SystemExit(
+            f"claude CLI response's modelUsage has {len(model_usage)} key(s) "
+            f"({sorted(model_usage.keys())!r}), not exactly 1 — the model actually "
+            "run cannot be read back unambiguously, and recording the requested "
+            f"model ({model!r}) in its place would fabricate a read-back that never "
+            f"happened. stderr tail:\n{_stderr_tail(proc.stderr)}")
+    resolved_model = next(iter(model_usage))
 
+    # The full usage block, kept wholesale — cache_creation sub-objects,
+    # server_tool_use, service_tier, and anything a future CLI version adds
+    # are evidence too, and this module's whole posture is that the record
+    # keeps what actually happened rather than a hand-picked projection of it.
     raw_usage = data.get("usage") or {}
     usage = {
+        # Flattened for convenience (main()'s summary print reads these) —
+        # "raw" below is the actual, un-trimmed record.
         "input_tokens": raw_usage.get("input_tokens"),
         "output_tokens": raw_usage.get("output_tokens"),
-        "cache_creation_input_tokens": raw_usage.get("cache_creation_input_tokens"),
-        "cache_read_input_tokens": raw_usage.get("cache_read_input_tokens"),
+        "raw": raw_usage,
         "resolved_model": resolved_model,
         "total_cost_usd": data.get("total_cost_usd"),
         "session_id": data.get("session_id"),
@@ -278,7 +349,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-o", "--out", type=Path, required=True)
     parser.add_argument("--model", default=MODEL)
     parser.add_argument("--effort", default=EFFORT, choices=["low", "medium", "high", "xhigh", "max"])
-    parser.add_argument("--max-tokens", type=int, default=MAX_TOKENS)
+    parser.add_argument("--max-tokens", type=int, default=None,
+                         help="--via api only: caps thinking plus response together "
+                              f"(default {MAX_TOKENS}). Rejected with --via claude-cli, "
+                              "where max_tokens is not a controllable knob (see "
+                              "run_meta.comparability) — accepting it there would let a "
+                              "parameter that does nothing look like it did something.")
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
     parser.add_argument("--via", default="api", choices=["api", "claude-cli"],
                          help="api (default): anthropic SDK, billed to the Console API key. "
@@ -298,6 +374,16 @@ def main(argv: list[str] | None = None) -> int:
     prompt = args.rendered.read_text(encoding="utf-8")
 
     if args.via == "claude-cli":
+        if args.max_tokens is not None:
+            raise SystemExit(
+                "--max-tokens has no effect with --via claude-cli — thinking and "
+                "max_tokens are not controllable knobs on that path (see "
+                "run_meta.comparability). Drop --max-tokens, or use --via api if you "
+                "need to control it.")
+        # Must happen before anything spawns a child — including cli_version()'s
+        # own `claude --version` below — or an absent CLI surfaces as a raw
+        # FileNotFoundError traceback instead of this actionable exit.
+        _require_cli_on_path()
         meta = run_meta(model=args.model, effort=args.effort,
                         rendered_path=args.rendered, pack_path=args.pack,
                         prompt_version=args.prompt_version, started_at=started_at,
@@ -313,13 +399,14 @@ def main(argv: list[str] | None = None) -> int:
         meta["num_turns"] = usage.pop("num_turns")
         meta["usage"] = usage
     else:
-        meta = run_meta(model=args.model, effort=args.effort, max_tokens=args.max_tokens,
+        max_tokens = args.max_tokens if args.max_tokens is not None else MAX_TOKENS
+        meta = run_meta(model=args.model, effort=args.effort, max_tokens=max_tokens,
                         rendered_path=args.rendered, pack_path=args.pack,
                         prompt_version=args.prompt_version, started_at=started_at)
         print(f"· {args.model} effort={args.effort} thinking={THINKING} "
-              f"max_tokens={args.max_tokens} · prompt {len(prompt) / 1024:.0f} KB")
+              f"max_tokens={max_tokens} · prompt {len(prompt) / 1024:.0f} KB")
         text, usage = call_model(prompt, model=args.model, effort=args.effort,
-                                 max_tokens=args.max_tokens)
+                                 max_tokens=max_tokens)
         meta["usage"] = usage
 
     record = {"run_meta": meta, "output": extract_json(text)}
