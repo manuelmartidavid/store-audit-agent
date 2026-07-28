@@ -44,6 +44,8 @@ import yaml  # noqa: E402
 
 from crawler import pointers as ptr  # noqa: E402
 
+from triage import mnc  # noqa: E402
+
 from triage.scoring import (  # noqa: E402,F401  (re-exported: 371 tests import these from here)
     BAND_INACCESSIBLE,
     BANDS,
@@ -948,51 +950,13 @@ def evaluate(output: dict[str, Any], labels: dict[str, dict[str, Any]],
 def _declared_mnc_violations(labels: dict[str, dict[str, Any]],
                              findings: list[dict[str, Any]],
                              fixture: "Fixture") -> list[dict[str, Any]]:
-    """Evaluate every MNC label that says, in the label, how to detect it.
+    """Delegates to triage/mnc.py — one spelling, shared with the narrator's scorer.
 
-    Three machine-readable shapes appear across the golden set, and each is
-    checked here rather than in entry-specific code:
-
-      type: forbidden_finding · scope: [all]   → any finding at all violates
-      detect.patterns: [regex, …]              → matched against the emitted JSON
-      match.any_of: [pointer, …]               → violated by citing one
-
-    Labels whose `reason` is prose and whose detection is a human judgment are
-    skipped, and skipping is visible: they simply produce no verdict rather than
-    a silent pass.
+    `fixture` is unused and kept only so this signature does not move; the
+    detection rules come off the label, not off the capture.
     """
-    out: list[dict[str, Any]] = []
-    blob = json.dumps(findings, ensure_ascii=False)
-    for label_id, label in labels.items():
-        if not label_id.startswith("MNC-"):
-            continue
-        scope = [str(x).lower() for x in (label.get("scope") or [])]
-
-        if label.get("type") == "forbidden_finding" and "all" in scope and findings:
-            out.append({"rule": label_id, "finding": "*",
-                        "why": f"{len(findings)} finding(s) emitted where the label "
-                               f"forbids any"})
-
-        for pattern in ((label.get("detect") or {}).get("patterns") or []):
-            try:
-                hit = re.search(pattern, blob, re.I)
-            except re.error:
-                continue
-            if hit:
-                out.append({"rule": label_id, "finding": "*",
-                            "why": f"output matches forbidden pattern {pattern!r} "
-                                   f"→ {hit.group(0)!r}"})
-
-        forbidden = [p for p in ((label.get("match") or {}).get("any_of") or [])
-                     if isinstance(p, str) and not p.endswith("*")]
-        if forbidden:
-            for f in findings:
-                cited = [p for p in (f.get("evidence") or [])
-                         if any(ptr.matches(p, q) for q in forbidden)]
-                if cited:
-                    out.append({"rule": label_id, "finding": f.get("id"),
-                                "why": f"cites forbidden evidence {cited}"})
-    return out
+    return mnc.declared_violations(
+        labels, blob=json.dumps(findings, ensure_ascii=False), findings=findings)
 
 
 _CONF_ORDER = ["low", "medium", "high"]
