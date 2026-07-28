@@ -606,8 +606,12 @@ labels this harness has never seen.
 
 ## Readiness — where the agent actually stands (2026-07-28)
 
-**Recall is proven. Precision has never been measured.** Every number in this
-project comes from one store built to be found out. On a sabotaged store almost
+**Recall is proven in-sample. Precision has never been measured.** Four of
+entry 02's 17 must-catch labels were promoted from v0.4 run output before v1.0
+was scored against them (`evals/PROMOTION-PROTOCOL.md`), so 17/17 measures
+detection against a target partly drawn from the lineage's own findings. Every
+number in this project also comes from one store built to be found out. On a
+sabotaged store almost
 anything you find is real, so the unlabeled bucket falling from 8 to 2-3 per run
 says nothing about a healthy store. Point v1.0 at a well-built Shopify store today
 and it might emit 3 findings or 15 - nothing here would catch the difference, and

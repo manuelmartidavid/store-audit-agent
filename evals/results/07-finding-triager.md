@@ -7,7 +7,9 @@
               v0.4 (2026-07-28) changed §4 rule 3 presentation only; §1–§3 are
               byte-identical, so every number below stands unrecomputed.
     prompts:  finding-triager v0.1 → v1.0, 3 runs each, nothing else varied within a version
-    status:   **v1.0 FROZEN 2026-07-28** — 3 of 3 runs clear every bar at 17/17 recall
+    status:   **v1.0 FROZEN 2026-07-28** — 3 of 3 runs clear every bar at 17/17 recall,
+              in-sample (four of the 17 labels were promoted from v0.4 run output —
+              `evals/PROMOTION-PROTOCOL.md`)
     packs:    pack/v0.1 for v0.1–v0.4 · pack/v0.2 for v0.5–v1.0
     labels:   13 must-catch for v0.1–v0.4 · 17 for v0.5–v1.0 (four promoted 2026-07-28)
 
@@ -87,6 +89,12 @@ an artefact of how MC-118 got promoted rather than a distinction the rubric draw
 - *MC-118* needed no prompt change — it was the labels that were wrong.
 
 Result: **17/17 recall in all three v0.6 runs.** v1.0 is v0.6, frozen.
+
+> **In-sample.** Four of the 17 must-catch labels (MC-114…MC-117) were promoted
+> from the unlabeled bucket of v0.4 runs before v1.0 was measured against them.
+> Each is verified in the fixture, but the selection came from model output, so
+> 17/17 is an in-sample recall figure. `evals/PROMOTION-PROTOCOL.md` sets the
+> rule; entry 01 is the first out-of-sample measurement this project will have.
 
 ## Final run table — v0.5 and v1.0-lineage
 

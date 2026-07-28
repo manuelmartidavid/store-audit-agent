@@ -87,3 +87,44 @@ def test_no_live_doc_contains_a_known_stale_path_spelling(path: Path):
             if stale in line and "STALE-OK" not in line:
                 hits.append(f"{path.relative_to(ROOT).as_posix()}:{number} names {stale!r} — {why}")
     assert not hits, "\n".join(hits)
+
+
+# --- provenance claims in the labels -----------------------------------------
+
+def test_the_label_file_does_not_claim_to_be_untouched_by_model_output():
+    """MC-114…MC-117 were promoted from the unlabeled bucket of v0.4 runs.
+
+    The file's amendment header claimed the opposite — 'nothing here is tuned to
+    a model's output' — on the same line that describes the promotion. The claim
+    is true of the `match:` blocks and false of the promotions, and a label file
+    that overstates its own independence is the one artifact in this project
+    that must not.
+    """
+    text = (ROOT / "evals" / "golden" / "02-sabotaged" / "expected" / "findings.md").read_text(
+        encoding="utf-8")
+
+    # The claim was wrapped across two lines in the indented header block, so a
+    # raw substring search never matched it and would have passed against the
+    # uncorrected file. Collapse whitespace first or this test asserts nothing.
+    flat = " ".join(text.split())
+    assert "nothing here is tuned to a model's output" not in flat
+    assert "in-sample" in text
+    assert "PROMOTION-PROTOCOL" in text
+
+
+def test_every_citation_of_the_promotion_protocol_resolves():
+    """Two documents cited this path before the file existed; it exists now.
+
+    Task 2 wrote the README's triager row and the harness changelog's row 4
+    against a file task 9 would create. A forward reference is only a forward
+    reference until the file lands — after that it is either a live link or a
+    dead one, and nothing else in the suite would notice the difference. This
+    checks the spelling both ends agree on, not merely that some file exists.
+    """
+    cited = "evals/PROMOTION-PROTOCOL.md"
+    assert (ROOT / cited).is_file(), f"{cited} does not exist"
+
+    citing = [ROOT / "README.md", ROOT / "evals" / "HARNESS-CHANGELOG.md"]
+    missing = [p.relative_to(ROOT).as_posix() for p in citing
+               if cited not in p.read_text(encoding="utf-8")]
+    assert not missing, f"expected these to cite {cited!r}: {missing}"

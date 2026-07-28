@@ -232,7 +232,7 @@ machinery beneath them.
 | Crawler (`crawler/`) | **Implemented and tested** — `specs/crawler.md` v0.1 |
 | Scoring rubric (`rubric.md`) | v0.4; calibrated against entry 02, not yet frozen |
 | Golden set (`evals/golden/`) | Entries 02 (17 MC / 4 MNC, frozen) & 05 (labeled); 01/03/04 not yet present |
-| Triager (`prompts/finding-triager/`) | **v1.0 frozen** — 21 recorded runs, in-sample (see `evals/PROMOTION-PROTOCOL.md`) |
+| Triager (`prompts/finding-triager/`) | **v1.0 frozen** — 21 recorded runs: 18 against entry 02, in-sample; 3 against entry 05, out-of-sample (see `evals/PROMOTION-PROTOCOL.md`) |
 | Narrator / report composer | Specified; **not yet implemented** |
 | `references/benchmarks.md` | Referenced by the rubric; **not yet present**  <!-- STALE-OK --> |
 | Eval harness (`triage/eval_triage.py`) | **Implemented** — matcher, tiered recall, composite, MNC screens |

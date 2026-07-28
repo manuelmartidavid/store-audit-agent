@@ -11,13 +11,39 @@
                  touch §1 severity, §2 effort or §3 confidence — the only sections the triager
                  prompt inlines — so every prompt version through v1.0 is valid under both, and
                  no label verdict changes.
-    amended:     2026-07-28 (a) five findings promoted from the unlabeled bucket,
-                 MC-114…MC-117, plus MC-118 folded into MC-108 — composite recomputed 35 → 24; (b) MNC-404 kept
-                 strict with a scope note; (c) `match:` blocks added to every MC
-                 label (see below).
+    amended:     2026-07-28, three amendments with different provenance. Stated
+                 separately because they do not share it:
+
+                 (a) MC-114…MC-117 promoted to must-catch, and a fifth candidate
+                     folded into MC-108. Composite recomputed 35 → 24.
+                     SOURCE: the unlabeled bucket of finding-triager v0.4 runs —
+                     i.e. model output. Each was then verified in the fixture
+                     independently, but the *selection* was not independent, and
+                     that is the part that matters for a recall number. Any
+                     prompt in the finding-triager lineage scored against this
+                     label set is measured IN-SAMPLE. See
+                     evals/PROMOTION-PROTOCOL.md.
+                 (b) MNC-404 kept strict, with a scope note. No model input.
+                 (c) `match:` blocks added to every MC label (see below).
+                     Written before any triager prompt existed.
+
                  No severity, effort, confidence, evidence or composite value was
-                 changed. Added BEFORE any triager prompt existed, so nothing here
-                 is tuned to a model's output.
+                 changed by (b) or (c). (a) changed the composite, by adding
+                 labels — no existing label's verdict moved.
+    provenance:  MC-101…MC-113 (13) — planted defects, labeled 2026-07-27 from the
+                 frozen fixture, before any triager prompt existed. Independent of
+                 model output in both verification and selection.
+                 MC-114…MC-117 (4) — promoted per (a). Verified in the fixture,
+                 selected from model output. These four are why a finding-triager
+                 recall number against this label set is in-sample.
+                 MNC-401…MNC-404 (4) — written 2026-07-27. MNC-404 carries the
+                 2026-07-28 scope note from (b); the one narrowing model output
+                 did motivate (decision 23, eval/v0.1 row 2) was reverted by
+                 decision 25, so no MNC rule now rests on a run.
+                 This block is the record `evals/PROMOTION-PROTOCOL.md` rule 2
+                 points at: these labels predate the `source:` key, so the
+                 protocol's "no source means promoted" default does not apply to
+                 them.
 
 ### Amendment 2026-07-28 — `match:` blocks
 
