@@ -326,8 +326,9 @@ The harness changed six times across v0.1 → v1.0 (`evals/HARNESS-CHANGELOG.md`
 lists them and numbers the rows): four moved in the direction that let a failing
 run pass, two moved back toward strict. Each was argued from something concrete —
 a run that failed a bar, a label that would not resolve — though not every one is
-traceable to a failing run; the changelog's row 3 records no motivating run at
-all. No result in this file was measured under the pre-change harness.
+traceable to a failing run; the changelog's eval/v0.1 row 3 records no
+motivating run at all. No result in this file was measured under the
+pre-change harness.
 
 This re-scores the three recorded v0.4 runs (`runs/v0.4-run1.json`
 through `run3.json`) under the current one, with `--pack-version pack/v0.1` — the
@@ -354,8 +355,14 @@ all that existed when they were scored. Two of decision 26's four promotions
 (MC-114, MC-117) landed in the critical/high band; the runs had already been
 finding MC-114 and get credit for it now, and miss only MC-117. A 12.5-point
 drop in the rate is a band that grew by two against a run that gained one — not
-a prompt that got worse. The verdict columns carry no denominator and compare
-directly: a verdict is a boolean against the bars, not a fraction.
+a prompt that got worse. The verdict columns carry no denominator, so that same
+rate artifact does not touch them — a boolean has nothing for a growing label
+set to dilute. That is the only sense in which they compare directly. They are
+not otherwise the same test scored twice: the left-hand verdicts were computed
+under the harness as it stood before eval/v0.1 rows 5 and 6, when the
+per-template ceiling was still a hard bar and the MNC evaluator still
+hardcoded entry 02's rules, so the two sides are booleans measured against
+different bar sets.
 
 All three misses under `eval/v0.1` are the same label: MC-117 (sixteen home CTAs
 and category cards linking to `#`), one of the four promoted labels, and one the
@@ -392,15 +399,19 @@ measured against the same 17-label set this re-score uses, so on the label-set
 axis — and only that axis — v1.0's number is clean where these are not.
 
 **What this re-score does not touch.** The concern the harness version exists to
-answer is not only that the label contract grew. It is that the bars themselves
-were loosened — the per-template ceiling downgraded from a bar to advisory,
-`match.any_of` unioned into matching, the MNC-404 screen narrowed (changelog rows
-5, 1 and 2) — and that **v1.0's 17/17 was measured only on the right-hand side of
-that column.** This re-score cannot test that, and does not. The harness code as
-it stood before those changes is not reachable, so what ran here is today's
-harness against old runs, which isolates the label-contract growth (row 4) and
-nothing else. The permissive bar and matcher changes remain unmeasured against
-any run, because no recorded run predates them; nothing in this section addresses
-them, and no number above is evidence about them in either direction. Closing that
-gap needs a run scored under both harnesses, which means a future prompt version,
-not a re-score of frozen ones.
+answer is not only that the label contract grew. It is that two of the bars
+themselves were loosened and are still that way — the per-template ceiling
+downgraded from a bar to advisory, and `match.any_of` unioned into matching
+(eval/v0.1 rows 5 and 1) — and that **v1.0's 17/17 was measured only on the
+loosened side of those two.** (MNC-404 was also narrowed, eval/v0.1 row 2, but
+row 3 reverted that before v1.0 froze — see above, where the revert is exactly
+why run3 now trips `zero_mnc_violations`. It is not a standing loosening, so
+there is nothing left of it to measure.) This re-score cannot test the two that
+stand, and does not. The harness code as it stood before eval/v0.1 rows 1 and 5
+is not reachable, so what ran here is today's harness against old runs, which
+isolates the label-contract growth (eval/v0.1 row 4) and nothing else. The
+permissive ceiling and matcher changes remain unmeasured against any run,
+because no recorded run predates them; nothing in this section addresses them,
+and no number above is evidence about them in either direction. Closing that
+gap needs a run scored under both harnesses, which means a future prompt
+version, not a re-score of frozen ones.

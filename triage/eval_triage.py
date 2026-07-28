@@ -50,8 +50,9 @@ PROMPTS_DIR = ROOT / "prompts"
 
 #: The fifth provenance pin. Bump on ANY change to a bar, a matcher rule, or the
 #: label contract, and add an entry to evals/HARNESS-CHANGELOG.md. Between v0.1
-#: and v1.0 of the prompt this file's bars moved four times, each time toward
-#: letting a failing run pass, and nothing recorded that they had moved.
+#: and v1.0 of the prompt this file's bars changed six times — most, but not
+#: every one, motivated by a failing run — and nothing recorded that they had
+#: moved until this pin existed.
 HARNESS_VERSION = "eval/v0.1"
 
 SEVERITY_WEIGHT = {"critical": 15, "high": 6, "medium": 2, "low": 1}

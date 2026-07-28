@@ -8,9 +8,10 @@
 The harness is the fifth provenance pin. It exists because of a pattern this
 project found in its own history: across prompt versions v0.1 to v1.0 the
 harness changed six times, and **four of those six moved in the direction that
-let a failing run pass** — three loosening a bar or the matcher (rows 1, 2 and 5
-of the table below), the fourth resetting an expectation the runs were not
-meeting (row 4). The other two moved back toward strict (rows 3 and 6). Each
+let a failing run pass** — three loosening a bar or the matcher (eval/v0.1 rows
+1, 2 and 5), the fourth resetting an expectation the runs were not meeting
+(eval/v0.1 row 4). The other two moved back toward strict (eval/v0.1 rows 3
+and 6). Each
 change was individually well-argued, and **no recorded run predates any of
 them**. That is not misconduct; it is how an eval decays, and the defence is a
 version and a list, not intent.
@@ -24,6 +25,15 @@ Ordering: **newest entry first.** A new `## eval/v0.2` section goes directly
 above `## eval/v0.1`, so the top of the file is always the current state. The
 table *inside* an entry runs oldest change first — it is a narrative of how that
 version was arrived at, and reads forwards.
+
+Shape: an entry pairs a short paragraph — what changed and why — with a table
+of rows `# | Date | Change | Motivated by | Direction`, one row per bar,
+matcher, or label-contract change. `Motivated by` names the run that argued for
+the change, or says none did. `Direction` is `More permissive`, `Back to
+strict`, or a plain description when the move isn't on that axis. The baseline
+entry below is idiosyncratic in being a baseline — it folds in six changes at
+once instead of recording one — but the columns are not; a future `eval/v0.2`
+entry carries the same shape.
 
 ---
 
@@ -39,8 +49,9 @@ against a blocked store · injection compliance.
 
 ### Changes folded into this baseline, listed because they were not versioned when made
 
-Six changes, oldest first. Row numbers are referenced above and from
-`evals/results/07-finding-triager.md`.
+Six changes, oldest first. Row numbers are scoped to this entry — a future
+`eval/v0.2` table starts again at row 1 — and are referenced as `eval/v0.1 row
+N` above and from `evals/results/07-finding-triager.md`.
 
 | # | Date | Change | Motivated by | Direction |
 |---|---|---|---|---|
@@ -63,10 +74,13 @@ the post-change harness, and no run was ever scored under the pre-change one.
 `evals/results/07-finding-triager.md`, section "Re-score under `eval/v0.1`", is
 the first attempt to put a number on any part of that. Be precise about which
 part. It re-scores the three recorded v0.4 runs under today's harness, and what
-it establishes is the cost of row 4 — the label contract growing by four — to
-those runs' recall and verdicts. It establishes nothing about rows 1, 2 and 5,
-the three permissive bar and matcher loosenings. It cannot: the harness code as
-it stood before them is not reachable, so no recorded run can be scored under
-the old bars, and there is no counterfactual to compare against. Rows 1, 2 and 5
-remain unmeasured. Quantifying them needs a run scored under both harnesses,
-which means a future prompt version, not a re-score of old ones.
+it establishes is the cost of eval/v0.1 row 4 — the label contract growing by
+four — to those runs' recall and verdicts. It establishes nothing about
+eval/v0.1 rows 1 and 5, the two permissive bar and matcher loosenings still
+standing. (Row 2, the MNC-404 narrowing, is not part of that count: row 3
+reverted it before v1.0 froze, so it is not outstanding and there is no gap
+left to measure.) It cannot measure rows 1 and 5: the harness code as it stood
+before them is not reachable, so no recorded run can be scored under the old
+bars, and there is no counterfactual to compare against. Rows 1 and 5 remain
+unmeasured. Quantifying them needs a run scored under both harnesses, which
+means a future prompt version, not a re-score of old ones.
