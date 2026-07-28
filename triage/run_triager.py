@@ -54,7 +54,11 @@ EFFORT = "high"
 THINKING = "adaptive"
 MAX_TOKENS = 32000
 
-_FENCE = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.S)
+# Non-greedy: the contract is one JSON object and no prose, so tolerate a
+# single fence and nothing more. A greedy `.*` here would splice a reply that
+# accidentally contains a second fenced block into one invalid document —
+# spanning from the first `{` to the *last* `}` before the final fence.
+_FENCE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.S)
 
 
 def _sha256(path: Path) -> str:

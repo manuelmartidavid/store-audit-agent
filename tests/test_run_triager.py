@@ -63,6 +63,20 @@ def test_extract_json_tolerates_a_fenced_response():
         run_triager.extract_json("I could not produce JSON.")
 
 
+def test_extract_json_does_not_splice_a_second_fenced_block():
+    # A greedy capture spans from the first `{` to the *last* `}` before the
+    # final fence, swallowing a second block and the prose between them into
+    # one invalid document. The contract is one JSON object and no prose —
+    # tolerate a single fence, and return the first object intact.
+    first = {"schema": "triage/v0.1", "findings": []}
+    reply = (
+        '```json\n{"schema": "triage/v0.1", "findings": []}\n```\n'
+        "Unrelated prose the model should not have emitted.\n"
+        '```json\n{"schema": "triage/v0.2", "findings": ["decoy"]}\n```'
+    )
+    assert run_triager.extract_json(reply) == first
+
+
 def test_the_scorer_reads_both_run_shapes(tmp_path):
     bare = tmp_path / "bare.json"
     bare.write_text('{"schema": "triage/v0.1", "findings": []}', encoding="utf-8")
