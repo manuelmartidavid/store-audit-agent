@@ -240,10 +240,21 @@ impossible by construction.
 
 Costs, both recorded rather than assumed:
 
-- **+126 KB**, pack 396 → 522 KB (~133k tokens minified, ~145k as rendered).
-  Bounded — sibling-collapse caps tree breadth — but it is the first real
-  pressure on the single-pass decision, and `test_pack_fits_a_single_pass`
-  guards the headroom.
+- **+126 KB**, pack 396 → 522 KB (~220k → ~290k tokens est.; the prompt rendered
+  around the v0.2 pack **measured 315,094 tokens** — `runs/v1.0-cli-run1.json`).
+  Bounded — sibling-collapse caps tree breadth — and
+  `test_pack_fits_a_single_pass` guards the headroom.
+
+  *Corrected 2026-07-28.* This bullet read "~133k tokens minified, ~145k as
+  rendered" and called the increase "the first real pressure on the single-pass
+  decision". The KB figures were counted and stand; the token figures were the
+  same KB divided by a 4-chars-per-token prose rule, 2.16x low on dense JSON.
+  The pressure claim went with them: it was written against an assumed 200k
+  window, and `claude-opus-5` — the model this runs on — has a 1M context window
+  by default (claude-api skill, `shared/models.md`). At 290k est. the v0.2 pack
+  sits at 29% of the window, not 72%. Single-pass is not under capacity pressure;
+  the granularity argument has to stand on determinism, which is where §9 puts it
+  anyway.
 - **Pointer construction stops being a capability under test.** That is the right
   trade if pointers are plumbing: the join key exists so evidence can be checked,
   not to measure DOM navigation. Stated here so a later reader can disagree with

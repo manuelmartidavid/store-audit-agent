@@ -14,7 +14,12 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from triage import token_estimate  # noqa: E402
 
 PLACEHOLDER = "{{PACK}}"
 _FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.S)
@@ -54,7 +59,11 @@ def main(argv: list[str] | None = None) -> int:
     text, version = render(args.template, args.pack, args.indent)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(text, encoding="utf-8")
-    print(f"{args.out}  {len(text) / 1024:.0f} KB  ~{len(text) // 4000}k tokens est.  "
+    # The character count is printed beside the estimate deliberately: chars are
+    # counted, tokens are inferred, and a reader who wants to check the second
+    # needs the first. `est.` is the only thing separating the two here, so it
+    # stays. The ratio and its one measured datapoint live in token_estimate.
+    print(f"{args.out}  {len(text) / 1024:.0f} KB  {token_estimate.describe(text)}  "
           f"prompt_version={version}")
     return 0
 

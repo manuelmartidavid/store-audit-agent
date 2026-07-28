@@ -25,8 +25,34 @@ Model notes, because they are load-bearing for reproducibility:
     both are recorded.
   * Thinking is ON by default on this model, and `max_tokens` caps thinking plus
     response together — hence the generous default.
-  * The rendered prompt is ~145k tokens, so the request streams. A non-streaming
-    call at this size risks an HTTP timeout.
+  * The rendered prompt for entry 02 is **315,094 tokens**. That is measured, not
+    estimated: it is the model's own count for the one recorded run
+    (`runs/v1.0-cli-run1.json`, `run_meta.usage.raw.cache_creation_input_tokens`).
+    This docstring used to say ~145k, which came from a 4-chars-per-token prose
+    rule that is 2.16x wrong for a dense-JSON pack. The estimator now carries a
+    ratio calibrated on that measurement — `triage/token_estimate.py`.
+  * **It fits, and the reason is the model, not the backend.** `claude-opus-5`
+    has a 1M-token context window, and 1M is both its default and its maximum:
+    there is no separate 1M model id and no beta header to send (claude-api
+    skill — `shared/models.md`: "1M context window (default and maximum)";
+    `shared/model-migration.md` → Migrating to Claude Opus 5: "1M context
+    (default, no beta header)"). The CLI reporting `contextWindow: 1000000` on
+    the live run was this same model stating this same fact. So both `--via api`
+    and `--via claude-cli` are pointed at a 1M model here, and a 315k prompt is
+    at 31% of the window on either path.
+  * The request streams because of the clock, not the window. The SDK's default
+    request timeout is 10 minutes and it refuses a non-streaming call it expects
+    to exceed that. Nothing else about the documented call changes at this size:
+    the skill establishes no long-context price tier, header, or parameter that
+    engages above 200k input on this model. What it does not settle is left
+    unsaid here rather than guessed at, because a confident wrong sentence in
+    this docstring is paid for in Console credits.
+  * `main()` therefore preflights before it spends anything: it compares the
+    estimated prompt size against the target model's recorded window and exits
+    if the prompt is clearly over. The estimate is an estimate, so the guard
+    warns rather than refuses near the line, and `--ignore-context-window`
+    overrides it outright — an operator who knows better than the estimator
+    should not be held up by it.
 
 Usage:
     python triage/run_triager.py runs/v1.0.rendered.md \\
@@ -51,6 +77,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from crawler import dotenv  # noqa: E402
+from triage import token_estimate  # noqa: E402
 
 MODEL = "claude-opus-5"
 EFFORT = "high"
@@ -262,7 +289,10 @@ def call_model_via_cli(prompt: str, *, model: str, effort: str, system_prompt: s
         "--output-format", "json",
     ]
     # The prompt goes on stdin, never argv — Windows caps a command line near
-    # 32k characters, and the rendered triager prompt is ~145k tokens.
+    # 32k characters, and the rendered triager prompt is ~582k *characters*
+    # (measured on runs/v1.0.rendered.md). Characters are the unit the cap is
+    # denominated in; this comment used to argue the point in tokens, which is
+    # the wrong unit for it as well as the wrong number.
     #
     # encoding="utf-8" is not cosmetic: without it, text=True falls back to
     # locale.getpreferredencoding(), which is cp1252 on this machine. Every
@@ -364,6 +394,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--system-prompt", default=CLI_SYSTEM_PROMPT,
                          help="--via claude-cli only: the CLI's --system-prompt. The rendered "
                               "prompt carries all real instruction; this must stay neutral.")
+    parser.add_argument("--ignore-context-window", action="store_true",
+                         help="send even when the preflight estimates the prompt will not fit "
+                              "--model's context window. The preflight works off an estimate "
+                              "calibrated on one fixture (triage/token_estimate.py); this is "
+                              "the escape hatch for when you know better than it does.")
     args = parser.parse_args(argv)
 
     loaded = dotenv.load(args.env_file)
@@ -372,6 +407,20 @@ def main(argv: list[str] | None = None) -> int:
 
     started_at = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
     prompt = args.rendered.read_text(encoding="utf-8")
+
+    # Before anything is spent. Both backends send this same string to the same
+    # model, so both fail the same way if it does not fit — the api path costs
+    # Console credits to find that out and the cli path costs subscription
+    # quota. The check is on the requested model; on the cli path the CLI may
+    # resolve something else, which is exactly why call_model_via_cli reads the
+    # resolved model back out of the response rather than trusting this name.
+    verdict, message = token_estimate.context_preflight(prompt, model=args.model)
+    if verdict == "refuse":
+        if not args.ignore_context_window:
+            raise SystemExit(f"refusing to send: {message}")
+        print(f"· sending anyway, preflight overridden — {message}")
+    elif message:
+        print(f"· {message}")
 
     if args.via == "claude-cli":
         if args.max_tokens is not None:

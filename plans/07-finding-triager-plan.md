@@ -6,6 +6,18 @@
     rubric:   references/rubric.md v0.3
     note:     numbers in §2 are measured from the frozen fixture, not estimated
 
+> **Every token figure in this plan is wrong and is kept as written,
+> 2026-07-28.** "≈ 90k tokens" (§2, §9) and the "pack ≤ ~100k tokens" gate (§8
+> row 7.2) are all character counts divided by a 4-chars-per-token prose rule,
+> which measures 2.16x low on a dense-JSON pack. The v0.1 pack is ~220k tokens
+> est. and the rendered v1.0 prompt **measured 315,094**
+> (`runs/v1.0-cli-run1.json`). Nothing downstream changes: the gate was met on
+> its own terms, and the pack still fits with room to spare, because
+> `claude-opus-5` has a 1M-token context window (claude-api skill,
+> `shared/models.md`) — not the smaller budget these figures were sized against.
+> The calibrated estimator and its one measured datapoint are in
+> `triage/token_estimate.py`. Do not copy a token figure out of this file.
+
 ---
 
 ## 0. What step 7 actually is

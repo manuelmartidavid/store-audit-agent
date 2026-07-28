@@ -1174,6 +1174,18 @@ its digest, and a prompt version must name a prompt file that exists."
 
 ## Task 6: A scripted runner, with the model and its parameters recorded
 
+> **Two figures in this task are wrong and are kept as written, 2026-07-28.**
+> The docstring drafted below and the commit message at the end of Task 7 both
+> say the rendered prompt is "~145k tokens". It is 315,094 — measured from the
+> model's own usage on `runs/v1.0-cli-run1.json`. The ~145k came from a
+> 4-chars-per-token rule of thumb that is 2.16x low on a dense-JSON pack. The
+> drafted docstring also stops at "risks an HTTP timeout" when the constraint
+> worth naming first is the context window. Both are corrected in the shipped
+> `triage/run_triager.py` and the calibration now lives in
+> `triage/token_estimate.py`; they stand here because this is what the plan said
+> at the time and the Task 7 commit message is already in git history. Do not
+> copy either figure out of this file.
+
 Verified: `runs/*.json` contain exactly `{schema, findings}` — no model ID, no
 parameters, no timestamp. `evals/results/07-finding-triager.md:311-313` records
 the runs as *"independent agent sessions… There is no scripted API runner yet."*

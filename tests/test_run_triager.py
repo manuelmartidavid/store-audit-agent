@@ -264,8 +264,11 @@ def test_call_model_via_cli_builds_the_measured_argument_list(monkeypatch):
 
 
 def test_call_model_via_cli_sends_the_prompt_on_stdin_not_argv(monkeypatch):
-    # A ~145k-token rendered prompt as an argv element would blow past
-    # Windows' ~32k character command-line cap.
+    # A ~582k-character rendered prompt as an argv element would blow past
+    # Windows' ~32k character command-line cap. Characters, not tokens: this
+    # comment used to argue the point in tokens (and in the wrong number —
+    # ~145k, when the prompt measures 315k), which is not the unit the cap is
+    # denominated in.
     monkeypatch.setattr(run_triager.shutil, "which", lambda name: "/usr/bin/claude")
     captured = {}
     runner = _fake_runner(
@@ -714,3 +717,132 @@ def test_main_still_defaults_max_tokens_on_the_api_path(tmp_path, monkeypatch):
     assert rc == 0
     record = json.loads(out.read_text(encoding="utf-8"))
     assert record["run_meta"]["max_tokens"] == run_triager.MAX_TOKENS
+
+
+# --- the context-window preflight: refuse before spending, not after --------
+#
+# The bug this closes: the docstring said the prompt was ~145k tokens and that
+# the risk at that size was an HTTP timeout. Both were wrong — it measures 315k,
+# and the constraint worth checking first is the context window. Nothing checked
+# it, so the way to discover a prompt that does not fit was to send it and pay.
+#
+# These sit against claude-haiku-4-5's 200k window rather than claude-opus-5's
+# 1M, purely so the temp prompt is 500 KB instead of 2.5 MB. The guard does the
+# same arithmetic either way; what differs is only the number it looks up.
+
+_OVER_THE_HAIKU_WINDOW = 500_000    # ≈ 270k tokens est. — 35% over 200k
+_ON_THE_HAIKU_LINE = 370_000        # ≈ 200k tokens est. — inside the grey zone
+
+
+def _prompt_files(tmp_path, characters: int):
+    rendered = tmp_path / "r.md"
+    rendered.write_text("x" * characters, encoding="utf-8")
+    pack = tmp_path / "p.json"
+    pack.write_text('{"pack": "pack/v0.2"}', encoding="utf-8")
+    return rendered, pack
+
+
+def test_main_refuses_before_spending_when_the_prompt_cannot_fit(tmp_path, monkeypatch):
+    rendered, pack = _prompt_files(tmp_path, _OVER_THE_HAIKU_WINDOW)
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("the preflight must exit before any request is made")
+    monkeypatch.setattr(run_triager, "call_model", _boom)
+    monkeypatch.setattr(run_triager, "call_model_via_cli", _boom)
+
+    with pytest.raises(SystemExit) as exit_info:
+        run_triager.main([
+            str(rendered), "--pack", str(pack),
+            "--prompt-version", "finding-triager/v1.0",
+            "-o", str(tmp_path / "out.json"),
+            "--model", "claude-haiku-4-5",
+            "--env-file", str(tmp_path / "does-not-exist.env"),
+        ])
+
+    message = str(exit_info.value)
+    # The message has to name all four so the operator can act on it without
+    # reading the source: the estimate, the window, the model, and the way out.
+    assert "270," in message or "270" in message
+    assert "200,000-token context window" in message
+    assert "claude-haiku-4-5" in message
+    assert "--ignore-context-window" in message
+    assert not (tmp_path / "out.json").exists()
+
+
+def test_main_warns_but_still_sends_inside_the_grey_zone(tmp_path, monkeypatch, capsys):
+    # The estimate is calibrated on one fixture. Near the limit it cannot tell
+    # which side of the line the prompt is on, and refusing on that would be the
+    # same overreach in the other direction.
+    rendered, pack = _prompt_files(tmp_path, _ON_THE_HAIKU_LINE)
+    out = tmp_path / "out.json"
+
+    def _fake_call_model(prompt, *, model, effort, max_tokens):
+        return '{"schema": "triage/v0.1", "findings": []}', {
+            "input_tokens": 1, "output_tokens": 1, "stop_reason": "end_turn"}
+    monkeypatch.setattr(run_triager, "call_model", _fake_call_model)
+
+    rc = run_triager.main([
+        str(rendered), "--pack", str(pack),
+        "--prompt-version", "finding-triager/v1.0",
+        "-o", str(out), "--model", "claude-haiku-4-5",
+        "--env-file", str(tmp_path / "does-not-exist.env"),
+    ])
+
+    assert rc == 0
+    assert out.exists()
+    printed = capsys.readouterr().out
+    assert "within 10% of the limit" in printed
+    assert "warning and not a refusal" in printed
+
+
+def test_main_sends_anyway_when_the_operator_overrides_the_preflight(tmp_path, monkeypatch, capsys):
+    # An operator who knows the estimator is wrong about this pack must not be
+    # blocked by it — but the override still says out loud what it overrode.
+    rendered, pack = _prompt_files(tmp_path, _OVER_THE_HAIKU_WINDOW)
+    out = tmp_path / "out.json"
+
+    def _fake_call_model(prompt, *, model, effort, max_tokens):
+        return '{"schema": "triage/v0.1", "findings": []}', {
+            "input_tokens": 1, "output_tokens": 1, "stop_reason": "end_turn"}
+    monkeypatch.setattr(run_triager, "call_model", _fake_call_model)
+
+    rc = run_triager.main([
+        str(rendered), "--pack", str(pack),
+        "--prompt-version", "finding-triager/v1.0",
+        "-o", str(out), "--model", "claude-haiku-4-5",
+        "--ignore-context-window",
+        "--env-file", str(tmp_path / "does-not-exist.env"),
+    ])
+
+    assert rc == 0
+    assert out.exists()
+    assert "sending anyway, preflight overridden" in capsys.readouterr().out
+
+
+def test_main_preflight_passes_the_real_prompt_against_the_real_model(tmp_path, monkeypatch, capsys):
+    # The regression that matters: a 315k-token prompt against claude-opus-5's
+    # 1M window is at 31% of capacity and must sail through silently. A guard
+    # that fired here would have blocked the one run this branch measured.
+    rendered, pack = _prompt_files(tmp_path, run_triager.token_estimate.CALIBRATION_CHARS)
+    out = tmp_path / "out.json"
+
+    def _fake_call_model(prompt, *, model, effort, max_tokens):
+        return '{"schema": "triage/v0.1", "findings": []}', {
+            "input_tokens": 1, "output_tokens": 1, "stop_reason": "end_turn"}
+    monkeypatch.setattr(run_triager, "call_model", _fake_call_model)
+
+    rc = run_triager.main([
+        str(rendered), "--pack", str(pack),
+        "--prompt-version", "finding-triager/v1.0",
+        "-o", str(out),
+        "--env-file", str(tmp_path / "does-not-exist.env"),
+    ])
+
+    assert rc == 0
+    printed = capsys.readouterr().out
+    # Phrase-matched, not word-matched: pytest's tmp_path is named after this
+    # test, so the word "preflight" is in the output path regardless.
+    assert "preflight overridden" not in printed
+    assert "refusing to send" not in printed
+    assert "within 10% of the limit" not in printed
+    assert "no context window is recorded" not in printed

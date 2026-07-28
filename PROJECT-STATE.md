@@ -360,9 +360,12 @@ Full record: `evals/results/07-finding-triager.md`. Repo is now under git
 (fixtures ignored; the manifest hash is the commitment).
 
 Built: `specs/triager-io.md` (triage/v0.1 output contract, frozen) ·
-`triage/pack_evidence.py` (pack/v0.1 — 396 KB / ~101k tokens for six templates,
-so single-pass triage is viable and granularity is a determinism choice, not a
-capacity one) · `prompts/finding-triager/v0.1–v0.4` + registry ·
+`triage/pack_evidence.py` (pack/v0.1 — 396 KB / ~220k tokens est. for six
+templates, so single-pass triage is viable and granularity is a determinism
+choice, not a capacity one; the figure read "~101k" until 2026-07-28, at a
+4-chars-per-token prose rule that is 2.16x low on dense JSON — the conclusion is
+unchanged and in fact safer, because `claude-opus-5`'s window is 1M) ·
+`prompts/finding-triager/v0.1–v0.4` + registry ·
 `triage/render_prompt.py` · `triage/eval_triage.py` (label parser, normalized
 matcher, tiered recall, severity/effort agreement, composite, MNC screens,
 automatic fails) · 48 new tests.
@@ -634,8 +637,13 @@ Blocking a real deliverable, in order:
 4. **One theme, one vertical.** `tsc-theme-v3` is a hand-built dev theme; only
    `collectibles` exercises the material-facts table. `makerlab` (real, app-heavy,
    7 apps) is captured but stale under crawler 0.1.0.
-5. **No runner, no cost data.** ~145k input tokens per store per run; latency and
-   spend unmeasured. The 21 recorded runs were agent sessions.
+5. **No runner, no cost data.** **315,094** input tokens per store per run —
+   measured from the model's own usage on the one recorded run
+   (`runs/v1.0-cli-run1.json`). This line read "~145k" until 2026-07-28; that
+   figure was the pack's character count divided by a 4-chars-per-token prose
+   rule, which is 2.16x low on dense JSON (`triage/token_estimate.py` now carries
+   a ratio calibrated on the measurement). Latency and portfolio-scale spend are
+   still unmeasured. The 21 recorded runs were agent sessions.
 
 ### Sequencing note - v1.0's numbers have a shelf life
 
