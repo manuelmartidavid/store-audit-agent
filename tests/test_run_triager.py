@@ -95,11 +95,45 @@ def test_the_scorer_reads_both_run_shapes(tmp_path):
     assert meta["model"] == "claude-opus-5"
 
 
-def test_the_21_recorded_runs_still_load():
-    for path in sorted((ROOT / "runs").glob("*.json")):
+_FROZEN_RUN_NAMES = frozenset(
+    [f"v0.{minor}-run{n}" for minor in range(1, 7) for n in (1, 2, 3)]
+    + [f"05-v1.0-run{n}" for n in (1, 2, 3)])
+
+
+def test_the_21_frozen_runs_are_still_bare_and_none_are_missing():
+    """The 21 runs recorded as interactive agent sessions (before
+    `triage/run_triager.py` existed) are provenance, not output — their bytes
+    are the evidence that nothing rewrote them into a newer shape. Runs the
+    runner itself produces (e.g. v1.0-cli-run1.json) are *supposed* to be
+    wrapped in `{run_meta, output}`; asserting bareness across the whole
+    directory was catching the wrapper doing its job, not a regression. So
+    this test pins bareness to the frozen 21 by name, and separately requires
+    the recorded set be exactly that size — deleting one of the 21 must fail
+    this test just as loudly as rewriting one does.
+    """
+    frozen = {name: ROOT / "runs" / f"{name}.json" for name in _FROZEN_RUN_NAMES}
+    assert len(frozen) == 21
+    for name, path in sorted(frozen.items()):
+        assert path.is_file(), f"{name}.json is missing from runs/ — the frozen set changed"
         output, meta = eval_triage.load_run_output(path)
+        assert output.get("schema") == "triage/v0.1", name
+        assert meta is None, f"{name}.json was rewritten — recorded runs are frozen"
+
+
+def test_every_other_run_file_still_loads_a_valid_triage_output():
+    # Anything in runs/*.json outside the frozen 21 is allowed — expected,
+    # even — to be wrapped by run_triager.py. But "allowed to be wrapped"
+    # isn't "allowed to be garbage": a malformed new run file should still
+    # fail somewhere, not slide through unnoticed just because it's exempt
+    # from the bareness rule above.
+    other_paths = [
+        path for path in sorted((ROOT / "runs").glob("*.json"))
+        if path.stem not in _FROZEN_RUN_NAMES
+    ]
+    assert other_paths, "expected at least one non-frozen run file (e.g. a runner-produced run)"
+    for path in other_paths:
+        output, _meta = eval_triage.load_run_output(path)
         assert output.get("schema") == "triage/v0.1", path.name
-        assert meta is None, f"{path.name} was rewritten — recorded runs are frozen"
 
 
 # --- --via claude-cli backend -----------------------------------------------
