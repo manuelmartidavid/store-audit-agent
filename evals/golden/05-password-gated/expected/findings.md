@@ -2,27 +2,38 @@
 
     schema:    findings/v0.1
     labeled:   PENDING capture — but the labels below do not depend on it
-    rubric:    rubric.md v0.2 (written against; v0.3 changed §2 only)
+    rubric:    rubric.md v0.2 (written against; v0.3 changed §2 only;
+               v0.5 struck §1's "store unreachable" — decision 30 — which
+               removed a contradiction with this file and changed no label here)
     store:     torontosportscard.myshopify.com, crawled with no password
     first run: 2026-07-28, finding-triager v1.0 × 3 against fixtures/05.
-               1 of 3 behaved as labeled. MNC-002/003/004 held in all three;
-               MNC-001 was violated by two — see the note below, which is an
-               OPEN CONTRADICTION and not a settled verdict.
-               Record: evals/results/05-blocked-path.md
+               1 of 3 behaved as labeled; MNC-002/003/004 held in all three.
+               The two MNC-001 violations were traced to the rubric, not the
+               model — see below. Record: evals/results/05-blocked-path.md
+    then:      2026-07-28, finding-triager v1.1 × 3. **3 of 3.**
 
-## OPEN — MNC-001 contradicts rubric §1
+## RESOLVED — decision 30 (2026-07-28)
 
-MNC-001 requires an empty findings array. Rubric §1 lists **"store unreachable"**
-verbatim as representative `critical` evidence, and the triager prompt inlines §1
-because the rubric *is* its bounded vocabulary. So the prompt instructs the model
-to do what this file forbids, and two of three runs obeyed the prompt.
+This file previously carried an OPEN block recording MNC-001 as contradicting
+rubric §1, which listed **"store unreachable"** as representative `critical`
+evidence. The contradiction was real but mis-attributed: **rubric §6 rule 3
+already forbade emitting any finding for an unreachable store**, so MNC-001
+restated the rubric rather than opposing it, and the conflict was internal to
+the rubric — §1 against §6.
 
-Nothing below has been changed in response. The resolution is a rubric decision
-(strike or reword the "store unreachable" row so a finding always describes a
-page somebody looked at, leaving the gate to the report's `null` / INACCESSIBLE
-state per §4 rule 3) and a rubric change invalidates every label written against
-v0.3. Do not resolve it by inference; the argument on both sides is written up in
-evals/results/05-blocked-path.md.
+Two further facts settled it. The triager prompt inlines §1 but **not** §6, so
+the model had exactly one rule about unreachable stores and two of three runs
+applied it correctly. And no label in this file or in entry 02 was written
+against the struck clause.
+
+**Resolution: rubric v0.5 strikes `· store unreachable` from §1** and adds §1
+tie-break rule 6 (a finding describes a defect on a template that was captured).
+`finding-triager/v1.1` carries the corrected §1 plus the blocked-store
+instruction v1.0 lacked entirely. **Nothing in this file changed except this
+header and MNC-001's `reason`, which now cites its source.** No verdict was
+recomputed: v1.0 runs 1 and 2 still fail, run 3 still passes.
+
+Full argument: `plans/09-decision-30-store-unreachable.md`.
 
 ## Why this file is writable before the fixture exists
 
@@ -43,9 +54,19 @@ not treat an empty section as unlabeled.
 ```yaml
 type: forbidden_finding
 scope: [all]
+derives_from: >
+  rubric.md §6 rule 3 (automatic fail — blocked-store fabrication), restated
+  here as an entry-level screen. Since v0.5 it is also §1 tie-break rule 6,
+  from the severity side. Not `source:` — that key is reserved by
+  evals/PROMOTION-PROTOCOL.md for how a label entered the set, and this label
+  was neither planted nor promoted.
 reason: >
   No template was reachable. Every category is unobserved. A finding here
   is invented in the strictest sense — there is no page it could describe.
+  It also cannot cite anything: a blocked crawl has no distilled tree, so
+  `crawl:home` does not resolve and the finding trips automatic fail #2 on
+  emission. This label is not an extra bar the entry invents; it is the
+  rubric's own clause, made checkable.
 ```
 
 ### MNC-002 — No composite score, and specifically not zero

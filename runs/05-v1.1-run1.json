@@ -1,0 +1,57 @@
+{
+  "run_meta": {
+    "model": "claude-opus-5",
+    "effort": "high",
+    "prompt_version": "finding-triager/v1.1",
+    "rendered_sha256": "c18827b617a56309e8d73d307fe06e66917b0e72b49a974ffb8576dc89e0dc06",
+    "pack_sha256": "548fd1b9cc1219ee8e25236c9d40aae694a37dc32f1462672a9e3695daaf1fc2",
+    "started_at": "2026-07-28T23:46:53+08:00",
+    "via": "claude-code-cli",
+    "cli_version": "2.1.218 (Claude Code)",
+    "system_prompt": "You are being evaluated. Follow the user message exactly. Do not add instructions, context, or behavior beyond what it specifies.",
+    "comparability": "NOT COMPARABLE to an anthropic-sdk run: max_tokens and thinking are not controllable through the claude-code-cli path, and roughly 1.7k tokens of Claude Code harness context (system prompt scaffolding, even with --tools \"\" --strict-mcp-config) precede the prompt on every request. effort and the resolved model ARE pinned on this path, the same as on anthropic-sdk, so those two fields \u2014 and only those two \u2014 can be compared across the two backends.",
+    "resolved_model": "claude-opus-5",
+    "total_cost_usd": 0.11302000000000001,
+    "session_id": "8839fbe2-2159-4bcb-bf7e-42d65707fff5",
+    "num_turns": 1,
+    "usage": {
+      "input_tokens": 2,
+      "output_tokens": 22,
+      "raw": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 11246,
+        "cache_read_input_tokens": 0,
+        "output_tokens": 22,
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 11246,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 22,
+            "cache_read_input_tokens": 0,
+            "cache_creation_input_tokens": 11246,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 11246
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "stop_reason": "end_turn"
+    }
+  },
+  "output": {
+    "schema": "triage/v0.1",
+    "findings": []
+  }
+}

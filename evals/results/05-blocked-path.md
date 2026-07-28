@@ -1,4 +1,11 @@
-# Entry 05 (blocked) — first run through `finding-triager` v1.0
+# Entry 05 (blocked) — `finding-triager` v1.0, then v1.1
+
+Two sections, in order: the v1.0 runs that found the contradiction, then the
+v1.1 runs after decision 30 resolved it. The first section is left as written.
+
+---
+
+## Part one — first run through `finding-triager` v1.0
 
     date:     2026-07-28
     entry:    evals/golden/05-password-gated
@@ -10,6 +17,9 @@
     status:   1 of 3 runs behaves as labeled. **Not a v1.0 regression — it exposed
               a contradiction between the rubric and the labels, plus four harness
               bugs.**
+    then:     **decision 30 resolved the contradiction against §1** (rubric v0.5),
+              and finding-triager/v1.1 ran 3 × 3 of 3. See the last section — and
+              read its caveat, because it is fix verification, not a measurement.
 
 Run opportunistically while assessing readiness. It was the cheapest unmeasured
 thing in the project and it returned more than the recall numbers did.
@@ -38,7 +48,15 @@ The blocked pack itself is clean: `status: blocked`, all six templates `blocked`
 `platform: "unknown"` (the §6 no-inference-at-the-data-layer rule), zero nodes
 stamped with `@`, 3.1 KB.
 
-## The contradiction — needs a call, do not resolve by inference
+## The contradiction — RESOLVED by decision 30, argument kept below as written
+
+> **Resolved 2026-07-28.** Rubric v0.5 strikes `· store unreachable` from §1.
+> The argument below is left unedited because it is the record of what was
+> known at the time — but it missed the decisive fact, and the correction is
+> worth reading before the argument: **§6 rule 3 already forbade emitting a
+> finding for an unreachable store.** The conflict was §1 against §6, internal
+> to the rubric; MNC-001 restated §6 rather than opposing §1 on its own
+> authority. Full reasoning: `plans/09-decision-30-store-unreachable.md`.
 
 Entry 05's **MNC-001** requires an empty findings array: *"No template was
 reachable… A finding here is invented in the strictest sense — there is no page it
@@ -114,3 +132,62 @@ contradiction, not a capability failure.
 It says nothing about the false-positive question. `fixtures/05` is a store with
 **nothing to see** — the opposite failure mode from a healthy store with
 **little** to see. Entry 01 remains unmeasured and unselected.
+
+---
+
+## Part two — `finding-triager` v1.1, after decision 30
+
+    date:    2026-07-28
+    prompt:  finding-triager/v1.1 — v1.0 plus the corrected §1 row and an
+             explicit blocked-store instruction (v1.0 had none at all)
+    rubric:  rubric.md v0.5+25947ede
+    pack:    pack/v0.2 (matched) — packs/05.pack.json, 3.1 KB
+    fixture: 12899ce706b9 (self-derived)
+    harness: eval/v0.2+be495691
+    runs:    runs/05-v1.1-run1.json … run3.json, --via claude-cli,
+             claude-opus-5, effort=high
+
+| | findings | composite | status | all bars | verdict |
+|---|---|---|---|---|---|
+| run 1 | **0** | `null` | INACCESSIBLE | green | **PASS** |
+| run 2 | **0** | `null` | INACCESSIBLE | green | **PASS** |
+| run 3 | **0** | `null` | INACCESSIBLE | green | **PASS** |
+
+Every run emitted exactly `{"schema": "triage/v0.1", "findings": []}` — 22 output
+tokens. Against v1.0's 2 of 3 emitting a `critical` for the gate itself, on the
+same fixture.
+
+## What this result is worth — read this before quoting the 3 of 3
+
+**It is fix verification, not a measurement.** The prompt was changed in direct
+response to the failure it is being tested against, which is the weakest possible
+in-sample position — closer to a regression test than an eval.
+`evals/PROMOTION-PROTOCOL.md` rule 3 governs: say so wherever the number appears.
+
+Three further limits, none of which the green bars distinguish between:
+
+1. **MNC-002, MNC-003 and MNC-004 pass by construction here.** With an empty
+   findings array there is nothing for a forbidden-claim pattern to match. The
+   *informative* result for those three traps is still the v1.0 run above, where
+   the model emitted a finding and the traps had something to fire on and held
+   anyway. v1.1's three runs re-test **MNC-001 only**.
+2. **`critical_high_recall_100` and `medium_low_recall_75` report `None`,** not
+   `True`. Entry 05 has no must-catch labels, so there is no recall to measure.
+   A blocked entry can demonstrate restraint; it cannot demonstrate detection.
+3. **n=3 on one blocked fixture the prompt was written for.** A genuine
+   measurement of blocked-store handling needs a second blocked fixture v1.1 was
+   not tuned against. None exists. Not blocking; named so it is not forgotten.
+
+## Two notes on the CLI backend's numbers
+
+Usage reads `2 in / 22 out` per run. The `2` is not the prompt size — the
+claude-cli path bills the 26 KB prompt as `cache_creation_input_tokens: 11246`,
+reported separately from `input_tokens`. Anyone comparing this against
+`runs/v1.0-cli-run1.json`'s 315,094 in should read `usage.raw`, not `usage`.
+
+`run_triager.py` crashed *after* run 1 had called the model and written its
+record: a Windows console is cp1252 and cannot encode the `✓` in the success
+line, so a completed, paid-for run exited non-zero on its own report. Fixed by
+reconfiguring stdout/stderr to UTF-8 with `errors="replace"` — a console that
+cannot render a character should degrade, never abort. Run 1's record predates
+the fix and is unaffected by it; the record is written before the print.
