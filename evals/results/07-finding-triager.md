@@ -9,7 +9,9 @@
     prompts:  finding-triager v0.1 → v1.0, 3 runs each, nothing else varied within a version
     status:   **v1.0 FROZEN 2026-07-28** — 3 of 3 runs clear every bar at 17/17 recall,
               in-sample (four of the 17 labels were promoted from v0.4 run output —
-              `evals/PROMOTION-PROTOCOL.md`)
+              `evals/PROMOTION-PROTOCOL.md`). Under the per-template ceiling as it
+              stood before decision 27, the same runs are 1 of 3 — see "The ceiling
+              counterfactual" below.
     packs:    pack/v0.1 for v0.1–v0.4 · pack/v0.2 for v0.5–v1.0
     labels:   13 must-catch for v0.1–v0.4 · 17 for v0.5–v1.0 (four promoted 2026-07-28)
 
@@ -132,7 +134,9 @@ a bar belongs to the layer that can act on it. It is also, unavoidably, a bar
 being relaxed by the person whose runs it was failing — so it is flagged here as
 the fourth judgment call, alongside the three below, and
 `test_the_ground_truth_itself_sits_at_the_pdp_ceiling` now guards the labels so a
-future promotion past eight is a decision rather than a discovery.
+future promotion past eight is a decision rather than a discovery. What that
+relaxation is worth to this document's headline result is measured below, under
+"The ceiling counterfactual".
 
 ## What each version changed, and why
 
@@ -417,9 +421,94 @@ why run3 now trips `zero_mnc_violations`. It is not a standing loosening, so
 there is nothing left of it to measure.) This re-score cannot test the two that
 stand, and does not. The harness code as it stood before eval/v0.1 rows 1 and 5
 is not reachable, so what ran here is today's harness against old runs, which
-isolates the label-contract growth (eval/v0.1 row 4) and nothing else. The
-permissive ceiling and matcher changes remain unmeasured against any run,
-because no recorded run predates them; nothing in this section addresses them,
-and no number above is evidence about them in either direction. Closing that
-gap needs a run scored under both harnesses, which means a future prompt
-version, not a re-score of frozen ones.
+isolates the label-contract growth (eval/v0.1 row 4) and nothing else. Nothing
+in this section addresses rows 1 and 5, and no number above is evidence about
+them in either direction.
+
+> **Correction to this paragraph, 2026-07-28.** It used to go further and say
+> the two could not be measured at all — that closing the gap needed a run
+> scored under both harnesses, so a future prompt version rather than a re-score
+> of frozen ones. That is wrong for eval/v0.1 row 5, which the next section
+> measures without any old code and without a new run. It still holds for
+> eval/v0.1 row 1, and the next section ends by saying precisely why the two
+> differ.
+
+## The ceiling counterfactual (2026-07-28) — what `eval/v0.1` row 5 costs the headline
+
+**Method, and why no old harness code is needed.** Decision 27 did not stop the
+scorer computing the per-template ceiling; it moved where the ceiling binds. The
+scorer still counts breaches per template and prints them on every run —
+
+```
+ceilings  20/25 total, per-template over 8: {'pdp': 9} (advisory — report layer)
+```
+
+— it just no longer folds that map into `bars`. Under the pre-decision-27
+harness, a non-empty breach map is exactly what failed a run. So the old rule
+applies to today's output directly: reading the counterfactual is reading that
+one line. No unreachable harness code is involved, and no new run is needed.
+
+What that isolates is one change and no more — the eval/v0.1 row 5 bar,
+re-applied to today's scoring. The matcher, the 17-label contract and the MNC
+evaluator are all held at today's state, exactly as they are in the re-score
+above. This is not a run scored under the whole pre-v1.0 harness and does not
+claim to be.
+
+**The four runs of the v1.0 lineage, each scored today** with
+`python triage/eval_triage.py runs/<file> --prompt-version finding-triager/<v>`:
+
+| run | per-template over 8 | total | every bar today |
+|---|---|---|---|
+| `runs/v0.6-run1.json` | none | 20/25 | PASS |
+| `runs/v0.6-run2.json` | `{'pdp': 9}` | 20/25 | PASS |
+| `runs/v0.6-run3.json` | `{'pdp': 9}` | 19/25 | PASS |
+| `runs/v1.0-cli-run1.json` | `{'pdp': 11, 'home': 9}` | 21/25 | PASS |
+
+Every other bar reads `True` on every one of these runs — both recall bands,
+injection, MNC, total ceiling, schema — and none of them trips an automatic
+fail, which is what the `RESULT: PASS` in the last column reports. That is what
+makes the reading clean: a breaching run would have failed on the per-template
+bar and on nothing else, so the breach map alone decides the old verdict.
+
+**Headline: this document's "3 of 3 runs clear every bar" is 1 of 3 under the
+per-template ceiling as it stood before decision 27.** Only run 1 keeps its
+PASS. Runs 2 and 3 each put nine findings on the PDP against a cap of eight.
+
+**What this rests on.** The three recorded v0.6 runs alone — one prompt, one
+pack, one backend, the three runs the freeze was declared on.
+`runs/v1.0-cli-run1.json` is a fourth data point and is deliberately not part of
+that basis: it was produced through a different execution backend
+(`run_meta.via = "claude-code-cli"`), and its own `run_meta.comparability` says
+only `effort` and the resolved model compare across backends — `max_tokens` and
+thinking are not controllable on that path, and roughly 1.7k tokens of harness
+context precede the prompt on every request. Findings-per-template is not on the
+short list it says is comparable, so it is cited here as corroboration, not as a
+fourth measurement. It is worth citing anyway for one reason: it breaches harder
+than any recorded run — eleven findings on the PDP and nine on home, two
+templates rather than one — which is some evidence that the breach is a standing
+property of a prompt at full recall against this ground truth rather than a
+fluke of one recorded sample.
+
+**Two things are true at once, and the write-up needs both.** The argument for
+the downgrade is above, under "The fourth harness judgment call", and nothing
+measured here weakens it: the 17-label ground truth itself puts eight must-catch
+findings on the PDP, so a run at full recall has zero headroom; both recorded
+breaches were presence-checklist item 5, a real defect this prompt instructs the
+model to look for; and rubric §5's cap is a report behaviour the triager cannot
+perform, because it does not compute roadmap rank. The bar was moved to the
+layer that can act on it, for reasons that stand. It is also **load-bearing for
+the headline**: v1.0's clean sweep is the prompt and that harness change
+together, and two thirds of it would not survive the change being undone. A
+reader who takes "3 of 3 runs clear every bar" as a fact about the prompt alone
+is concluding more than these runs support, which is why it is stated here in
+the same section as the argument that justifies it.
+
+**What this still does not measure: `eval/v0.1` row 1.** The `match.any_of`
+union happens inside matching, and the scorer reports what matching concluded,
+not what it would have concluded with the union off — no printed line
+distinguishes a label matched through `evidence` from one matched through
+`any_of`. Row 5 was readable because the quantity the old bar acted on is still
+computed and still printed; row 1's is neither. So row 1 is not measurable by
+this method and remains unmeasured, and getting a number for it means running
+the matcher both ways over the same runs — harness code that does not exist
+today — not reading recorded output more carefully.

@@ -119,6 +119,9 @@ measures.
 
 **Consequence to state plainly:** every recorded v1.0 result was measured under
 the post-change harness, and no run was ever scored under the pre-change one.
+That is a statement about which code ran, not about what is knowable: for one of
+the six changes the old verdict is recoverable from post-change output, and it
+has been recovered — see row 5 below.
 
 `evals/results/07-finding-triager.md`, section "Re-score under `eval/v0.1`", is
 the first attempt to put a number on any part of that. Be precise about which
@@ -128,8 +131,30 @@ four — to those runs' recall and verdicts. It establishes nothing about
 eval/v0.1 rows 1 and 5, the two permissive bar and matcher loosenings still
 standing. (Row 2, the MNC-404 narrowing, is not part of that count: row 3
 reverted it before v1.0 froze, so it is not outstanding and there is no gap
-left to measure.) It cannot measure rows 1 and 5: the harness code as it stood
-before them is not reachable, so no recorded run can be scored under the old
-bars, and there is no counterfactual to compare against. Rows 1 and 5 remain
-unmeasured. Quantifying them needs a run scored under both harnesses, which
-means a future prompt version, not a re-score of old ones.
+left to measure.) That re-score cannot measure rows 1 or 5: the harness code as
+it stood before them is not reachable, so no recorded run can be re-run through
+the old bars.
+
+**eval/v0.1 row 5 has since been measured by other means, and the earlier claim
+here that it could not be was wrong.** Decision 27 did not stop the scorer
+computing the per-template ceiling — it only stopped the ceiling entering
+`bars`. Every run still prints its breach map (`per-template over 8: {...}
+(advisory — report layer)`), and under the old rule a non-empty breach map is
+exactly what failed a run, so the counterfactual reads straight off today's
+output with no old code involved. Scored that way, two of the three recorded
+v0.6 runs breach, and **v1.0's headline "3 of 3 runs clear every bar" is 1 of 3
+under the pre-decision-27 harness.** That does not undo the argument for the
+downgrade recorded in row 5 — the breaching finding is true and the prompt
+instructs the model to look for it — but it does make the downgrade load-bearing
+for the headline. The runs, the method, the scope of the claim and both of those
+truths are in `evals/results/07-finding-triager.md`, section "The ceiling
+counterfactual".
+
+**eval/v0.1 row 1 is a different case and does remain unmeasured.** The
+`match.any_of` union happens *inside* matching, and the scorer reports what
+matching concluded, not what it would have concluded with the union off —
+nothing in a run's output distinguishes a label matched through `evidence` from
+one matched through `any_of`. There is no printed line to read the
+counterfactual off. Quantifying row 1 needs the matcher itself run both ways
+against the same runs — harness code that does not exist today — not a reading
+of recorded output.
