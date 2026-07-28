@@ -305,12 +305,15 @@ python triage/pack_evidence.py fixtures/02-sabotaged \
 python triage/render_prompt.py prompts/finding-triager/v1.0.md \
     --pack packs/02-sabotaged.pack.json --indent 0 -o runs/v1.0.rendered.md
 # run the rendered prompt, capture the JSON, then:
-python triage/eval_triage.py runs/v1.0-run1.json --prompt-version finding-triager/v1.0
+python triage/eval_triage.py runs/v0.6-run1.json --prompt-version finding-triager/v0.6
 ```
 
 > Paths corrected 2026-07-28: decision 28 split `scripts/` by concern.  <!-- STALE-OK -->
 > The commands above are the ones that run today; the results in this file
 > were produced by the same code under its former path.
+>
+> v1.0 is v0.6 frozen with new front matter; the recorded runs against entry 02 are the `v0.6-run*.json` files.
+> No `runs/v1.0-run*.json` exists for entry 02, so the reproduction command names the underlying measured run.
 
 Runs were executed as independent agent sessions against the rendered prompt,
 each one told to read nothing else in the repository. There is no scripted API
