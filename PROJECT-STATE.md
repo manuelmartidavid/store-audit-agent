@@ -1,8 +1,12 @@
 # Store Audit Agent — project state
 
-    updated:  2026-07-28 (v1.0 frozen · repo consolidated · entry 05 first-run ·
+    updated:  2026-07-29 (v1.0 frozen · repo consolidated · entry 05 first-run ·
               step 8 measurement hardening · pushed to a private GitHub remote ·
               step 8 merged to main · decision 30 → rubric v0.5, prompt v1.1)
+    note:     decision 30 was argued, run and verified on 2026-07-28; its six
+              commits landed 2026-07-29 00:02 across the midnight boundary. Files
+              written that evening carry the 28th, and that is the decision date.
+              Only this header and the branch's commit stamps say the 29th.
     supersedes: phase-numbering in 02-store-audit-brief.md (workflow detached from
                 numbered phases by explicit decision; gates kept, sequence dropped)
     for Claude: treat this file as ground truth for decisions. Do not re-open
@@ -78,13 +82,15 @@ Top project risk: fabricated impact claims. Every quantified claim must cite
     never observes price. This makes P-04's free-app plant a test of the rule
     rather than a stretch of it.
 
-## Rubric essentials (full text: rubric.md v0.4)
+## Rubric essentials (full text: rubric.md v0.5)
 
 - Severity: critical = blocks purchase or indexing on a revenue template
   (home/collection/pdp/cart) · high = measurable degradation on revenue template,
   all sessions (LCP>4.0s, CLS>0.25) · medium = non-revenue template or subset of
   sessions (LCP 2.5–4.0) · low = hygiene. Boundary values take the LOWER level.
-  Severity never depends on effort or commercial framing.
+  Severity never depends on effort or commercial framing. **A finding describes a
+  defect on a template that was captured** (§1 rule 6, v0.5 — decision 30);
+  whether the store was reachable at all is a crawl fact, not a finding.
 - Effort: trivial <30min / small ≤2h / medium ≤2d / large >2d. Removing any
   third-party app, paid or free, is minimum `medium` (commercial decision). Effort never enters the score;
   drives roadmap order only: sort by severity_weight ÷ effort_cost (1/2/5/10).
@@ -195,8 +201,17 @@ sees it.
     not after. The freeze is one recapture with the app enabled, so tuning
     without it tunes against a configuration that will not exist — and P-02's
     3.0–3.8s window cannot absorb a widget added afterwards.
-- Prompts written: `finding-triager` v0.1–v0.6 + **v1.0 frozen**. Runs recorded:\n  18 against entry 02, 3 against entry 05.
+- Prompts written: `finding-triager` v0.1–v0.6 · **v1.0 frozen** · **v1.1**
+  (decision 30). **25 run records on disk**, and they are not interchangeable:
+
+      entry 02   18  v0.1–v0.6 × 3, agent sessions, no recorded model
+      entry 02    1  runs/v1.0-cli-run1.json — the first with a recorded model
+      entry 05    3  v1.0 — 1 of 3 as labeled; found the §1/§6 contradiction
+      entry 05    3  v1.1 — 3 of 3, after decision 30
+
   `impact-narrator` and `report-composer` still none.
+  (This line previously carried a literal `\n` mid-sentence from a bad edit, and
+  said 21 runs. Both fixed 2026-07-29.)
 - Entries 01 (clean theme demo) and 04 (WooCommerce, reduced path + null-AOV
   trap): stores not yet selected. Entry 03 candidate: makerlab (captured).
 
@@ -577,8 +592,16 @@ sections the triager prompt inlines. Consequences:
   `score_is_null_and_status_is_INACCESSIBLE`. Verdicts unchanged: 1 of 3 pass.
 
 This is the narrow kind of rubric change — the kind that does not invalidate the
-golden set. The open decision above (MNC-001 vs §1 "store unreachable") is the
-other kind, and is still open.
+golden set. The open decision above (MNC-001 vs §1 "store unreachable") was
+expected to be the other kind.
+
+**It was not** — resolved as decision 30 (rubric v0.5), and it invalidated no
+label either. But for a different reason, and the difference is worth keeping:
+v0.4 was narrow because it touched only sections the prompt does not inline;
+**v0.5 edits §1, which every prompt carries verbatim**, and is narrow only
+because no label in the golden set was written against the clause it struck.
+The first kind of narrowness is structural and repeatable. The second is luck,
+checked for — and a future §1 edit should expect to pay.
 
 ## Entry 05 first-run (2026-07-28) — and an open contradiction
 
@@ -644,7 +667,10 @@ computed and never compared; `--prompt-version` defaulted to the free-text strin
 edit. All five pins now carry a status so silence stops reading as verification:
 fixture (`matched` / `absent` / `self-derived`), prompt (`exists` — the run files
 carry no prompt identity to check against, so existence is all that is available),
-rubric (`v0.4+<sha8>`, derived from the file's bytes), pack (`matched` when
+rubric (`v0.4+<sha8>` when written, derived from the file's bytes — **decision 30
+confirmed this works**: editing §1 moved the pin to `rubric.md v0.5+25947ede` on
+the next run with no code change, which is exactly the failure the old hardcoded
+constant could not have noticed), pack (`matched` when
 `--pack` is given, else `asserted`), harness (`eval/v0.2+<sha8>`). A fixture
 mismatch is fatal, and the `--allow-unpinned-fixture` escape hatch cannot suppress
 one — there is a test pinning that, because it previously held only by statement
@@ -873,14 +899,19 @@ Blocking a real deliverable, in order:
    7 apps) is captured but stale under crawler 0.1.0.
 5. **One data point, not a cost model.** The runner exists as of step 8
    (`triage/run_triager.py`), so a run no longer depends on a session — but it has
-   produced exactly one measured run: **315,094 in / 18,808 out, 3m34s, $3.62
-   notional** (`runs/v1.0-cli-run1.json`, from the model's own usage). That is N=1
-   on one store through the CLI backend; the Console-API path has never been
+   produced exactly one measured run **on a store with pages in it**: 315,094 in
+   / 18,808 out, 3m34s, $3.62 notional (`runs/v1.0-cli-run1.json`, from the
+   model's own usage). Decision 30 added three more runs with recorded models, but
+   they are entry 05 — a *blocked* store, 26 KB prompt, 22 output tokens each —
+   so they say nothing about cost on a real audit and must not be averaged in.
+   **The cost model is still N=1.** The Console-API path has never been
    exercised, and portfolio-scale spend and latency variance are unmeasured. The
    input figure read "~145k" until 2026-07-28 — the pack's character count over a
    4-chars-per-token prose rule, 2.16x low on dense JSON
    (`triage/token_estimate.py` now carries a ratio calibrated on the measurement).
-   The other 21 recorded runs remain agent sessions and cannot be re-run.
+   The other 21 recorded runs remain agent sessions and cannot be re-run — that
+   count is unchanged by decision 30, which added CLI runs only: of 25 records on
+   disk, 4 carry a recorded model (1 entry 02, 3 entry 05) and 21 do not.
 
 ### Sequencing note - v1.0's numbers have a shelf life
 
@@ -896,10 +927,13 @@ twice.** Select the store now - selection is free - and capture in one wave.
 Work genuinely unblocked today, because it depends on no fixture:
 
 - **`impact-narrator`.** Its input contract `triage/v0.1` is frozen, so it can be
-  written and reviewed against 21 recorded run JSONs now. It also carries the
+  written and reviewed against recorded run JSONs now. **19 of the 25 are usable
+  as narrator input** — the entry-02 runs, which carry findings. The other 6 are
+  entry 05 and hold empty arrays; they exercise the blocked-report path and
+  nothing else, so do not count them as narrator material. It also carries the
   highest guardrail density in the project (automatic-fail #1, fabricated
   statistics) and inherits the per-template report ceiling from decision 27.
-- Resolving the three open decisions.
+- Resolving the two remaining open decisions (#1 closed by decision 30).
 - Selecting the entry-01 and entry-04 stores.
 
 ## Next steps, in order
@@ -917,9 +951,10 @@ is the intended behaviour and the signal to re-label.
    rubric v0.5, prompt v1.1, entry 05 now 3/3). **Two left:** #2 waits on entry
    01, and #3 (MC-116 severity — label `medium`, two of three runs `low`) is
    still a ten-minute read.
-9. **Write `impact-narrator`.** Input contract `triage/v0.1` is frozen and 21 run
-   JSONs are recorded, so it can be built and evaluated without touching a
-   fixture. Highest guardrail density in the project: automatic-fail #1
+9. **Write `impact-narrator` — this is the next step.** Input contract
+   `triage/v0.1` is frozen and 19 entry-02 run JSONs carry findings to narrate,
+   so it can be built and evaluated without touching a fixture. Highest guardrail
+   density in the project: automatic-fail #1
    (fabricated statistic) is *its* gate, since the triage schema has no number
    field. Also inherits the per-template report ceiling (decision 27) — it is the
    layer that can truncate by roadmap rank.
