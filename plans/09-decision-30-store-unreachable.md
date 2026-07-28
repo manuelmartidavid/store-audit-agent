@@ -2,7 +2,12 @@
 
     file:       plans/09-decision-30-store-unreachable.md
     date:       2026-07-28
-    status:     DESIGN — awaiting approval, nothing edited yet
+    status:     LANDED 2026-07-28. Approved, implemented, verified.
+                finding-triager/v1.1 × 3 against fixtures/05: **3 of 3 PASS**,
+                every run `{"schema":"triage/v0.1","findings":[]}`, composite
+                null / INACCESSIBLE. Read §6 for what that result is worth —
+                it is fix verification, not a measurement.
+                Suite: 371 passed, 1 skipped.
     resolves:   PROJECT-STATE "Open decisions" #1 (MNC-001 vs rubric §1)
     rubric:     v0.4 → v0.5
     prompt:     finding-triager v1.0 → v1.1
@@ -187,3 +192,47 @@ the prompt was not tuned against. None exists. Not blocking; worth naming.
    instruction. They are not separable: correcting §1 alone leaves the model with
    *no* instruction for a blocked store, which is how run 3's empty array came to
    be an accident rather than a behaviour.
+
+---
+
+## 8. Deviations from this design, and why (added on landing)
+
+Four, none changing the decision. Recorded because step 8 established that a
+plan's own misses are worth writing down.
+
+1. **`derives_from:` in MNC-001, not `source:`.** The design said the label's
+   `reason` should cite §6 rule 3. Writing it as `source:` would have collided
+   with `evals/PROMOTION-PROTOCOL.md`, which reserves that key for *how a label
+   entered the set* (`planted` / `fixture-review` / `promoted-from-run`) and
+   treats an absent one as `promoted`. A second meaning on the same key would
+   have quietly corrupted the protocol's own audit. Verified after the edit that
+   `parse_labels()` still returns all four MNC labels with MNC-001's `type` and
+   `scope` intact — a label file that fails to parse reads as "no violations"
+   (harness bug 3), so PASS alone would not have proved it.
+
+2. **`run_triager.py` needed an unplanned fix, and it was not cosmetic.** Run 1
+   called the model, wrote its record, and *then* died with `UnicodeEncodeError`
+   on the `✓` in its success line, because a Windows console is cp1252. A
+   completed, paid-for run exited non-zero on its own report. stdout/stderr now
+   reconfigure to UTF-8 with `errors="replace"`.
+
+3. **`prompts/README.md`'s reproduction block was broken and got fixed here.**
+   It omitted `--pack-version`, which has had no default since step 8 and now
+   exits fatally, and it named `runs/v1.0-run1.json` — the file step 8 found had
+   never existed. Replaced with the four commands actually run for this decision.
+   Out of scope as designed; in scope as the block a reader would have copied.
+
+4. **The design asserted a cause for a test-count discrepancy; measurement
+   refuted it.** Step 8 records 351 passing, the suite now reports 371 + 1
+   skipped. The first written explanation — new `packs/` and `runs/` files
+   feeding the hygiene lint's parametrization — was wrong. Diffing collected node
+   ids against a worktree at the pre-decision-30 commit showed the same commit
+   already collected 371, and that this work added **exactly one** case:
+   `[.pytest_cache/README.md]`, a file pytest generates while collecting. So 351
+   is simply stale, and the lint is linting its own runner's artefact. Both facts
+   are now in PROJECT-STATE's follow-ups.
+
+The fourth is the one worth keeping: the first explanation was plausible,
+matched a known open follow-up, and was false. It cost one worktree and two
+minutes to check, and the project's own discipline — *the fixture decides* —
+applies to claims about the repo exactly as it does to labels.
