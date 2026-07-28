@@ -174,3 +174,23 @@ derived from `eval_triage.py`'s bytes, so it moves anyway — that is the pin
 working as designed rather than a signal. `tests/test_scoring.py` pins the
 recorded composite of `runs/v1.0-cli-run1.json` (14) so a behavioural change
 during the move would have been loud.
+
+---
+
+## narrative-eval/v0.1 — 2026-07-29 · a second harness, and what it cannot reach
+
+`triage/eval_narrative.py` gates `narrative/v0.1`. Separate from
+`eval_triage.py` because the triage harness pin derives from that file's bytes,
+and a narrative change must not move a triage pin.
+
+Hard gates: schema, word caps, exact-set coverage, the numeral ban, the blocked
+path, and the MNC screens the label file declares (via the shared
+`triage/mnc.py`). Entry 05's MNC-003 and entry 02's MNC-402/403 all scope
+`narrative` and until now nothing read them.
+
+**Two checks are deliberately not gates, and this entry is where that is
+recorded.** The spelled-out-quantity screen is a pattern list — banning digits
+does not ban "roughly a third of shoppers", and no word list closes that hole.
+Template containment is advisory because "cannot add this product to the cart"
+is correct English about a PDP defect, and a naive check fails correct output.
+Both report; the human read covers the rest.
