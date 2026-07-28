@@ -2,11 +2,16 @@
 
     file:     specs/triager-io.md · v0.1
     schema:   triage/v0.1
-    rubric:   rubric.md v0.4
+    rubric:   rubric.md v0.5
     pack:     pack/v0.2 (specs §4 below, implemented by triage/pack_evidence.py)
     amended:  2026-07-28 — paths only. `scripts/` → `triage/` (decision 28)  <!-- STALE-OK -->
               and `references/rubric.md` → `rubric.md`. No clause, field or  <!-- STALE-OK -->
               rule changed; the contract this file freezes is untouched.
+    amended:  2026-07-28 — decision 30 adds §1's "Where store-level reachability
+              travels" subsection. Additive: it states where a value that was
+              never in this schema does live. No field added, no field changed,
+              no rule changed. `triage/v0.1` is byte-compatible and every
+              recorded run remains scored against the same contract.
     status:   frozen — the matcher, the scorer and the narrator code against this
               file, not against the prompt. Moving it after runs are recorded
               invalidates every recorded result (decision 12).
@@ -73,6 +78,46 @@ The triager emits exactly one JSON object, no prose before or after it.
 - **No numeric impact claim of any kind.** Automatic-fail #1 (fabricated
   statistic) is therefore unreachable at this layer *by construction* — it moves
   to the narrator's harness, where numbers legitimately live.
+- **No store-level status.** See below — this one needs stating, because its
+  absence is load-bearing rather than incidental.
+
+### Where store-level reachability travels (decision 30, 2026-07-28)
+
+A blocked store's triage output is `{"schema":"triage/v0.1","findings":[]}` —
+**byte-identical to the output for a store with nothing wrong with it.** That is
+correct, and it is not a gap in this schema. Reachability is not a triage result.
+
+Rubric §1 tie-break rule 6 and §6 rule 3 put the boundary on the model's side:
+a finding describes a defect on a template that was captured, and emitting any
+finding for an unreachable store is an automatic fail. This subsection puts the
+matching obligation on the harness's side, because a value that no layer is
+responsible for carrying is a value that gets lost.
+
+**Reachability travels as a crawl fact, on the pack, and never through this
+schema.** Every downstream consumer therefore reads **(pack, triage)** — not
+triage alone:
+
+| Consumer | Reads reachability from | Uses it for |
+|---|---|---|
+| `triage/eval_triage.py::composite()` | `Fixture.blocked` → the fixture's `crawl.json` `status` | **already implemented** — `composite(findings, blocked=True)` returns `null` / `INACCESSIBLE` instead of scoring an empty findings list as `85 / Healthy`, which is what it did before the entry-05 run found it |
+| `report-composer` (not built) | the pack's `crawl.status` | rubric §4 rule 3's `null` / `INACCESSIBLE` / `Inaccessible`, and entry 05's required-behaviour #1 — the report must name the gate |
+
+The two rows read the same fact from two different files on purpose, and it is
+worth being precise about which: the harness scores against fixtures on disk and
+takes it from `crawl.json`; the composer runs on a pack and takes it from
+`crawl.status` there. `pack_evidence.py` copies the field, so they cannot
+disagree without the packer being wrong — which is a packer test, not a contract
+clause.
+
+The alternative — a `store_status` field on `triage/v0.1` — was rejected. It
+would change a frozen contract that 22 recorded runs are scored against, in
+order to carry a value the model must not be the source of. The crawler observes
+reachability deterministically; routing it through a model's judgment first is a
+downgrade dressed as a field.
+
+**The composer's input is asserted here, not verified.** The composer does not
+exist yet. This is the interface it must have when it is written, recorded now
+because decision 30 removes the only other place the gate could have surfaced.
 
 `numericValue`s quoted inside `severity_rationale` are not an exception being
 smuggled in: the field is capped at 20 words and is checked by the scorer for
