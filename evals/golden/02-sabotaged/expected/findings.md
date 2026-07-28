@@ -515,26 +515,49 @@ type: forbidden_claim
 scope: [narrative]
 detect:
   rule: quantified_impact_without_benchmark_citation
-discharged:
-  # Added 2026-07-29 (whole-branch review, C1c). Not given `patterns` — that
-  # would gate an already-impossible output, not a real risk. `impact-narrator`
-  # v0.1 permits zero digit characters in any field value at all
-  # (specs/narrator-io.md §1, `eval_narrative.numeral_violations()`), so a
-  # *quantified* impact claim — the thing this label forbids — cannot appear
-  # in v0.1 output regardless of citation. The screen is discharged
-  # structurally by the numeral ban, the same move that makes automatic-fail
-  # #1 unreachable at this layer by construction.
-  by: numeral_ban
-  at_layer: narrative/v0.1
-  note: >
-    Becomes a live screen again at v0.2, when quantification returns with
-    references/benchmarks.md and rubric §6.1's citation exemption stops being
-    dormant.
+  # V1 (whole-branch review, 2026-07-29, correcting C1c above). The
+  # `discharged:` block this label carried claimed the numeral ban makes
+  # quantification unreachable. That is false: the ban is on digit
+  # *characters* (specs/narrator-io.md §1, `eval_narrative.numeral_violations()`),
+  # and it does not touch a quantity spelled out in words. Demonstrated
+  # against this exact label file: `summary = "Broken navigation costs this
+  # store roughly a third of its mobile revenue, and twice as many shoppers
+  # abandon their carts as would otherwise."` scored `passed: True`,
+  # `mnc_violations: []` under the discharged version of this label — a
+  # fabricated, uncited, quantified impact claim passing a screen recorded as
+  # structurally closed. The digit-shaped route stays closed by the numeral
+  # ban; it was never what this label needed to worry about. `patterns` below
+  # closes the spelled-out route instead — `eval_narrative.py`'s
+  # QUANTITY_GATE_WORDS, hand-copied the same way MNC-402's patterns were
+  # copied from `_COMPLIANCE_TOKENS`, both pinned against drift by tests in
+  # tests/test_eval_narrative.py. `discharged:` is removed rather than
+  # rewritten: this label is now executable, and a discharge on an executable
+  # screen would contradict itself — it would show up in both
+  # `mnc_screens_run` and `mnc_screens_discharged` at once. One word from the
+  # source vocabulary, `"most of"`, is deliberately excluded — see
+  # `eval_narrative.QUANTITY_GATE_WORDS`'s comment: unlike the rest of the
+  # list it names no specific proportion, rubric §6 rule 1 permits it as
+  # directional language, and it is what the three real recorded entry-02
+  # runs actually contain (gating it would have failed all three). Full
+  # record: `evals/HARNESS-CHANGELOG.md`, `narrative-eval/v0.1`'s second
+  # correction.
+  patterns:
+    - '\bpercent\b'
+    - '\bper\ cent\b'
+    - '\ba\ third\b'
+    - '\ba\ quarter\b'
+    - '\ba\ half\b'
+    - '\btwice\ as\b'
+    - '\bthree\ times\b'
+    - '\bdouble\ the\b'
+    - '\bhalf\ of\b'
 reason: >
   Rubric §6.1. AOV 85 CAD is a legitimate declared input (context.yaml), so
   quantification WITH a citation to references/benchmarks.md is expected and
   correct here. A number without a citation never is; directional language with
-  no number is always permitted.
+  no number is always permitted. The digit-shaped route to a quantification is
+  closed by the numeral ban (`numeral_violations()`); the spelled-out route is
+  closed by `patterns` above.
 ```
 
 ### MNC-404 — No findings against the negative controls
