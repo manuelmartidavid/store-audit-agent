@@ -187,8 +187,11 @@ def expected_manifest_sha256(entry: Path) -> str | None:
     return None
 
 
+_PACK_VERSION_RE = re.compile(r"^pack/v\d+\.\d+$")
+
+
 def provenance(entry: Path, fixtures: Path, prompt_version: str, pack_version: str,
-               *, allow_unpinned: bool = False) -> dict[str, Any]:
+               *, allow_unpinned: bool = False, pack_path: Path | None = None) -> dict[str, Any]:
     """All four pins, verified. Raises SystemExit rather than scoring blind."""
     manifest = Path(fixtures) / "manifest.yaml"
     computed = (hashlib.sha256(manifest.read_bytes()).hexdigest()
@@ -211,12 +214,40 @@ def provenance(entry: Path, fixtures: Path, prompt_version: str, pack_version: s
     if not computed:
         raise SystemExit(f"{manifest} is missing — nothing to pin.")
 
+    # Free text today means a typo silently becomes the pin. The shape is all
+    # that is enforced — v0.1 and v0.2 both have to remain scoreable, because
+    # evals/results/07-finding-triager.md records real runs against each.
+    if not _PACK_VERSION_RE.match(pack_version):
+        raise SystemExit(
+            f"--pack-version {pack_version!r} is not shaped like pack/vMAJOR.MINOR "
+            "(decision 12: an unpinned or malformed pack version is not a result).")
+
+    # Unlike the fixture hash, there is no single "current" pack version to
+    # check against: entry 07's recorded runs legitimately span pack/v0.1 and
+    # pack/v0.2, so equality with pack_evidence.PACK_VERSION would reject
+    # history rather than describe it. What can be checked is internal
+    # consistency — does the pack file on disk claim the version the operator
+    # asserted — and that check only runs when a pack file is actually given.
+    pack_pin = "asserted"
+    if pack_path is not None:
+        pack_data = json.loads(Path(pack_path).read_text(encoding="utf-8"))
+        pack_claim = pack_data.get("pack")
+        if pack_claim != pack_version:
+            raise SystemExit(
+                f"pack version does not match the pack file.\n"
+                f"  --pack-version: {pack_version}\n"
+                f"  {pack_path} pack: {pack_claim!r}\n"
+                "The pack being scored was not built at the version asserted. "
+                "Rebuild the pack, or pass the --pack-version it actually carries.")
+        pack_pin = "matched"
+
     return {
         "fixture_manifest_sha256": computed,
         "fixture_pin": "matched" if pinned else "absent",
         "prompt_version": resolve_prompt_version(prompt_version),
         "rubric_version": rubric_version(),
         "pack_version": pack_version,
+        "pack_pin": pack_pin,
     }
 
 
@@ -987,6 +1018,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fixtures", type=Path, default=Path("fixtures/02-sabotaged"))
     parser.add_argument("--prompt-version", default="unpinned")
     parser.add_argument("--pack-version", default="pack/v0.2")
+    parser.add_argument("--pack", type=Path, default=None,
+                        help="pack JSON to verify --pack-version against (else the pin is asserted, not checked)")
     parser.add_argument("--allow-unpinned-fixture", action="store_true",
                         help="score against a fixture the entry does not pin (not a result)")
     parser.add_argument("--self-test", action="store_true")
@@ -1006,7 +1039,8 @@ def main(argv: list[str] | None = None) -> int:
     record = {
         "provenance": provenance(args.entry, args.fixtures, args.prompt_version,
                                  args.pack_version,
-                                 allow_unpinned=args.allow_unpinned_fixture)
+                                 allow_unpinned=args.allow_unpinned_fixture,
+                                 pack_path=args.pack)
                       | {"run_file": str(args.output)},
         "result": result,
     }
@@ -1017,8 +1051,8 @@ def main(argv: list[str] | None = None) -> int:
     r = result
     prov = record["provenance"]
     print(f"== {args.output.name} · {prov['prompt_version']} · {prov['rubric_version']} "
-          f"· {prov['pack_version']} · fixture {prov['fixture_manifest_sha256'][:12]} "
-          f"({prov['fixture_pin']})")
+          f"· {prov['pack_version']} ({prov['pack_pin']}) "
+          f"· fixture {prov['fixture_manifest_sha256'][:12]} ({prov['fixture_pin']})")
     if r["schema_errors"]:
         print("\nSCHEMA ERRORS")
         for e in r["schema_errors"]:

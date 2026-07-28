@@ -94,3 +94,74 @@ def test_the_live_prompts_and_the_live_rubric_resolve():
     # The real repo, not a fixture: v1.0 must exist and rubric.md must parse.
     assert eval_triage.resolve_prompt_version("finding-triager/v1.0", ROOT / "prompts")
     assert "unknown" not in eval_triage.rubric_version()
+
+
+def test_pack_version_is_asserted_without_a_pack_file(tmp_path):
+    # packs/ is gitignored and ordinarily absent, so this is the ordinary path —
+    # which is exactly why it must read as a claim, not a verified pin.
+    fixtures = _fixtures(tmp_path, "crawler_version: 0.2.0\n")
+    digest = hashlib.sha256((fixtures / "manifest.yaml").read_bytes()).hexdigest()
+    entry = _entry(tmp_path, digest)
+    record = eval_triage.provenance(entry, fixtures, "finding-triager/v1.0", "pack/v0.1")
+    assert record["pack_version"] == "pack/v0.1"
+    assert record["pack_pin"] == "asserted"
+
+
+def test_pack_version_is_matched_against_an_agreeing_pack_file(tmp_path):
+    fixtures = _fixtures(tmp_path, "crawler_version: 0.2.0\n")
+    digest = hashlib.sha256((fixtures / "manifest.yaml").read_bytes()).hexdigest()
+    entry = _entry(tmp_path, digest)
+    pack = tmp_path / "pack.json"
+    pack.write_text('{"pack": "pack/v0.2"}', encoding="utf-8")
+    record = eval_triage.provenance(entry, fixtures, "finding-triager/v1.0", "pack/v0.2",
+                                    pack_path=pack)
+    assert record["pack_pin"] == "matched"
+
+
+def test_pack_version_disagreeing_with_the_pack_file_is_fatal(tmp_path):
+    fixtures = _fixtures(tmp_path, "crawler_version: 0.2.0\n")
+    digest = hashlib.sha256((fixtures / "manifest.yaml").read_bytes()).hexdigest()
+    entry = _entry(tmp_path, digest)
+    pack = tmp_path / "pack.json"
+    pack.write_text('{"pack": "pack/v0.1"}', encoding="utf-8")
+    with pytest.raises(SystemExit) as caught:
+        eval_triage.provenance(entry, fixtures, "finding-triager/v1.0", "pack/v0.2",
+                               pack_path=pack)
+    assert "does not match" in str(caught.value)
+
+
+def test_a_malformed_pack_version_is_fatal(tmp_path):
+    fixtures = _fixtures(tmp_path, "crawler_version: 0.2.0\n")
+    digest = hashlib.sha256((fixtures / "manifest.yaml").read_bytes()).hexdigest()
+    entry = _entry(tmp_path, digest)
+    with pytest.raises(SystemExit):
+        eval_triage.provenance(entry, fixtures, "finding-triager/v1.0", "v0.2")
+
+
+def test_allow_unpinned_excuses_a_missing_pin_not_a_mismatched_one(tmp_path):
+    # allow_unpinned=True must only excuse an *absent* fixture pin. If a future
+    # refactor moved the mismatch check below this guard, the flag would become
+    # a total bypass — this test is what would go red if that happened.
+    fixtures = _fixtures(tmp_path, "crawler_version: 0.3.0\n")   # recaptured
+    entry = _entry(tmp_path, "0" * 64)                            # labels pin the old one
+    with pytest.raises(SystemExit) as caught:
+        eval_triage.provenance(entry, fixtures, "finding-triager/v1.0", "pack/v0.2",
+                               allow_unpinned=True)
+    assert "does not match" in str(caught.value)
+
+
+def test_the_manifest_pin_falls_back_to_the_label_files_header(tmp_path):
+    # context.yaml carries no pin at all; the fallback must find the `manifest:`
+    # header in expected/findings.md, matching the shape at
+    # evals/golden/02-sabotaged/expected/findings.md:5.
+    fixtures = _fixtures(tmp_path, "crawler_version: 0.2.0\n")
+    digest = hashlib.sha256((fixtures / "manifest.yaml").read_bytes()).hexdigest()
+    entry = tmp_path / "fallback-entry"
+    (entry / "expected").mkdir(parents=True)
+    (entry / "expected" / "findings.md").write_text(
+        "# Expected findings\n\n"
+        "    schema:      findings/v0.1\n"
+        f"    manifest:    {digest}\n"
+        "    captured_at: 2026-07-27T16:39:27+08:00\n",
+        encoding="utf-8")
+    assert eval_triage.expected_manifest_sha256(entry) == digest
