@@ -43,18 +43,62 @@ CAPS = {"summary": 80, "consequence": 25, "affects": 15, "change": 20}
 
 _DIGIT_RE = re.compile(r"\d")
 
-#: Partial by construction (narrator-io §4.1). Banning digits does not ban a
-#: quantity spelled out in words, and no word list closes that hole — it narrows
-#: it. Reported, never failed; the human read covers the rest.
+#: The full spelled-out-quantity vocabulary. Kept unconditional and
+#: label-independent: `quantity_word_notes()` below runs on every narrative
+#: regardless of which labels are loaded, so it stays the only signal for an
+#: entry that carries no MNC-403-shaped screen (everything except entry 02,
+#: today). Reported, never failed, by this function.
 QUANTITY_WORDS = ("percent", "per cent", "a third", "a quarter", "a half",
                   "twice as", "three times", "double the", "half of", "most of")
+
+#: V1 (whole-branch review, 2026-07-29): entry 02's MNC-403 was discharged on
+#: the premise that the numeral ban makes quantification unreachable. It does
+#: not — the ban is on digit *characters* (numeral_violations() above), and
+#: "roughly a third of shoppers" or "twice as many carts" carry none. Verified
+#: against the real label file: that exact sentence used to score
+#: `mnc_violations: []`, `passed: True`. MNC-403 now carries `detect.patterns`
+#: built from this list, minus one exclusion.
+#:
+#: `"most of"` is deliberately left out of the hard gate. Unlike the other nine
+#: entries — each of which names a specific proportion or multiplier ("a
+#: third", "half of", "twice as", "double the", "percent") — "most of" asserts
+#: no figure at all; it is a qualitative majority claim, which rubric §6 rule 1
+#: always permits as directional language with no number. This is not just an
+#: argument: it is the one QUANTITY_WORDS phrase that appears in the three
+#: real, recorded, passing entry-02 runs (runs/narrator-v0.1-run{1,2,3}.json —
+#: "most of your traffic", "most of these are small changes"), and
+#: evals/results/09-impact-narrator.md's own human read (Q5) already read
+#: every one of those instances as licensed, not fabricated. Gating it would
+#: fail three recorded runs to close a hole that, on this evidence, is not
+#: actually open. It stays in QUANTITY_WORDS and in the advisory below, since
+#: an occasional "most of" could still be worth a human's eye — it is simply
+#: not promoted to a hard MNC violation.
+_QUANTITY_GATE_EXCLUDE = ("most of",)
+QUANTITY_GATE_WORDS = tuple(w for w in QUANTITY_WORDS if w not in _QUANTITY_GATE_EXCLUDE)
+
+
+def quantity_word_patterns() -> tuple[str, ...]:
+    """`\\b`-bounded regex form of QUANTITY_GATE_WORDS.
+
+    This is what `evals/golden/02-sabotaged/expected/findings.md`'s MNC-403
+    `detect.patterns` was hand-copied from — the same move MNC-402's patterns
+    made from `eval_triage._COMPLIANCE_TOKENS`. Exposed as a function, not
+    inlined at import time, so a test can pin the label file's copy against a
+    freshly computed one and fail loudly if they drift apart, the same
+    discipline MNC-402/_COMPLIANCE_TOKENS gets.
+    """
+    return tuple(rf"\b{re.escape(w)}\b" for w in QUANTITY_GATE_WORDS)
+
 
 #: Entry 05's required behaviour #1 — the report must name the gate.
 #: Word-boundary matched (I2), not a bare substring scan: "gate" is a substring
 #: of navigate/investigate/mitigate/delegate, and "Shoppers could not navigate
 #: to any page" used to satisfy this screen without naming any gate at all —
 #: the only content check on the entire deliverable on the blocked path.
-_GATE_WORDS = ("gate", "password", "unreachable", "could not be reached",
+#: "gated" is listed separately from "gate": \b...\b does not match "gate"
+#: inside "gated" (no word boundary between "e" and "d"), and "The storefront
+#: was gated" is a legitimate phrasing that used to fail this scan.
+_GATE_WORDS = ("gate", "gated", "password", "unreachable", "could not be reached",
                "not reachable", "blocked")
 _GATE_WORD_RE = re.compile(
     r"\b(?:" + "|".join(re.escape(w) for w in _GATE_WORDS) + r")\b", re.I)
@@ -147,7 +191,21 @@ def numeral_violations(narrative: dict[str, Any]) -> list[str]:
 
 
 def quantity_word_notes(narrative: dict[str, Any]) -> list[str]:
-    """Advisory. See QUANTITY_WORDS — this narrows the hole, it does not close it."""
+    """Advisory, over the full QUANTITY_WORDS list — not just QUANTITY_GATE_WORDS.
+
+    Deliberately runs unconditionally rather than reading `labels`. For an
+    entry carrying an MNC-403-shaped hard gate (today, only entry 02), this
+    duplicates most of that gate's vocabulary: the same phrase can produce
+    both an advisory note here and a hard `mnc_violations` entry from
+    `mnc.declared_violations`. That overlap is intentional, not an oversight —
+    this function has no label set to consult, entries without that label get
+    only this signal, and the two outputs mean different things (`advisory` is
+    for a human to read; `mnc_violations` is what fails the run) rather than
+    being the same check recorded twice at different severities with nothing
+    said about it. It is also not fully redundant even where MNC-403 is
+    present: it still flags `"most of"`, which the hard gate deliberately does
+    not screen (see QUANTITY_GATE_WORDS's comment).
+    """
     out = []
     for name, value in _values(narrative):
         for word in QUANTITY_WORDS:
@@ -180,12 +238,36 @@ def template_containment_notes(narrative: dict[str, Any],
 
 
 def _narrative_scope_ids(labels: dict[str, dict[str, Any]]) -> list[str]:
-    """MNC label ids whose `scope` includes `narrative` — the ones this layer
-    is on the hook for evaluating, as opposed to MNC-401/404 (triage-only)."""
-    return sorted(
-        label_id for label_id, label in labels.items()
-        if label_id.startswith("MNC-")
-        and "narrative" in [str(s).lower() for s in (label.get("scope") or [])])
+    """MNC label ids whose `scope` reaches the narrative layer — the ones this
+    layer is on the hook for evaluating, as opposed to MNC-401/404 (triage-only).
+
+    V2 (whole-branch review, 2026-07-29): the original guard matched only the
+    literal token `narrative` in a scope list, and three shapes slipped past
+    it — each producing a label that was neither executable nor guarded,
+    exactly the silent-pass failure this guard exists to prevent:
+
+      * `scope: [all]`   — already in the golden set (entry 05's MNC-001) and
+                            the likeliest shape a future entry brings. `all`
+                            reaches every layer, narrative included.
+      * no `scope` key    — omission is treated as reaching every layer, not
+                            as reaching none. A label with no scope declared
+                            is exactly the case this guard cannot afford to
+                            wave through — defaulting to "reaches nothing"
+                            would recreate the original silent pass one level
+                            up.
+      * `scope: narrative` written as a bare string, not a list.
+    """
+    out = []
+    for label_id, label in labels.items():
+        if not label_id.startswith("MNC-"):
+            continue
+        if label.get("scope") is None:
+            out.append(label_id)
+            continue
+        scope = mnc.scope_list(label)
+        if "narrative" in scope or "all" in scope:
+            out.append(label_id)
+    return sorted(out)
 
 
 def evaluate(narrative: dict[str, Any], brief: dict[str, Any],
@@ -201,6 +283,23 @@ def evaluate(narrative: dict[str, Any], brief: dict[str, Any],
     # layer up. A label documented as `discharged:` is exempt on the record;
     # anything else with no executable screen is a hard error naming itself,
     # not a silent pass.
+    # Minor (whole-branch review, 2026-07-29): `discharged: true` or a
+    # `discharged:` block missing `by`/`note` reads as documented — it has the
+    # key — while recording no reasoning at all. Checked across every MNC
+    # label, not only the narrative-scoped ones: a malformed discharge is a
+    # bug in the label regardless of which layer it would have exempted.
+    malformed_discharge = sorted(
+        lid for lid, label in labels.items()
+        if lid.startswith("MNC-") and mnc.discharge_incomplete(label))
+    if malformed_discharge:
+        raise ValueError(
+            f"{', '.join(malformed_discharge)}: carries a `discharged:` key "
+            "that is not a complete discharge — both `by` and `note` must be "
+            "non-empty. `discharged: true` (or a block missing either field) "
+            "silences a must-not-claim screen with no reasoning on record, "
+            "which is the same accountability gap as never discharging it, "
+            "just quieter about it.")
+
     scoped = _narrative_scope_ids(labels)
     executable = mnc.executable_label_ids(labels)
     discharged = [lid for lid in scoped if mnc.is_discharged(labels[lid])]

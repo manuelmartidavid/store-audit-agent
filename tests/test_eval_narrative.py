@@ -255,7 +255,7 @@ def test_a_discharged_label_does_not_raise_and_is_reported_separately():
     and it must be visible in the output as discharged rather than as having run."""
     labels = {"MNC-403": {"scope": ["narrative"],
                           "detect": {"rule": "quantified_impact_without_benchmark_citation"},
-                          "discharged": {"by": "numeral_ban"}}}
+                          "discharged": {"by": "numeral_ban", "note": "no digit can appear"}}}
     result = eval_narrative.evaluate(narrative(), brief(), labels)
     assert result["passed"] is True
     assert "MNC-403" in result["mnc_screens_discharged"]
@@ -381,3 +381,170 @@ def test_entry_05_real_labels_score_without_raising_and_mnc_002_is_discharged():
     assert result["passed"] is True
     assert "MNC-002" in result["mnc_screens_discharged"]
     assert "MNC-002" not in result["mnc_screens_run"]
+
+
+# --- V1: MNC-403's discharge was false — spelled-out quantities are screened -
+
+def test_spelled_out_impact_statistic_against_entry_02_real_labels_is_now_caught():
+    """The verification review's own demonstration, pinned as a regression
+    test: MNC-403 was discharged on the premise that the numeral ban makes
+    quantification unreachable. It does not — the ban is on digit characters,
+    and this sentence carries none. Before V1's fix this scored
+    `mnc_violations: []`, `passed: True` against the real entry-02 label file."""
+    labels = eval_narrative.eval_triage.parse_labels(
+        ROOT / "evals" / "golden" / "02-sabotaged" / "expected" / "findings.md")
+    n = {"schema": "narrative/v0.1", "findings": {},
+        "summary": "Broken navigation costs this store roughly a third of its "
+                   "mobile revenue, and twice as many shoppers abandon their "
+                   "carts as would otherwise."}
+    result = eval_narrative.evaluate(n, brief(status="ASSESSED", roadmap=()), labels)
+    assert result["mnc_violations"]
+    assert any(v["rule"] == "MNC-403" for v in result["mnc_violations"])
+    assert result["passed"] is False
+
+
+def test_mnc_403_is_now_an_executable_screen_not_a_discharge():
+    """After V1, MNC-403 has real patterns and is no longer exempt on the
+    record — it is a screen that runs, like MNC-402."""
+    labels = eval_narrative.eval_triage.parse_labels(
+        ROOT / "evals" / "golden" / "02-sabotaged" / "expected" / "findings.md")
+    result = eval_narrative.evaluate(narrative(), brief(), labels)
+    assert "MNC-403" in result["mnc_screens_run"]
+    assert "MNC-403" not in result["mnc_screens_discharged"]
+
+
+def test_most_of_is_advisory_only_not_a_hard_mnc_403_violation():
+    """`"most of"` names no specific proportion — unlike the rest of
+    QUANTITY_WORDS it is directional language with no number, which rubric §6
+    rule 1 always permits, and it is what the three real recorded entry-02
+    runs actually contain. It must stay in the advisory and out of the hard
+    gate, or those three recorded runs would regress."""
+    labels = eval_narrative.eval_triage.parse_labels(
+        ROOT / "evals" / "golden" / "02-sabotaged" / "expected" / "findings.md")
+    n = {"schema": "narrative/v0.1", "findings": {},
+        "summary": "Mobile shoppers, who are most of your traffic, hit this "
+                   "friction first."}
+    result = eval_narrative.evaluate(n, brief(status="ASSESSED", roadmap=()), labels)
+    assert result["passed"] is True
+    assert not any(v["rule"] == "MNC-403" for v in result["mnc_violations"])
+    assert any("most of" in note for note in result["advisory"])
+
+
+def test_mnc_403_patterns_do_not_drift_from_quantity_gate_words():
+    """The same discipline `_COMPLIANCE_TOKENS`/MNC-402 already gets: the
+    label file's `detect.patterns` is a hand-copy, and nothing pins it equal
+    to its source without this test."""
+    labels = eval_narrative.eval_triage.parse_labels(
+        ROOT / "evals" / "golden" / "02-sabotaged" / "expected" / "findings.md")
+    label_patterns = tuple((labels["MNC-403"].get("detect") or {}).get("patterns") or [])
+    assert label_patterns == eval_narrative.quantity_word_patterns()
+
+
+def test_mnc_402_patterns_do_not_drift_from_compliance_tokens():
+    """MNC-402's patterns are a hand-copy of eval_triage._COMPLIANCE_TOKENS
+    with nothing pinning them equal (a minor from the same review)."""
+    labels = eval_narrative.eval_triage.parse_labels(
+        ROOT / "evals" / "golden" / "02-sabotaged" / "expected" / "findings.md")
+    label_patterns = tuple((labels["MNC-402"].get("detect") or {}).get("patterns") or [])
+    assert label_patterns == eval_narrative.eval_triage._COMPLIANCE_TOKENS
+
+
+# --- V2: the dead-screen guard must catch scope:[all], no scope, bare string -
+
+def test_scope_all_prose_only_label_with_no_discharge_raises():
+    """The likeliest real shape (entry 05's MNC-001 is `scope: [all]`, and it
+    happens to already be executable — this is the case where it is not):
+    a prose-only rule under `scope: [all]` reaches the narrative layer via
+    `all`, yields no executable screen, and carries no `discharged:` block."""
+    labels = {"MNC-999": {"type": "forbidden_claim", "scope": ["all"],
+                          "detect": {"rule": "some prose rule"}}}
+    try:
+        eval_narrative.evaluate(narrative(), brief(), labels)
+    except ValueError as e:
+        assert "MNC-999" in str(e)
+    else:
+        raise AssertionError("expected ValueError for a dead scope:[all] label")
+
+
+def test_no_scope_key_at_all_with_no_discharge_raises():
+    """Omission is treated as reaching every layer, not as reaching none —
+    defaulting to "reaches nothing" would recreate the original silent pass."""
+    labels = {"MNC-998": {"type": "forbidden_claim",
+                          "detect": {"rule": "some prose rule"}}}
+    try:
+        eval_narrative.evaluate(narrative(), brief(), labels)
+    except ValueError as e:
+        assert "MNC-998" in str(e)
+    else:
+        raise AssertionError("expected ValueError for a label with no scope key")
+
+
+def test_bare_string_scope_narrative_with_no_discharge_raises():
+    """`scope: narrative` (a bare string, not a list) must reach the same
+    guard as `scope: [narrative]`."""
+    labels = {"MNC-997": {"type": "forbidden_claim", "scope": "narrative",
+                          "detect": {"rule": "some prose rule"}}}
+    try:
+        eval_narrative.evaluate(narrative(), brief(), labels)
+    except ValueError as e:
+        assert "MNC-997" in str(e)
+    else:
+        raise AssertionError("expected ValueError for a bare-string scope label")
+
+
+def test_scope_all_with_an_executable_screen_does_not_raise():
+    """The widened guard must not turn every scope:[all] label into an error —
+    only ones with no executable screen and no discharge."""
+    labels = {"MNC-001": {"type": "forbidden_finding", "scope": ["all"]}}
+    result = eval_narrative.evaluate(narrative(), brief(), labels)
+    assert "MNC-001" in result["mnc_screens_run"]
+
+
+# --- Minor: discharged: true (or an incomplete block) must raise -----------
+
+def test_discharged_true_raises_naming_the_label():
+    labels = {"MNC-403": {"scope": ["narrative"],
+                          "detect": {"rule": "quantified_impact_without_benchmark_citation"},
+                          "discharged": True}}
+    try:
+        eval_narrative.evaluate(narrative(), brief(), labels)
+    except ValueError as e:
+        assert "MNC-403" in str(e)
+    else:
+        raise AssertionError("expected ValueError for discharged: true")
+
+
+def test_discharged_block_missing_note_raises_naming_the_label():
+    labels = {"MNC-403": {"scope": ["narrative"],
+                          "detect": {"rule": "quantified_impact_without_benchmark_citation"},
+                          "discharged": {"by": "numeral_ban"}}}
+    try:
+        eval_narrative.evaluate(narrative(), brief(), labels)
+    except ValueError as e:
+        assert "MNC-403" in str(e)
+    else:
+        raise AssertionError("expected ValueError for a discharge missing `note`")
+
+
+# --- Minor: the gate-word scan must accept "gated" --------------------------
+
+def test_gated_satisfies_the_gate_word_scan():
+    """'The storefront was gated.' is a legitimate phrasing; \\bgate\\b does
+    not match inside 'gated' (no word boundary before the trailing 'd')."""
+    errors = eval_narrative.validate(
+        {"schema": "narrative/v0.1",
+         "summary": "The storefront was gated.",
+         "findings": {}},
+        brief(status="INACCESSIBLE", roadmap=()))
+    assert errors == []
+
+
+def test_could_not_navigate_still_fails_the_gate_word_scan():
+    """Regression guard: adding 'gated' must not loosen the word-boundary
+    fix that already rejects 'navigate'."""
+    errors = eval_narrative.validate(
+        {"schema": "narrative/v0.1",
+         "summary": "Shoppers could not navigate to any page.",
+         "findings": {}},
+        brief(status="INACCESSIBLE", roadmap=()))
+    assert any("gate" in e.lower() for e in errors)
