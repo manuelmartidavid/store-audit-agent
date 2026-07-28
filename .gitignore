@@ -28,3 +28,9 @@ __pycache__/
 
 # Git lock files the device bridge cannot unlink (host quirk, not project state).
 /.tmplocks/
+
+# Fixture archives — the durable backup of a capture. Large, and regenerable
+# from the fixture, but the fixture itself is not regenerable (the store has
+# drifted). Copy these somewhere off this machine; the manifest hash inside is
+# the same pin the labels carry.
+/archives/

@@ -169,6 +169,19 @@ It makes **real requests to the live store**, politely: ≥1s between fetches, o
 request at a time, an identifying user-agent, and `robots.txt` respected. TSCC is
 the disposable dev store the spec designates for this.
 
+### Backing up a capture
+
+`fixtures/` is gitignored and the store it came from has drifted, so a capture
+is not reproducible — only restorable.
+
+```bash
+python -m crawler.archive fixtures/02-sabotaged -o archives/02-sabotaged.tar.gz
+python -m crawler.archive --check archives/02-sabotaged.tar.gz --expect <manifest sha256>
+```
+
+Copy `archives/` somewhere off this machine. The `--expect` value is the
+`manifest:` line in that entry's `expected/findings.md`.
+
 ---
 
 ## Tests
