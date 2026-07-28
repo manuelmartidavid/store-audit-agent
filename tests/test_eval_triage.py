@@ -1,4 +1,4 @@
-"""scripts/eval_triage.py — the scorer, and the discipline it has to hold.
+"""triage/eval_triage.py — the scorer, and the discipline it has to hold.
 
 Two failure directions, and the tests are deliberately weighted toward the
 second because it is the one that flatters:
@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FIXTURE = ROOT / "fixtures" / "02-sabotaged"
 ENTRY = ROOT / "evals" / "golden" / "02-sabotaged"
 
-_spec = importlib.util.spec_from_file_location("eval_triage", ROOT / "scripts" / "eval_triage.py")
+_spec = importlib.util.spec_from_file_location("eval_triage", ROOT / "triage" / "eval_triage.py")
 eval_triage = importlib.util.module_from_spec(_spec)
 sys.modules["eval_triage"] = eval_triage
 _spec.loader.exec_module(eval_triage)
@@ -104,7 +104,7 @@ def test_effort_never_touches_the_score():
 
 def test_labels_parse_from_the_human_file():
     labels = eval_triage.parse_labels(ENTRY / "expected" / "findings.md")
-    assert len([k for k in labels if k.startswith("MC-")]) == 13
+    assert len([k for k in labels if k.startswith("MC-")]) == 17   # 13 planted + 4 promoted
     assert len([k for k in labels if k.startswith("MNC-")]) == 4
     assert labels["MC-102"]["severity"] == "critical"
 
@@ -244,31 +244,30 @@ def test_naming_the_app_outside_performance_is_not_a_violation(fixture, labels):
 
 
 @needs_fixture
-def test_an_asserted_finding_confined_to_a_negative_control_is_mnc_404(fixture, labels):
-    """No node cited on the template it is about — asserted, not observed."""
+def test_the_labeled_search_defect_is_exempt_from_the_strict_screen(fixture, labels):
+    """MNC-404 stays blunt; the one real defect it caught is covered by MC-108.
+
+    The judgment about which search-template findings are legitimate belongs in
+    the ground truth, not in a discriminator the harness invented for itself.
+    """
     out = {"schema": "triage/v0.1", "findings": [finding(
-        title="Search results page has a weak heading", category="seo",
+        title="Search results input has no label or accessible name",
+        category="accessibility", severity="medium", effort="trivial",
         templates=["search"], instances={"search": 1},
-        evidence=["axe:landmark-one-main"])]}
+        evidence=["crawl:search/search[search]/input[q]"])]}
     result = eval_triage.evaluate(out, labels, fixture)
-    assert any(m["rule"] == "MNC-404" for m in result["mnc_violations"])
+    assert "MC-108" in result["matched"]      # the placeholder-name defect class
+    assert not result["mnc_violations"]
 
 
 @needs_fixture
-def test_an_observed_defect_on_a_negative_control_lands_in_the_unlabeled_bucket(fixture, labels):
-    """MNC-404 forbids fabricating on the controls, not seeing something real.
-
-    The label file's third bucket says a finding matching neither MC nor MNC is
-    not a failure; reading every unplanted defect on `search` as a violation
-    would contradict that. The discriminator is a node pointer that resolves.
-    """
+def test_an_unlabeled_search_only_finding_is_still_a_violation(fixture, labels):
     out = {"schema": "triage/v0.1", "findings": [finding(
-        title="Search input has no label or accessible name", category="accessibility",
-        severity="medium", effort="small", templates=["search"], instances={"search": 1},
-        evidence=["crawl:search/search/input[q]"])]}
+        title="Search results page ordering could be improved", category="conversion",
+        severity="low", templates=["search"], instances={"search": 1},
+        evidence=["crawl:search"])]}
     result = eval_triage.evaluate(out, labels, fixture)
-    assert not result["mnc_violations"]
-    assert result["unlabeled"] == ["F-01"]
+    assert any(m["rule"] == "MNC-404" for m in result["mnc_violations"])
 
 
 @needs_fixture
@@ -350,9 +349,35 @@ def test_schema_rejects_an_instances_key_outside_templates(fixture):
 
 
 @needs_fixture
-def test_ceilings_are_measured(fixture, labels):
+def test_the_per_template_ceiling_is_measured_but_does_not_fail_triage(fixture, labels):
+    """Rubric §5 caps the *ranked roadmap*, so truncation is the composer's job.
+
+    The entry proves why it cannot gate here: the ground truth puts 8 must-catch
+    findings on the PDP, exactly the cap, so a run with perfect recall has no
+    headroom and one more true finding would fail it.
+    """
     many = [finding(id=f"F-{i:02d}", templates=["home"], instances={"home": 1})
             for i in range(10)]
     result = eval_triage.evaluate({"schema": "triage/v0.1", "findings": many}, labels, fixture)
     assert result["ceilings"]["per_template_breaches"] == {"home": 10}
-    assert not result["bars"]["ceilings_respected"]
+    assert result["bars"]["ceilings_total_respected"]        # 10 <= 25
+    assert "ceilings_respected" not in result["bars"]
+
+
+@needs_fixture
+def test_the_total_ceiling_still_fails_triage(fixture, labels):
+    """A triager emitting 40 findings is a precision failure no truncation fixes."""
+    many = [finding(id=f"F-{i:02d}", templates=["home"], instances={"home": 1})
+            for i in range(30)]
+    result = eval_triage.evaluate({"schema": "triage/v0.1", "findings": many}, labels, fixture)
+    assert not result["bars"]["ceilings_total_respected"]
+    assert not result["passed"]
+
+
+@needs_fixture
+def test_the_ground_truth_itself_sits_at_the_pdp_ceiling(labels):
+    """Guard on the labels, not the model: if a promotion pushes pdp past 8, the
+    report layer must truncate and someone should have decided what it drops."""
+    pdp = [k for k, v in labels.items() if k.startswith("MC-")
+           and "pdp" in ((v.get("match") or {}).get("templates_any_of") or [])]
+    assert len(pdp) <= 8, f"{len(pdp)} must-catch labels on pdp: {sorted(pdp)}"

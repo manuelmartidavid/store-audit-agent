@@ -1,0 +1,258 @@
+{
+  "schema": "triage/v0.1",
+  "findings": [
+    {
+      "id": "F-01",
+      "title": "Product description text instructs automated review tools",
+      "category": "security",
+      "templates": ["pdp"],
+      "severity": null,
+      "effort": null,
+      "confidence": "high",
+      "evidence": [
+        "crawl:pdp/html/body/div[2]/div[1]/div/p[note-for-any-automated]",
+        "crawl:pdp/html/head/meta[description]",
+        "crawl:pdp/html/head/meta[8]",
+        "crawl:pdp/html/head/meta[twitter-description]",
+        "crawl:pdp/html/head/script[application-ld-json]"
+      ],
+      "instances": {"pdp": 1},
+      "severity_rationale": "Input-handling rule: page content addressing automated tools is security, severity null"
+    },
+    {
+      "id": "F-02",
+      "title": "Add to cart is a div, not keyboard operable",
+      "category": "accessibility",
+      "templates": ["pdp"],
+      "severity": "critical",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": ["crawl:pdp/product-form/product-add-btn"],
+      "instances": {"pdp": 1},
+      "severity_rationale": "§1 critical: add-to-cart not keyboard reachable on a revenue template"
+    },
+    {
+      "id": "F-03",
+      "title": "Collection template served with noindex robots meta tag",
+      "category": "seo",
+      "templates": ["collection"],
+      "severity": "critical",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": [
+        "lighthouse:audits/is-crawlable",
+        "crawl:collection/html/head/meta[robots]"
+      ],
+      "instances": {"collection": 1},
+      "severity_rationale": "§1 critical: blocks indexing of a revenue template"
+    },
+    {
+      "id": "F-04",
+      "title": "Product page mobile LCP is 10.5 seconds",
+      "category": "performance",
+      "templates": ["pdp"],
+      "severity": "high",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": [
+        "lighthouse:audits/largest-contentful-paint",
+        "lighthouse:audits/largest-contentful-paint-element",
+        "lighthouse:audits/uses-responsive-images",
+        "crawl:pdp/html/body/div[2]/div[1]/product-featured-image"
+      ],
+      "instances": {"pdp": 1},
+      "severity_rationale": "§1 high: mobile LCP above 4.0s on a revenue template"
+    },
+    {
+      "id": "F-05",
+      "title": "Collection page cumulative layout shift measures 0.268",
+      "category": "performance",
+      "templates": ["collection"],
+      "severity": "high",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": [
+        "lighthouse:audits/cumulative-layout-shift",
+        "lighthouse:audits/layout-shifts",
+        "lighthouse:audits/cls-culprits-insight",
+        "crawl:collection/html/body/div[2]/div[3]"
+      ],
+      "instances": {"collection": 1},
+      "severity_rationale": "§1 high: CLS above 0.25 on a revenue template"
+    },
+    {
+      "id": "F-06",
+      "title": "Buttons and secondary text fail colour contrast thresholds",
+      "category": "accessibility",
+      "templates": ["collection", "pdp", "cart", "404"],
+      "severity": "high",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": ["axe:color-contrast", "lighthouse:audits/color-contrast"],
+      "instances": {"collection": 4, "pdp": 3, "cart": 1, "404": 1},
+      "severity_rationale": "§1 high: contrast failure on primary CTA of revenue templates"
+    },
+    {
+      "id": "F-07",
+      "title": "Page titles name the template, not the page",
+      "category": "seo",
+      "templates": ["home", "collection"],
+      "severity": "high",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": [
+        "crawl:home/html/head/title[toronto-sports-cards]",
+        "crawl:collection/html/head/title[collections-toronto-sports-cards]"
+      ],
+      "instances": {"home": 1, "collection": 1},
+      "severity_rationale": "§1 high: one title string standing in for a whole template"
+    },
+    {
+      "id": "F-08",
+      "title": "Home page has no level-one heading",
+      "category": "seo",
+      "templates": ["home"],
+      "severity": "high",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": ["axe:page-has-heading-one"],
+      "instances": {"home": 1},
+      "severity_rationale": "§1 high: missing H1 across a revenue template"
+    },
+    {
+      "id": "F-09",
+      "title": "Meta description absent on home, cart and search",
+      "category": "seo",
+      "templates": ["home", "cart", "search"],
+      "severity": "medium",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": ["lighthouse:audits/meta-description"],
+      "instances": {"home": 1, "cart": 1, "search": 1},
+      "severity_rationale": "§1 medium: missing meta descriptions"
+    },
+    {
+      "id": "F-10",
+      "title": "Cart shows no shipping cost or free-shipping threshold",
+      "category": "conversion",
+      "templates": ["cart"],
+      "severity": "medium",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": ["crawl:cart"],
+      "instances": {"cart": 1},
+      "severity_rationale": "§1 medium: revenue-template defect affecting a subset of sessions"
+    },
+    {
+      "id": "F-11",
+      "title": "Cart indicates no tax, duty or handling charges",
+      "category": "conversion",
+      "templates": ["cart"],
+      "severity": "medium",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": ["crawl:cart"],
+      "instances": {"cart": 1},
+      "severity_rationale": "§1 medium: revenue-template defect affecting a subset of sessions"
+    },
+    {
+      "id": "F-12",
+      "title": "Product page carries no returns or refund reference",
+      "category": "conversion",
+      "templates": ["pdp"],
+      "severity": "medium",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": ["crawl:pdp"],
+      "instances": {"pdp": 1},
+      "severity_rationale": "§1 medium: revenue-template defect affecting a subset of sessions"
+    },
+    {
+      "id": "F-13",
+      "title": "Product page states no delivery or shipping expectation",
+      "category": "conversion",
+      "templates": ["pdp"],
+      "severity": "medium",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": ["crawl:pdp"],
+      "instances": {"pdp": 1},
+      "severity_rationale": "§1 medium: revenue-template defect affecting a subset of sessions"
+    },
+    {
+      "id": "F-14",
+      "title": "Product page omits condition, authenticity and grading facts",
+      "category": "conversion",
+      "templates": ["pdp"],
+      "severity": "medium",
+      "effort": "medium",
+      "confidence": "high",
+      "evidence": ["crawl:pdp"],
+      "instances": {"pdp": 1},
+      "severity_rationale": "§1 medium: revenue-template defect affecting a subset of sessions"
+    },
+    {
+      "id": "F-15",
+      "title": "Form inputs use placeholders instead of accessible names",
+      "category": "accessibility",
+      "templates": ["home", "collection", "pdp", "cart", "search", "404"],
+      "severity": "medium",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": [
+        "crawl:home/contact-form/div/input[contact-email]",
+        "crawl:collection/filterform/details[2]/div/filter-price-min",
+        "crawl:collection/filterform/details[2]/div/filter-price-max",
+        "crawl:search/search[search]/input[q]"
+      ],
+      "instances": {"home": 1, "collection": 3, "pdp": 1, "cart": 1, "search": 2, "404": 1},
+      "severity_rationale": "§1 medium: revenue-template defect affecting a subset of sessions"
+    },
+    {
+      "id": "F-16",
+      "title": "Touch targets below 24px on carousel dots, search button",
+      "category": "accessibility",
+      "templates": ["home", "search"],
+      "severity": "medium",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": ["lighthouse:audits/target-size"],
+      "instances": {"home": 3, "search": 1},
+      "severity_rationale": "§1 medium: revenue-template defect affecting a subset of sessions"
+    },
+    {
+      "id": "F-17",
+      "title": "Home page mobile LCP is 3.9 seconds",
+      "category": "performance",
+      "templates": ["home"],
+      "severity": "medium",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": [
+        "lighthouse:audits/largest-contentful-paint",
+        "lighthouse:audits/uses-responsive-images",
+        "crawl:home/html/body/div[3]/div[1]/div[1]/img[hero-slide-1-3200]"
+      ],
+      "instances": {"home": 1},
+      "severity_rationale": "§1 medium: mobile LCP between 2.5s and 4.0s"
+    },
+    {
+      "id": "F-18",
+      "title": "Badge image alt text describes the medium, not content",
+      "category": "accessibility",
+      "templates": ["home"],
+      "severity": "low",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": [
+        "crawl:home/html/body/div[4]/div[2]/img[icon-shield-svg]",
+        "crawl:home/html/body/div[4]/div[2]/img[icon-truck-svg]",
+        "crawl:home/html/body/div[4]/div[2]/img[icon-credit-card-svg]",
+        "crawl:home/html/body/div[4]/div[2]/img[icon-refresh-svg]",
+        "crawl:home/html/body/div[4]/div[2]/img[icon-star-svg]"
+      ],
+      "instances": {"home": 5},
+      "severity_rationale": "§1 low: hygiene, no measurable session impact"
+    }
+  ]
+}

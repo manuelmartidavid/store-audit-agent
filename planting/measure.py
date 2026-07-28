@@ -1,9 +1,9 @@
 """Single-URL threshold check for the sabotage planting loop.
 
-    python scripts/measure.py https://torontosportscard.myshopify.com/products/x
-    python scripts/measure.py <url> --runs 5 --expect-lcp-band 3000..3800
-    python scripts/measure.py <url> --runs 5 --expect-cls-min 0.25
-    python scripts/measure.py <url> --no-password
+    python planting/measure.py https://torontosportscard.myshopify.com/products/x
+    python planting/measure.py <url> --runs 5 --expect-lcp-band 3000..3800
+    python planting/measure.py <url> --runs 5 --expect-cls-min 0.25
+    python planting/measure.py <url> --no-password
 
 Runs Lighthouse against ONE url through the same machinery as a full capture —
 same Session (politeness, storefront gate, cookie mirroring), same Node sidecar,

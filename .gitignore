@@ -13,8 +13,8 @@ __pycache__/
 # working output, not source.
 /fixtures/
 
-# Planting assets — regenerable from scripts/make_hero_p01.py --seed (decision 12
-# provenance is the printed sha256, not the blob).
+# Planting assets — regenerable from planting/make_hero_p01.py --seed (decision
+# 12 provenance is the printed sha256, not the blob).
 /*.png
 /*.jpg
 

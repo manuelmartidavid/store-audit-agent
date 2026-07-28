@@ -19,10 +19,10 @@ network log, a source-map dump) or when Lighthouse itself declared them
 notApplicable, and audits that *passed* collapse to an id rather than vanishing.
 
 Usage:
-    python scripts/pack_evidence.py fixtures/02-sabotaged \
+    python triage/pack_evidence.py fixtures/02-sabotaged \
         --context evals/golden/02-sabotaged/context.yaml \
         -o packs/02-sabotaged.pack.json
-    python scripts/pack_evidence.py fixtures/02-sabotaged --stats
+    python triage/pack_evidence.py fixtures/02-sabotaged --stats
 """
 
 from __future__ import annotations
@@ -39,7 +39,14 @@ try:  # pyyaml is in requirements.txt; keep the import survivable for --stats
 except ImportError:  # pragma: no cover
     yaml = None  # type: ignore[assignment]
 
-PACK_VERSION = "pack/v0.1"
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from crawler import pointers as ptr  # noqa: E402
+
+PACK_VERSION = "pack/v0.2"
+
+#: Key carrying each distilled node's own evidence pointer. Short on purpose —
+#: it appears ~2,200 times in a six-template capture.
+POINTER_KEY = "@"
 
 # ---------------------------------------------------------------------------
 # Lighthouse reduction rules
@@ -218,6 +225,40 @@ def pack_axe_run(result: dict[str, Any]) -> tuple[dict[str, Any], dict[str, int]
 # assembly
 # ---------------------------------------------------------------------------
 
+def annotate_pointers(crawl: dict[str, Any]) -> tuple[dict[str, Any], int]:
+    """Stamp each distilled node with the pointer that names it (pack/v0.2).
+
+    Measured across nine v0.1 runs, models do not reliably construct §9 semantic
+    paths from the tree: every run before prompt v0.3 emitted at least one path
+    that resolves to nothing, which is automatic-fail #2 and kills a run outright
+    however good its detection was. The causes were consistent — a CSS class used
+    as an anchor, a qualifier taken from the most descriptive attribute instead of
+    the first one the grammar specifies, an invented `main` on a page that has
+    none.
+
+    Spec §9's argument against *opaque* ids stands untouched: `node-4f2a` forces
+    blind lookup-table work and models emit plausible-but-wrong ids. What this
+    carries is not an opaque id — it is the semantic path itself, precomputed by
+    the same `pointers.iter_paths` the harness resolves with. So the model and
+    the matcher read one string and grammar drift is impossible by construction.
+
+    What it costs: pointer construction stops being a capability under test. That
+    is the right trade if pointers are plumbing — the join key exists so evidence
+    can be checked, not to measure DOM navigation — and it is recorded here
+    rather than assumed.
+    """
+    stamped = 0
+    for template, entry in (crawl.get("templates") or {}).items():
+        root = entry.get("distilled")
+        if not root:
+            continue
+        for pointer, node in ptr.iter_paths(template, root):
+            if isinstance(node, dict):
+                node[POINTER_KEY] = pointer
+                stamped += 1
+    return crawl, stamped
+
+
 def _url_index(crawl: dict[str, Any]) -> dict[str, str]:
     """url → template. Lighthouse and axe key by URL; the pack keys by template."""
     index: dict[str, str] = {}
@@ -263,6 +304,7 @@ def build_pack(fixture_dir: Path, context_path: Path | None = None) -> dict[str,
 
     index = _url_index(crawl)
     templates = list((crawl.get("templates") or {}).keys())
+    crawl, pointers_stamped = annotate_pointers(crawl)
 
     lighthouse: dict[str, Any] = {}
     lh_dropped = {"payload_only": 0, "not_applicable": 0, "passed_collapsed": 0}
@@ -325,7 +367,11 @@ def build_pack(fixture_dir: Path, context_path: Path | None = None) -> dict[str,
                 "unmatched_runs": axe_unmatched,
             },
             "crawl": "nothing — the distilled tree passes through verbatim "
-                     "(it is already the distillation layer, crawler spec §5)",
+                     "(it is already the distillation layer, crawler spec §5). "
+                     f"pack/v0.2 ADDS one key: every node carries `{POINTER_KEY}`, "
+                     "its own evidence pointer, computed by the same function the "
+                     "harness resolves with.",
+            "pointers_stamped": pointers_stamped,
         },
     }
     return pack
@@ -378,6 +424,7 @@ def main(argv: list[str] | None = None) -> int:
               f"{dropped['lighthouse']['passed_collapsed']} passed→id")
         print(f"{'axe dropped':16s} {dropped['axe']['passes']} passes, "
               f"{dropped['axe']['inapplicable']} inapplicable")
+        print(f"{'pointers':16s} {dropped['pointers_stamped']} nodes stamped with `{POINTER_KEY}`")
 
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)

@@ -1,7 +1,7 @@
 """Why is *that* the LCP element? — planting diagnostic.
 
-    python scripts/inspect_lcp.py https://torontosportscard.myshopify.com/
-    python scripts/inspect_lcp.py <url> --selector img.product-page__featured-img
+    python planting/inspect_lcp.py https://torontosportscard.myshopify.com/
+    python planting/inspect_lcp.py <url> --selector img.product-page__featured-img
 
 measure.py tells you which element won LCP. When the answer is not the element
 you planted, the next question is always one of: is it in the DOM, is it

@@ -1,6 +1,6 @@
 # Store Audit Agent — project state
 
-    updated:  2026-07-28 (step 7: eval loop built, finding-triager v0.1→v0.4 measured)
+    updated:  2026-07-28 (step 7 COMPLETE — v1.0 frozen; repo consolidated, decision 28)
     supersedes: phase-numbering in 02-store-audit-brief.md (workflow detached from
                 numbered phases by explicit decision; gates kept, sequence dropped)
     for Claude: treat this file as ground truth for decisions. Do not re-open
@@ -157,11 +157,11 @@ sees it.
     ez-terms-and-conditions-checkbox, forms, inventory-info-theme-exrtensions,
     multilocation-2, restockrocket-1). Recapture before it is used as entry 03.
 - Planting tooling (repo surface only; live-store planting/uploads are Marti's):
-  - `scripts/measure.py` — single-URL LCP/CLS/perf probe through the same
+  - `planting/measure.py` — single-URL LCP/CLS/perf probe through the same
     Session + sidecar as a capture. `--runs N` reports median/spread; `--expect-*`
     asserts every run (exit 2 on miss). Guards re-mirror per run and abort if the
     gate cookie is gone or a run lands on /password. Tests: `tests/test_measure.py`.
-  - `scripts/make_hero_p01.py` — oversized-image generator. Parameterized
+  - `planting/make_hero_p01.py` — oversized-image generator. Parameterized
     2026-07-27: `--aspect W:H` / `--height` (exact-ratio guard — no rounding
     letterbox), `--seed` printed with byte count + sha256 (decision 12
     provenance). Default output byte-identical to the frozen P-01 asset.
@@ -191,7 +191,7 @@ sees it.
     not after. The freeze is one recapture with the app enabled, so tuning
     without it tunes against a configuration that will not exist — and P-02's
     3.0–3.8s window cannot absorb a widget added afterwards.
-- Prompts written: `finding-triager` v0.1–v0.4 (v0.4 current, not frozen).
+- Prompts written: `finding-triager` v0.1–v0.6 + **v1.0 frozen**.
   `impact-narrator` and `report-composer` still none.
 - Entries 01 (clean theme demo) and 04 (WooCommerce, reduced path + null-AOV
   trap): stores not yet selected. Entry 03 candidate: makerlab (captured).
@@ -242,7 +242,7 @@ preview_theme_id renders fresh; capture stays gated on plain-URL freshness. The 
 also lagged ~4h (styles.css stamp 09:25 -> 13:13) — during the gap,
 `assets/critical.css` gained a two-class-specificity restatement of P-01b +
 P-03 (commit P-01c, harmless now the compile caught up). Fallout worth keeping:
-`scripts/inspect_lcp.py` (planting diagnostic: LCP geometry, theme identity,
+`planting/inspect_lcp.py` (planting diagnostic: LCP geometry, theme identity,
 live CSS source attribution) and the freshness gate on the freeze checklist.
 The cache would have silently poisoned the recapture — a fixture of the 09:25
 snapshot would label P-01b out of existence with no error anywhere.
@@ -260,7 +260,7 @@ snapshot would label P-01b out of existence with no error anywhere.
   templates swapped. The staged hero JPEG was never referenced by the page and
   is deleted, slide 1 stays on the png.
 - Hero slides 2-3: confirmed restored to baseline images (measure wire lines).
-- measure.py now prints LCP phases + top image wire sizes; scripts/fit_image.py
+- measure.py now prints LCP phases + top image wire sizes; planting/fit_image.py
   added (byte-budget re-encoder, provenance-printing; unused for entry 02 after
   the inversion, kept for future entries).
 
@@ -358,17 +358,29 @@ Full record: `evals/results/07-finding-triager.md`. Repo is now under git
 (fixtures ignored; the manifest hash is the commitment).
 
 Built: `specs/triager-io.md` (triage/v0.1 output contract, frozen) ·
-`scripts/pack_evidence.py` (pack/v0.1 — 396 KB / ~101k tokens for six templates,
+`triage/pack_evidence.py` (pack/v0.1 — 396 KB / ~101k tokens for six templates,
 so single-pass triage is viable and granularity is a determinism choice, not a
 capacity one) · `prompts/finding-triager/v0.1–v0.4` + registry ·
-`scripts/render_prompt.py` · `scripts/eval_triage.py` (label parser, normalized
+`triage/render_prompt.py` · `triage/eval_triage.py` (label parser, normalized
 matcher, tiered recall, severity/effort agreement, composite, MNC screens,
 automatic fails) · 48 new tests.
 
 **The 7.4 gate passed before any model ran:** the scorer recomputes score 35 and
 band "Significant work needed" from `expected/findings.md` alone.
 
-**Result — v0.4, 3 runs:** 2 of 3 detect all 13 must-catch findings; the third
+**Result — v1.0 FROZEN, 3 runs, all three clear every bar at 17/17 recall.**
+Zero unresolvable pointers, zero MNC violations, MC-113 both halves every run.
+Severity agreement exact or ±1 throughout; effort agreement 0.56–0.81 exact and
+±1 everywhere, which costs roadmap order, not the score.
+
+Two changes after the first freeze attempt did the work. **pack/v0.2** stamps
+every distilled node with its own `@` pointer, so the model copies the join key
+instead of constructing it — unresolvable pointers went 2–5 per run to zero, and
+MC-112 went from unreachable to matched in every run. **v0.6** added the
+dead-`href` check and the rule that every axe violation becomes a finding unless
+it duplicates one already emitted.
+
+**Earlier result — v0.4 against the 13-label set, 3 runs:** 2 of 3 detect all 13 must-catch findings; the third
 misses MC-112 and carries one invented pointer. Critical/high recall 1.00 across
 all three. **Severity agreement is exact on every matched label in all twelve
 runs across all four versions** — including both traps (MC-102 critical *and*
@@ -378,7 +390,7 @@ the score, so it costs roadmap order only. Zero MNC violations in 11 of 12 runs.
 MC-113 passes both halves in every run — the injection was treated as data and
 reported, never once obeyed.
 
-**Not frozen as v1.** 2 of 3 is not the N ≥ 3 gate.
+(That 2-of-3 was not the N ≥ 3 gate; v1.0 is.)
 
 ### Decisions taken during step 7
 
@@ -409,6 +421,49 @@ reported, never once obeyed.
     This is the one place the harness got more permissive — flagged as a
     judgment call, not settled by inference.
 
+### Decisions 24–27 (2026-07-28, from the v0.5/v1.0 loop)
+
+24. **pack/v0.2 — every distilled node carries its `@` pointer.** Supersedes an
+    assumption in crawler spec §9, on measurement: §9 reasons a model constructs
+    semantic paths correctly from the DOM it reads, and across nine runs it did
+    not. §9's argument against *opaque* ids is untouched — `@` is the semantic
+    path itself, precomputed by the same function the harness resolves with, so
+    grammar drift is impossible by construction. Costs +126 KB (pack 396 → 522)
+    and retires pointer construction as a measured capability. Full reasoning:
+    `specs/triager-io.md §4`.
+25. **MNC-404 stays strict; the judgment moved into the labels.** Reverted the
+    2026-07-28 narrowing. The one real defect it was catching — the results-page
+    search input with no accessible name — is now covered by MC-108, so a run
+    that finds it matches a label and is exempt. The gate stays blunt.
+26. **Four findings promoted to must-catch** (MC-114 no `<h1>` on home · MC-115
+    meta descriptions absent on four templates · MC-116 no `main` landmark ·
+    MC-117 sixteen home CTAs and category cards on `href="#"`), each verified in
+    the fixture independent of model output. Composite recomputed **35 → 24**,
+    band "Critical"; `expect` range 18–34. A fifth (MC-118) was folded into
+    MC-108 — three runs emitted both as one finding, correctly.
+27. **The per-template ceiling gates the report-composer, not the triager.**
+    Rubric §5 caps findings per template *"in the ranked roadmap"* and truncates
+    overflow by rank — a report behaviour the triager cannot perform. The
+    17-label ground truth puts 8 must-catch findings on the PDP, exactly the cap,
+    so enforcing it at triage makes perfect recall structurally impossible. Total
+    ceiling stays hard. Same reasoning as automatic-fail #1 living in the
+    narrator's harness: a bar belongs to the layer that can act on it. **This is
+    the loop's one relaxed bar — flagged, not buried.**
+
+### Still open after step 7
+
+- **Two category caps bind** (`seo` by 4, `accessibility` by 1). Rubric §4 rule 2
+  says that means the weights are wrong, not the cap — but this store has two
+  `critical`s in two categories, which is close to the pathological case the cap
+  exists for. The cheap check is entry 01: a cap binding on the clean-theme test
+  would settle it. Changing weights is a rubric change and invalidates every
+  label, so it waits for that evidence.
+- **MC-116 severity: label `medium`, two of three runs `low`.** Two independent
+  runs agreeing against the label is worth one look.
+- **The false-positive side is still unmeasured.** Every number in this result
+  measures recall against a store built to be found out. Entry 01 has no store
+  selected. This is the largest remaining hole.
+
 ### Blocking-adjacent findings from the loop
 
 - **Rendered prices and stock state do not survive distillation.** `$149.99` is
@@ -418,22 +473,65 @@ reported, never once obeyed.
   the evidence base. Structurally identical to C-01, one layer out. **Distiller
   fix belongs with the step-8 recapture**; v0.4 works around it by removing
   price/stock from the presence checklist and saying why.
-- **The §9 semantic-path grammar is harder to emit than the spec assumed.** Spec
-  §9 argues models construct semantic paths correctly from the DOM they read.
+- **The §9 semantic-path grammar is harder to emit than the spec assumed.**
   Measured: every run before v0.3 emitted at least one unresolvable path (CSS
   class as an anchor, qualifier from the wrong attribute, invented `main`).
-  v0.3's *trace it or drop it* rule fixed the automatic fails by trading
-  precision for resolvability, and MC-112 is the visible cost. **Open decision:**
-  carry the crawler-derived pointer on each distilled node in `pack/v0.2`,
-  making construction a lookup. Not the opaque-ID failure §9 warns about — it is
-  the semantic path itself, precomputed.
-- **`expect.score` range 30–42 does not survive a good run.** v0.4 scores 24–27
-  because it finds 4–8 legitimate findings the labels do not carry. The score is
-  behaving correctly; the range was set from the must-catch set alone. Either
-  widen it downward or promote the strongest unlabeled findings (list in the
-  results file — the missing `<h1>` on home, meta descriptions absent on three
-  templates, no `main` landmark, and `href="#"` placeholder category links all
-  look real).
+  **RESOLVED by decision 24** — `pack/v0.2` precomputes the pointer. Kept here as
+  the record of why a frozen spec's reasoning was superseded by measurement.
+- **`expect.score` range 30–42 did not survive a good run.** **RESOLVED by
+  decision 26** — the four findings were promoted and the composite recomputed to
+  24 (range 18–34). The labels were incomplete, not the score.
+
+## Decision 28 — one repo, layers as directories (2026-07-28)
+
+The harness was briefly split: the whole repo moved into `crawler/` and the
+step-7 work sat outside it. Reverted to one repo, with the layers as top-level
+directories, and `scripts/` — which had become a grab-bag — split by concern:
+
+    crawler/     the evidence-production package (crawl, distill, pointers, …)
+    triage/      pack_evidence.py · eval_triage.py · render_prompt.py
+    planting/    measure.py · inspect_lcp.py · make_hero_p01.py · fit_image.py
+    prompts/     finding-triager/v0.1 … v1.0
+    specs/       crawler.md · triager-io.md
+    evals/       golden/ labels · results/ run records
+    fixtures/    gitignored; the manifest hash is the commitment
+    tests/       one suite, root-relative
+
+Why one repo, argued rather than assumed — four reasons, all from this project's
+own evidence:
+
+1. **The next planned change spans both layers.** The step-8 distiller fix
+   changes capture output → recapture → re-freeze → re-label `findings.md` →
+   re-render the pack → re-run v1.0 → re-measure every number in the results
+   file. One atomic change across crawler, fixtures, labels and harness. Split,
+   it becomes a coordinated release with a window in which the labels describe a
+   fixture that no longer exists.
+2. **Decision 12's provenance is a 4-tuple** — fixture hash · prompt version ·
+   rubric version · pack version. A single commit is the only artifact that can
+   honestly assert those four moved together. That is what decision 19 was for.
+3. **`triage/eval_triage.py` imports `crawler.pointers` deliberately** — spec §9
+   says the harness must not get a second spelling of the matcher, and `pack/v0.2`
+   tightened this further (the packer calls `iter_paths` to stamp `@`). Across a
+   repo boundary that becomes a versioned dependency whose drift failure is
+   *silent*: a matcher resolving differently from the pointer builder yields
+   wrong recall, not an error.
+4. **`rubric.md` cannot be owned by either side.** Its own preamble requires the
+   bounded vocabulary and the labeling guide to be the same document. Split, one
+   side gets a copy — the pattern this project rejected when it refused a sidecar
+   machine-readable label file.
+
+There **is** a real seam for later — evidence production vs. everything
+downstream — and it already has versioned contracts in `specs/crawler.md` and
+`specs/triager-io.md`. The blockers are `rubric.md` and `crawler.pointers`.
+Resolve those (rubric as a versioned shared reference; pointers as an installable
+module with a conformance test) and the split becomes safe. Not before, and not
+while the triager is still moving.
+
+Fallout cleaned up in the same pass: three copies of the step-7 files existed at
+two different versions (repo-stale, root-current, `triager/`-current). Newest won;
+the duplicates are in `_to_delete/consolidation-2026-07-28/` for you to remove —
+the device bridge cannot delete. `triager/` is retired: it was an export, and an
+export that is not regenerated goes stale silently.
 
 ## Next steps, in order
 
@@ -447,14 +545,8 @@ reported, never once obeyed.
 6. (done) Recapture → `fixtures/02-sabotaged` (pinned PDP), password grep clean,
    provenance filled, `expected/findings.md` labeled from the frozen fixture.
    **Entry 02 is the project's first exact ground truth.**
-7. (done, not frozen) `finding-triager` v0.1→v0.4 measured against entry 02.
-   13/13 recall in 2 of 3 v0.4 runs; severity agreement exact throughout.
-   See `evals/results/07-finding-triager.md` and decisions 19–23.
-7a. **Decide the pointer question** — precompute node pointers into `pack/v0.2`,
-   or keep §9 construction and accept the MC-112-shaped cost. Then either freeze
-   v0.4 as v1 or spend one iteration on the last failure mode.
-7b. **Decide the score range and the promotion list** — `expect.score` 30–42 vs
-   the 24–27 a good run produces, and which unlabeled findings become MC labels.
+7. **(DONE) `finding-triager` v1.0 frozen** — 3 of 3 runs at 17/17 recall against
+   entry 02. `evals/results/07-finding-triager.md`, decisions 19–27.
 8. Recapture `fixtures/makerlab` and `fixtures/05` under the current crawler
    (distiller + fingerprint changes staled both); confirm makerlab as entry 03.
    **Fix the distiller's short-text gap first** — rendered prices and stock
@@ -518,13 +610,13 @@ amount of prompt tuning would have found:
   future flip is not read as a regression.
 
 ### Tooling/process notes (environment-specific, still worth having)
-- `scripts/inspect_lcp.py` (new) — planting diagnostic: LCP geometry, theme
+- `planting/inspect_lcp.py` (new) — planting diagnostic: LCP geometry, theme
   identity (`window.Shopify.theme`), live-CSS source attribution, `--dump-text`.
   It repeatedly out-diagnosed guesses; when live behavior contradicts local
   files, **read the live state, do not theorize.**
-- `scripts/measure.py` needs one browser per run (cold cache) or repeat runs read
+- `planting/measure.py` needs one browser per run (cold cache) or repeat runs read
   the asset from cache and "variance" is an illusion.
-- `scripts/fit_image.py` (new) — byte-budget re-encoder for image-weight defects.
+- `planting/fit_image.py` (new) — byte-budget re-encoder for image-weight defects.
 - The device file-bridge cache can serve **stale** staged copies; verify staged
   content (grep for a known token) before trusting it, or copy to a fresh
   filename. Git through the bridge leaves lock/temp litter; deletes fail (move to

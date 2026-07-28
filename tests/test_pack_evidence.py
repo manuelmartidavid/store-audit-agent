@@ -1,4 +1,4 @@
-"""scripts/pack_evidence.py — the pack is the triager's whole world.
+"""triage/pack_evidence.py — the pack is the triager's whole world.
 
 The tests that matter here are the ones about what the packer *removes*. A
 packer that silently drops the audit a finding needs makes that finding
@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FIXTURE = ROOT / "fixtures" / "02-sabotaged"
 ENTRY = ROOT / "evals" / "golden" / "02-sabotaged"
 
-_spec = importlib.util.spec_from_file_location("pack_evidence", ROOT / "scripts" / "pack_evidence.py")
+_spec = importlib.util.spec_from_file_location("pack_evidence", ROOT / "triage" / "pack_evidence.py")
 pack_evidence = importlib.util.module_from_spec(_spec)
 sys.modules["pack_evidence"] = pack_evidence
 _spec.loader.exec_module(pack_evidence)
@@ -35,9 +35,15 @@ def pack():
 
 
 def test_pack_fits_a_single_pass(pack):
-    """Capacity is not what decides granularity — but it has to be true first."""
+    """Capacity is not what decides granularity — but it has to be true first.
+
+    pack/v0.2 costs ~33k tokens more than v0.1 for the per-node pointers. The
+    headroom left over the 200k window is what this guards: if a future entry
+    pushes past it, the granularity decision (one pass vs per-template) reopens
+    on capacity grounds rather than determinism grounds.
+    """
     stats = pack_evidence.pack_stats(pack)
-    assert stats["approx_tokens"] < 130_000, stats
+    assert stats["approx_tokens"] < 150_000, stats
 
 
 def test_eval_block_never_reaches_the_prompt(pack):
@@ -60,10 +66,54 @@ def test_context_without_store_block_is_a_config_error(tmp_path):
         pack_evidence.load_store_context(path)
 
 
-def test_distilled_crawl_passes_through_verbatim(pack):
-    """Re-distilling inside the packer would re-open crawler spec §5 silently."""
+def test_distilled_crawl_passes_through_verbatim_except_the_pointer_key(pack):
+    """Re-distilling inside the packer would re-open crawler spec §5 silently.
+
+    pack/v0.2 adds exactly one key per node and changes nothing else. The test
+    strips `@` back out and demands byte-equality with the fixture, so a packer
+    that quietly started editing the tree would fail here rather than in a run.
+    """
     raw = json.loads((FIXTURE / "crawl.json").read_text(encoding="utf-8"))
-    assert pack["crawl"] == raw
+
+    def strip(node):
+        if isinstance(node, dict):
+            return {k: strip(v) for k, v in node.items() if k != pack_evidence.POINTER_KEY}
+        if isinstance(node, list):
+            return [strip(v) for v in node]
+        return node
+
+    assert strip(pack["crawl"]) == raw
+
+
+def test_every_node_carries_the_pointer_that_names_it(pack):
+    """The model copies `@`; the harness resolves it. One string, no drift."""
+    import sys as _sys
+    _sys.path.insert(0, str(ROOT))
+    from crawler import pointers as ptr
+
+    for template, entry in pack["crawl"]["templates"].items():
+        if not entry.get("distilled"):
+            continue
+        for pointer, node in ptr.iter_paths(template, entry["distilled"]):
+            assert node.get(pack_evidence.POINTER_KEY) == pointer
+
+
+def test_a_pointer_read_off_the_pack_resolves_against_the_fixture(pack):
+    """The whole point: the value a model copies is one the matcher accepts."""
+    import sys as _sys
+    _sys.path.insert(0, str(ROOT))
+    from crawler import pointers as ptr
+
+    crawl = json.loads((FIXTURE / "crawl.json").read_text(encoding="utf-8"))
+    checked = 0
+    for template, entry in pack["crawl"]["templates"].items():
+        if not entry.get("distilled"):
+            continue
+        for _, node in list(ptr.iter_paths(template, entry["distilled"]))[:40]:
+            pointer = node.get(pack_evidence.POINTER_KEY)
+            assert ptr.resolve(pointer, crawl) is not None, pointer
+            checked += 1
+    assert checked > 100
 
 
 def test_every_captured_template_has_an_entry_even_without_a_run(pack):

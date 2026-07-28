@@ -58,15 +58,26 @@ eval:
       pdp: "https://torontosportscard.myshopify.com/products/2023-24-upper-deck-series-1-hockey-hobby-box"
 
   expect:
-    # From fixtures/02-sabotaged, rubric v0.3. Composite = 35 from the 13
-    # must-catch findings; band "Significant work needed". Range allows for
-    # medium/low recall variance (≥75% bar) and promoted unlabeled findings.
-    score: 35
-    score_min: 30
-    score_max: 42
-    band: "Significant work needed"
+    # From fixtures/02-sabotaged, rubric v0.3. Composite = 24 from the 18
+    # must-catch findings; band "Critical". Recomputed 2026-07-28 when five
+    # findings were promoted out of the unlabeled bucket (MC-114…MC-118) — the
+    # 13-label value was 35 / "Significant work needed", and the runs recorded
+    # against it in evals/results/07-finding-triager.md are scored on that basis.
+    #
+    # The range is wide because a run's score is computed from what IT found: a
+    # good run that misses two medium findings scores ABOVE the label-derived
+    # value, not below. Measured v0.4 runs landed 24–27 against the old labels.
+    score: 24
+    score_min: 18
+    score_max: 34
+    band: "Critical"
+    # NOTE the range spans a band boundary (25). `band` is the value derived from
+    # the labels; a run scoring 26 is correctly "Significant work needed" and is
+    # not a failure. Band is a reporting artefact, not a gate.
     max_findings: 25
-    findings_above_medium: 6          # 2 critical (C-01, C-02) + 4 high (P-02, P-03, A-01, S-01)
+    findings_above_medium: 8          # 2 critical (MC-101, MC-102) + 6 high
+                                      # (MC-103, MC-104, MC-105, MC-106, MC-114, MC-117)
     categories_required: [performance, seo, accessibility, conversion]
+    caps_binding: [seo, accessibility] # see expected/findings.md — open, not resolved
 
   portfolio_safe: false          # disposable, but sabotaged — never demo this one

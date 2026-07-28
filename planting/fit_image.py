@@ -1,7 +1,7 @@
 """Re-encode an image to a target wire size, preserving its content.
 
-    python scripts/fit_image.py product-packs-cards.jpg --target-kb 300
-    python scripts/fit_image.py photo.jpg --target-kb 300 --max-width 2000
+    python planting/fit_image.py product-packs-cards.jpg --target-kb 300
+    python planting/fit_image.py photo.jpg --target-kb 300 --max-width 2000
 
 P-02's knob. The PDP featured image is served VERBATIM (master URL, no
 transform params -> no CDN transcode; verified 2026-07-27: 1562 KB jpeg on the

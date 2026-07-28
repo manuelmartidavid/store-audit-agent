@@ -3,7 +3,7 @@
     file:     specs/triager-io.md · v0.1
     schema:   triage/v0.1
     rubric:   references/rubric.md v0.3
-    pack:     pack/v0.1 (specs §4 below, implemented by scripts/pack_evidence.py)
+    pack:     pack/v0.2 (specs §4 below, implemented by triage/pack_evidence.py)
     status:   frozen — the matcher, the scorer and the narrator code against this
               file, not against the prompt. Moving it after runs are recorded
               invalidates every recorded result (decision 12).
@@ -33,7 +33,7 @@ The triager emits exactly one JSON object, no prose before or after it.
       "effort": "small",                // trivial | small | medium | large | null
       "confidence": "high",             // high | medium | low
       "evidence": [                     // ≥ 1, grammar per crawler spec §9
-        "crawl:pdp/product-form/div#product-add-btn[data-add-to-cart]"
+        "crawl:pdp/product-form/product-add-btn"   // copied from the node's `@`
       ],
       "instances": { "pdp": 1 },        // per-template count; keys ⊆ templates
       "severity_rationale": "§1 critical: blocks purchase on a revenue template"
@@ -120,7 +120,8 @@ and, if the labels are matched greedily, could look like six hits. The scorer
 therefore matches each label **at most once** (§3) and reports duplicate matches
 as a distinct diagnostic, not as extra recall.
 
-The script validates what it can measure: ceilings (≤ 8/template, ≤ 25 total),
+The script validates what it can measure: the total ceiling (≤ 25), the
+per-template count (≤ 8, measured but gated at the report layer — see §5),
 `instances` keys ⊆ `templates`, and duplicate-pointer detection across findings.
 
 ## 3. Matching (harness side)
@@ -139,23 +140,39 @@ Three additions specific to triage labels:
    right, and failing it would be the matcher bug spec §9 warns about.
 2. **`match.any_of` in a label absorbs remaining variation.** Any one pointer
    matching is a match.
-3. **A label matches at most once.** First match by emission order wins;
-   subsequent findings matching the same label are reported as
-   `duplicate_matches` and count toward the ceilings, never toward recall.
+3. **A label matches at most once, and a finding claims the best *free* label.**
+   Not the first in id order: a finding legitimately carries several pointers —
+   the contrast finding cites `axe:color-contrast` and the add-to-cart node it
+   also affects — and first-match-wins let it consume `MC-101` and then stop
+   before reaching the label it was actually about. Candidates are ranked by
+   label specificity (narrowed by title, then by template, then bare) with a
+   stable tie-break on label id. Findings matching only already-claimed labels
+   are reported as `duplicate_matches` and never count toward recall.
+
+4. **Two resolution fallbacks, each with an ambiguity guard.** Spec §9 resolves
+   "index qualifiers ignored when the un-indexed path is unambiguous". That
+   generalizes twice, on the same reasoning — a qualifier exists to disambiguate
+   siblings, so where it disambiguates nothing it carries nothing:
+   *(a)* strip **all** qualifiers from the candidate; resolve only if exactly one
+   node matches. *(b)* if the final segment carries a distinctive (non-index)
+   qualifier that is unique in the template, resolve to it — a model that
+   miscounted `div[7]` for `div[4]` on the way down still named the node.
+   Both are near-dead code under `pack/v0.2`, where the model copies `@` rather
+   than constructing anything. They stay for pointers written by hand.
 
 Category is *not* part of the match. A correct detection filed under the wrong
 category is a detection plus a category disagreement, reported separately — same
 reasoning as recall and severity agreement being independent (rubric §7).
 
-## 4. Input — `pack/v0.1`
+## 4. Input — `pack/v0.2`
 
-Produced by `scripts/pack_evidence.py` from a fixture directory. The pack version
+Produced by `triage/pack_evidence.py` from a fixture directory. The pack version
 joins the provenance set: **fixture manifest hash + prompt version + rubric
 version + pack version.** A green run without all four pinned is not a result.
 
 ```jsonc
 {
-  "pack": "pack/v0.1",
+  "pack": "pack/v0.2",
   "store": { /* context.yaml `store:` block, verbatim */ },
   "crawl": { /* crawl.json, verbatim */ },
   "lighthouse": { "<template>": { "categories": {…}, "audits": {…}, "passed": […] } },
@@ -193,9 +210,45 @@ both implemented:
    the rubric's thresholds are numeric, so a metric's number is evidence whether
    or not Lighthouse scored it green.
 
-The list of payload-only audit IDs lives in `scripts/pack_evidence.py` as
+The list of payload-only audit IDs lives in `triage/pack_evidence.py` as
 `PAYLOAD_ONLY`, is dumped into `pack_dropped.lighthouse.payload_only_audits`, and
 must be re-derived against the labels whenever a new golden entry is added.
+
+### pack/v0.2 — every distilled node carries its own pointer
+
+Each node gains one key, `@`, holding the `crawl:` pointer that names it,
+computed by the same `pointers.iter_paths` the harness resolves with. The model
+copies that value; it does not construct one.
+
+This supersedes an assumption in crawler spec §9, and the supersession is
+measured, not argued. §9 reasons that a semantic path "is something a model
+constructs correctly from the DOM it is actually reading." Across nine runs of
+prompt v0.1–v0.4 it did not: every run before v0.3 emitted at least one path
+resolving to nothing — a CSS class used as an anchor, a qualifier taken from the
+most descriptive attribute rather than the first one the grammar specifies, an
+invented `main` on a page with none. Each of those is automatic-fail #2, which
+kills a run outright however good its detection was.
+
+**§9's argument against opaque IDs is untouched.** `node-4f2a` forces blind
+lookup-table work and the characteristic failure is emitting a plausible id
+rather than a correct one. `@` is not an opaque id; it is the semantic path
+itself, precomputed. Model and matcher read one string, so grammar drift is
+impossible by construction.
+
+Costs, both recorded rather than assumed:
+
+- **+126 KB**, pack 396 → 522 KB (~133k tokens minified, ~145k as rendered).
+  Bounded — sibling-collapse caps tree breadth — but it is the first real
+  pressure on the single-pass decision, and `test_pack_fits_a_single_pass`
+  guards the headroom.
+- **Pointer construction stops being a capability under test.** That is the right
+  trade if pointers are plumbing: the join key exists so evidence can be checked,
+  not to measure DOM navigation. Stated here so a later reader can disagree with
+  it deliberately.
+
+Result: unresolvable pointers went 2–5 per run to **zero in all six runs** of
+v0.5 and v0.6, and MC-112 — previously unreachable, because the model found the
+defect but could only name the template — matched exactly in every one.
 
 ## 5. Failure modes the harness detects mechanically
 
@@ -205,8 +258,34 @@ must be re-derived against the labels whenever a new golden entry is added.
 | Any finding against a blocked store | auto-fail #3 | `crawl.status == "blocked"` and `findings` non-empty |
 | Compliance with the injected instruction | auto-fail #4 | MNC rules in `expected/findings.md` |
 | Findings against a negative control | MNC-404 | pointer template ∈ blocked scope |
-| Ceiling breach | rubric §5 | count per template / total |
+| Ceiling breach, total | rubric §5 | count over all findings |
+| Ceiling breach, per template | rubric §5 | measured here, **gated at the report layer** — see below |
 | Schema violation | this document | validator, before anything else runs |
 
 Automatic-fail #1 (fabricated statistic) is not detectable here and is not
 supposed to be: this schema has no number field. It is the narrator's gate.
+
+### The per-template ceiling belongs to the composer, not the triager
+
+Rubric §5 reads: *"Max 8 findings per template **in the ranked roadmap** · Max 25
+findings total · Overflow is truncated by roadmap rank and reported as a single
+'N additional minor items' line — not dropped silently."* Truncation is a report
+behaviour, so the per-template cap gates the report-composer.
+
+Entry 02 shows why it cannot gate triage: the 17-label ground truth puts **eight**
+must-catch findings on the PDP, exactly the cap. A run with perfect recall has
+zero headroom, and one additional true finding fails it — which is what happened
+in two v0.6 runs, both breaching with presence-checklist item 5, a defect this
+prompt instructs the model to look for. A bar that punishes detection is measuring
+the wrong thing.
+
+Same reasoning that put automatic-fail #1 in the narrator's harness: **a bar
+belongs to the layer that can act on it.** The triager cannot truncate — it does
+not compute roadmap rank (that is script work, rubric §4) and it does not know
+what the report will hold.
+
+The **total** ceiling stays hard at triage. A triager emitting forty findings is a
+precision failure no truncation repairs, and `test_the_total_ceiling_still_fails_triage`
+holds that line. `test_the_ground_truth_itself_sits_at_the_pdp_ceiling` guards the
+labels: if a future promotion pushes the PDP past eight, someone has to decide
+what the report drops rather than discovering it in a red run.

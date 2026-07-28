@@ -55,7 +55,7 @@ Consequences that shape the work:
    (contrast — verify with the axe pass at recapture, or a quick devtools
    check). Then the metric loop for P-01, P-02, P-03. P-04 (app install) last —
    it adds noise to every metric measurement, so measure P-0x cleanly first.
-3. Metric loop, per defect: plant → `python scripts/measure.py <url>` →
+3. Metric loop, per defect: plant → `python planting/measure.py <url>` →
    adjust → repeat until the number sits on the intended threshold side with
    margin. The script prints LCP/CLS and which rubric side they landed on;
    `--runs 3` shows variance. It measures one URL through the same gate +
@@ -102,7 +102,7 @@ Baseline hero: 3-slide carousel, `img.hero-carousel__slide-img`,
 LCP 1.88s — nearly 3s of headroom to add.
 Plant: replace slide 1's image with a ~3000px unoptimised PNG; remove
 `srcset`/`sizes` and the `&width=` param so the full asset ships to mobile.
-Loop with `scripts/measure.py https://torontosportscard.myshopify.com/` until
+Loop with `planting/measure.py https://torontosportscard.myshopify.com/` until
 comfortably past 4.0s. The script prints the LCP element — confirm it is the
 hero img, not something incidental.
 
@@ -141,7 +141,7 @@ Baseline collection CLS 0.000, so the measurement is uncontaminated. The theme
 already has promo-banner machinery (`promo-banner__close` / `data-promo-close`
 on home) — inject a *delayed* variant on the collection template only
 (`setTimeout` ~1.5s, unreserved height, pushes the grid down). Measure with
-`scripts/measure.py …/collections/tin`. Label carries
+`planting/measure.py …/collections/tin`. Label carries
 `confidence_floor: medium` — the shift is measured, the attribution is not.
 
 ### P-04 · Real third-party app, critical path — INSTALL BEFORE THE P-0x LOOP
@@ -260,7 +260,7 @@ fixture, which will carry this exact reworded text.
   4h+ frozen snapshot survived pushes and cache-buster params; only
   `preview_theme_id` bypassed it; a republish with 15 min unpublished did NOT
   invalidate - the entry outlived its own theme being offline). Before capturing, run
-  `python scripts/inspect_lcp.py <origin>` per revenue template and confirm the
+  `python planting/inspect_lcp.py <origin>` per revenue template and confirm the
   `compiled_assets/styles.css ?v=` stamp is >= 1785129197. A capture of a stale
   document silently audits the past. Tune with `?preview_theme_id=<live id>`
   URLs; capture only plain URLs, only once fresh.

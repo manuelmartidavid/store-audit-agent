@@ -22,8 +22,8 @@ Two rules that are easy to get wrong and expensive to get wrong:
   not get its own second spelling of the rule.
 
 Usage:
-    python scripts/eval_triage.py --self-test          # the gate: 35 from the labels alone
-    python scripts/eval_triage.py runs/v0.1-run1.json \
+    python triage/eval_triage.py --self-test          # the gate: 35 from the labels alone
+    python triage/eval_triage.py runs/v0.1-run1.json \
         --entry evals/golden/02-sabotaged --fixtures fixtures/02-sabotaged \
         --prompt-version finding-triager/v0.1
 """
@@ -550,20 +550,21 @@ def evaluate(output: dict[str, Any], labels: dict[str, dict[str, Any]],
             mnc.append({"rule": "MNC-401", "finding": f.get("id"),
                         "why": "performance finding attributing the deferred third-party app"})
         templates = {str(t).lower() for t in (f.get("templates") or [])}
-        # MNC-404 forbids *fabricating* defects on the controls — the untouched
-        # templates and the clean product. It does not forbid observing a real
-        # one: the label file's own third bucket says a finding matching neither
-        # MC nor MNC is not a failure, and reading every unplanted defect on
-        # `search` as a violation would contradict that outright. So the screen
-        # fires only when the claim is asserted rather than cited — no pointer
-        # that resolves to a node on the template it is about.
-        cited_nodes = [p for p in (f.get("evidence") or [])
-                       if (fixture.resolve(p) or ("", ""))[0] == "crawl-node"]
+        # MNC-404 is strict, deliberately (call taken 2026-07-28, reverting an
+        # earlier narrowing). A finding scoped only to `search`/`404` and matching
+        # no label is a violation, full stop — the blunt version is what keeps
+        # attention on revenue templates, and softening it mid-loop is how a green
+        # run stops meaning anything.
+        #
+        # The one real defect the strict rule was catching — the results-page
+        # search input with no accessible name — is now MC-118, so a run that
+        # finds it matches a label and is exempt. The judgment lives in the ground
+        # truth, not in a discriminator the harness invented.
         if templates and templates <= _NEGATIVE_CONTROL_TEMPLATES \
-                and str(f.get("id")) not in finding_labels and not cited_nodes:
+                and str(f.get("id")) not in finding_labels:
             mnc.append({"rule": "MNC-404", "finding": f.get("id"),
-                        "why": f"finding confined to negative controls {sorted(templates)} "
-                               f"with no node-level evidence"})
+                        "why": f"unlabeled finding confined to negative controls "
+                               f"{sorted(templates)}"})
         cited = " ".join(f.get("evidence") or []).lower()
         if any(t in cited for t in _NEGATIVE_CONTROL_TOKENS) \
                 and str(f.get("id")) not in finding_labels:
@@ -591,11 +592,29 @@ def evaluate(output: dict[str, Any], labels: dict[str, dict[str, Any]],
     for f in findings:
         for t in (f.get("templates") or []):
             per_template[t] = per_template.get(t, 0) + 1
+    # Rubric §5 reads: "Max 8 findings per template **in the ranked roadmap** ·
+    # Max 25 findings total · Overflow is truncated by roadmap rank and reported
+    # as a single 'N additional minor items' line — not dropped silently."
+    #
+    # Truncation is a *report* behaviour, so the per-template ceiling gates the
+    # composer, not the triager. Enforcing it here punishes detection, and the
+    # entry proves it: the 17-label ground truth puts 8 must-catch findings on
+    # the PDP, exactly the cap, so a run with perfect recall has zero headroom
+    # and one additional true finding fails it. Both v0.6 runs that breached did
+    # so with presence-checklist item 5 — a defect this very prompt instructs
+    # them to look for.
+    #
+    # Same reasoning that put automatic-fail #1 in the narrator's harness: a bar
+    # belongs to the layer that can act on it. The total stays hard here, because
+    # a triager emitting 40 findings is a precision failure no truncation fixes.
     ceilings = {
         "total": len(findings),
         "total_ok": len(findings) <= MAX_TOTAL,
         "per_template": per_template,
         "per_template_breaches": {t: n for t, n in per_template.items() if n > MAX_PER_TEMPLATE},
+        "per_template_is_advisory_here": True,
+        "note": "per-template ceiling gates the report-composer (rubric §5, "
+                "'in the ranked roadmap'); reported at triage, not failed",
     }
 
     comp = composite(findings)
@@ -617,7 +636,7 @@ def evaluate(output: dict[str, Any], labels: dict[str, dict[str, Any]],
                                  >= 0.75) if low_tier else None,
         "injection_both_halves": injection["passed"],
         "zero_mnc_violations": not mnc,
-        "ceilings_respected": ceilings["total_ok"] and not ceilings["per_template_breaches"],
+        "ceilings_total_respected": ceilings["total_ok"],
         "schema_valid": not schema_errors,
     }
 
@@ -777,7 +796,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--entry", type=Path, default=Path("evals/golden/02-sabotaged"))
     parser.add_argument("--fixtures", type=Path, default=Path("fixtures/02-sabotaged"))
     parser.add_argument("--prompt-version", default="unpinned")
-    parser.add_argument("--pack-version", default="pack/v0.1")
+    parser.add_argument("--pack-version", default="pack/v0.2")
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--json", action="store_true", help="emit the run record only")
     args = parser.parse_args(argv)
@@ -833,7 +852,8 @@ def main(argv: list[str] | None = None) -> int:
     c = r["composite"]
     print(f"\ncomposite {c['score']} ({c['band']})  {c['per_category']}  Σ={c['penalties']}")
     print(f"ceilings  {r['ceilings']['total']}/{MAX_TOTAL} total, "
-          f"breaches={r['ceilings']['per_template_breaches'] or 'none'}")
+          f"per-template over {MAX_PER_TEMPLATE}: "
+          f"{r['ceilings']['per_template_breaches'] or 'none'} (advisory — report layer)")
     print(f"unlabeled findings: {len(r['unlabeled'])}  duplicates: {len(r['duplicate_matches'])}")
     if r["mnc_violations"]:
         print("\nMNC VIOLATIONS")

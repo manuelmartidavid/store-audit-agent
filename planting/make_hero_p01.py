@@ -1,8 +1,8 @@
 """Generate the oversized hero PNG for golden entry 02, defect P-01.
 
-    python scripts/make_hero_p01.py                       # 3200x2132, ~1.9 MB
-    python scripts/make_hero_p01.py --target-mb 4         # heavier, slower LCP
-    python scripts/make_hero_p01.py --width 2400          # lighter than the floor
+    python planting/make_hero_p01.py                       # 3200x2132, ~1.9 MB
+    python planting/make_hero_p01.py --target-mb 4         # heavier, slower LCP
+    python planting/make_hero_p01.py --width 2400          # lighter than the floor
 
 P-01 aims home LCP past 4.0s (target >= 5s) by shipping an unoptimised
 full-resolution hero. The defect is *weight*, not appearance: the store must
@@ -25,7 +25,7 @@ photo-exported-as-PNG is huge. The floor at a given width comes from rendering
 the plate at reduced detail and upscaling; below that floor, drop --width.
 
 This script sizes the asset. It does not decide whether P-01 landed:
-run scripts/measure.py after uploading, and let the recaptured fixture label.
+run planting/measure.py after uploading, and let the recaptured fixture label.
 """
 
 from __future__ import annotations

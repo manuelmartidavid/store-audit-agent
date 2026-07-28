@@ -1,4 +1,4 @@
-"""Pure helpers in scripts/measure.py — browser-free and deterministic.
+"""Pure helpers in planting/measure.py — browser-free and deterministic.
 
 measure.py is a planting aid, not part of the shipped crawler, but its
 threshold-side classification and LHR parsing decide when the aim loop stops, so

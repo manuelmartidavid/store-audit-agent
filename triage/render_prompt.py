@@ -5,7 +5,7 @@ JSON. Nothing else is substituted — a template language here would be a second
 place for the prompt to change, and prompt versions have to mean one file.
 
 Usage:
-    python scripts/render_prompt.py prompts/finding-triager/v0.1.md \
+    python triage/render_prompt.py prompts/finding-triager/v0.1.md \
         --pack packs/02-sabotaged.pack.json -o runs/v0.1.rendered.md
 """
 
