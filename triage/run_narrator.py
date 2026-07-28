@@ -63,10 +63,9 @@ def main(argv: list[str] | None = None) -> int:
             started_at=started_at, max_tokens=args.max_tokens)
 
     meta["usage"] = usage
-    # `pack_sha256` is what run_meta names the input digest; for this layer the
-    # input is the brief. Aliased rather than renamed so one record shape serves
-    # both backends and both layers.
-    meta["brief_sha256"] = meta.get("pack_sha256")
+    # run_meta names the input digest pack_sha256 because the triage layer's
+    # input is a pack; this layer's input is a brief, so the key is renamed.
+    meta["brief_sha256"] = meta.pop("pack_sha256")
 
     record = {"run_meta": meta, "output": model_runner.extract_json(text)}
     args.out.parent.mkdir(parents=True, exist_ok=True)
