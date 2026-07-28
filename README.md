@@ -199,8 +199,15 @@ python triage/render_prompt.py prompts/finding-triager/v1.0.md \
     --pack packs/02-sabotaged.pack.json --indent 0 -o runs/v1.0.rendered.md
 python triage/run_triager.py runs/v1.0.rendered.md --pack packs/02-sabotaged.pack.json \
     --prompt-version finding-triager/v1.0 -o runs/v1.0-run4.json
-python triage/eval_triage.py runs/v1.0-run4.json --prompt-version finding-triager/v1.0
+python triage/eval_triage.py runs/v1.0-run4.json --prompt-version finding-triager/v1.0 \
+    --pack-version pack/v0.2
 ```
+
+`--pack-version` has no default: the recorded corpus spans `pack/v0.1` and
+`pack/v0.2` (see `evals/results/07-finding-triager.md` for which runs carry
+which), so any default would be wrong for some of it. A pack built just above
+is `pack/v0.2` — pass `--pack packs/02-sabotaged.pack.json` too to verify the
+claim against the pack file itself rather than merely asserting it.
 
 `triage/eval_triage.py` reads both this wrapped shape and the bare `{schema,
 findings}` shape the 21 recorded runs use — the frozen runs are read unchanged,

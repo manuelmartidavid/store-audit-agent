@@ -140,6 +140,26 @@ def test_a_malformed_pack_version_is_fatal(tmp_path):
         eval_triage.provenance(entry, fixtures, "finding-triager/v1.0", "v0.2")
 
 
+def test_omitting_pack_version_on_the_cli_is_fatal_and_names_the_flag(tmp_path):
+    # No default is correct here (unlike --prompt-version's "unpinned" free-text
+    # guard): the recorded corpus spans pack/v0.1 and pack/v0.2, so any default
+    # would be silently wrong for roughly two-thirds of the runs/ corpus. The
+    # check fires before the output file, entry or fixtures are ever read, so a
+    # placeholder path is enough to exercise it.
+    with pytest.raises(SystemExit, match="--pack-version is required"):
+        eval_triage.main([str(tmp_path / "run.json")])
+
+
+def test_self_test_does_not_require_a_pack_version(capsys):
+    # --self-test recomputes the composite from the hand labels alone and scores
+    # no run, so it never builds a provenance record — it must not be made to
+    # require a pin it does not use. Runs against the real golden entry 02 (the
+    # CLI default), matching how --self-test is actually invoked.
+    code = eval_triage.main(["--self-test"])
+    assert code == 0
+    assert "self-test: green" in capsys.readouterr().out
+
+
 def test_allow_unpinned_excuses_a_missing_pin_not_a_mismatched_one(tmp_path):
     # allow_unpinned=True must only excuse an *absent* fixture pin. If a future
     # refactor moved the mismatch check below this guard, the flag would become

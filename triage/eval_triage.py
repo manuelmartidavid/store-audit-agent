@@ -1197,7 +1197,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--entry", type=Path, default=Path("evals/golden/02-sabotaged"))
     parser.add_argument("--fixtures", type=Path, default=Path("fixtures/02-sabotaged"))
     parser.add_argument("--prompt-version", default="unpinned")
-    parser.add_argument("--pack-version", default="pack/v0.2")
+    # No default: the recorded corpus spans pack/v0.1 and pack/v0.2 (see
+    # evals/results/07-finding-triager.md for which runs carry which), so any
+    # default is wrong for some fraction of it. `--prompt-version` already
+    # refuses to guess (`resolve_prompt_version` rejects "unpinned"); this
+    # mirrors that rather than silently stamping a version the operator never
+    # asserted. Checked in `main()`, not via argparse `required=True`, so
+    # `--self-test` — which never builds a provenance record — is unaffected.
+    parser.add_argument("--pack-version", default=None)
     parser.add_argument("--pack", type=Path, default=None,
                         help="pack JSON to verify --pack-version against (else the pin is asserted, not checked)")
     parser.add_argument("--allow-unpinned-fixture", action="store_true",
@@ -1210,6 +1217,13 @@ def main(argv: list[str] | None = None) -> int:
         return self_test(args.entry, args.fixtures)
     if not args.output:
         parser.error("an output file is required unless --self-test")
+    if not args.pack_version:
+        raise SystemExit(
+            "--pack-version is required: the recorded corpus spans pack/v0.1 and "
+            "pack/v0.2, so any default would be wrong for some of it (decision 12). "
+            "See evals/results/07-finding-triager.md for which runs carry which "
+            "version. Pass --pack <file> too to verify the claim against the pack "
+            "file itself, rather than merely asserting it.")
 
     labels = parse_labels(args.entry / "expected" / "findings.md")
     context = args.entry / "context.yaml"

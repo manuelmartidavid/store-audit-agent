@@ -717,6 +717,11 @@ history rather than describe it.
 
 - `--pack-version` defaults to `pack/v0.2`, wrong for the 12 v0.1–v0.4 runs, and
   the wrong value is recorded as an asserted pin. Making it required is the fix.
+  **RESOLVED (2026-07-28)** — `--pack-version` now has no default; omitting it
+  is a fatal `SystemExit` naming the flag and pointing at
+  `evals/results/07-finding-triager.md` for which runs carry which version.
+  `--self-test` never builds a provenance record, so it needs no pin and is
+  unaffected.
 - The repo-hygiene lint walks untracked and generated trees, so its
   parametrization is machine-dependent.
 - `--self-test` crashes with `StopIteration` on entry 05 (a blocked store has no

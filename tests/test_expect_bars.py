@@ -251,7 +251,8 @@ def test_main_carries_the_entrys_gates_from_context_yaml_into_the_bars(tmp_path,
     run.write_text(json.dumps(_output(2)), encoding="utf-8")
 
     code = eval_triage.main([str(run), "--entry", str(entry), "--fixtures", str(capture),
-                             "--prompt-version", "finding-triager/v1.0"])
+                             "--prompt-version", "finding-triager/v1.0",
+                             "--pack-version", "pack/v0.2"])
     printed = capsys.readouterr().out
     assert "max_findings_respected=False" in printed
     assert code == 1
@@ -275,7 +276,8 @@ def test_main_carries_the_entrys_gates_from_context_yaml_into_the_bars(tmp_path,
         f'    manifest_sha256: "{digest}"\n'
         "  expect:\n    max_findings: 1\n    gates: []\n", encoding="utf-8")
     code = eval_triage.main([str(run), "--entry", str(entry), "--fixtures", str(capture),
-                             "--prompt-version", "finding-triager/v1.0"])
+                             "--prompt-version", "finding-triager/v1.0",
+                             "--pack-version", "pack/v0.2"])
     printed = capsys.readouterr().out
     assert "max_findings_respected" not in printed
     assert code == 0

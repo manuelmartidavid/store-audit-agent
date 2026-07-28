@@ -317,8 +317,14 @@ python triage/pack_evidence.py fixtures/02-sabotaged \
 python triage/render_prompt.py prompts/finding-triager/v1.0.md \
     --pack packs/02-sabotaged.pack.json --indent 0 -o runs/v1.0.rendered.md
 # run the rendered prompt, capture the JSON, then:
-python triage/eval_triage.py runs/v0.6-run1.json --prompt-version finding-triager/v0.6
+python triage/eval_triage.py runs/v0.6-run1.json --prompt-version finding-triager/v0.6 \
+    --pack-version pack/v0.2
 ```
+
+`--pack-version` has no default and must be stated: the recorded corpus below
+spans `pack/v0.1` (v0.1–v0.4) and `pack/v0.2` (v0.5–v1.0), per the header
+above, so any default would be wrong for roughly two-thirds of it. `v0.6-run1`
+is a `pack/v0.2` run.
 
 > Paths corrected 2026-07-28: decision 28 split `scripts/` by concern.  <!-- STALE-OK -->
 > The commands above are the ones that run today; the results in this file
@@ -455,7 +461,9 @@ above. This is not a run scored under the whole pre-v1.0 harness and does not
 claim to be.
 
 **The four runs of the v1.0 lineage, each scored today** with
-`python triage/eval_triage.py runs/<file> --prompt-version finding-triager/<v>`:
+`python triage/eval_triage.py runs/<file> --prompt-version finding-triager/<v> --pack-version pack/v0.2`
+— all four rows below are `pack/v0.2` runs (`v0.6-run*` per this file's header,
+`v1.0-cli-run1` because it was produced against a freshly built pack):
 
 | run | per-template over 8 | total | every bar today |
 |---|---|---|---|
