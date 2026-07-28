@@ -225,12 +225,21 @@ def main(argv: list[str] | None = None) -> int:
     output = run.get("output", run)
     pack = json.loads(args.pack.read_text(encoding="utf-8"))
 
-    brief = build_brief(
-        output, pack,
-        triage_run_name=args.run.name,
-        triage_prompt_version=(run.get("run_meta") or {}).get("prompt_version", ""),
-        pack_sha256=hashlib.sha256(args.pack.read_bytes()).hexdigest(),
-    )
+    # `build_brief()` raises ValueError for the two ways a finding set can
+    # lose a finding between triage and the client (I3: colliding/missing
+    # ids, or `scoring.roadmap()` silently dropping an off-enum severity).
+    # Left uncaught, that is a Python traceback instead of a report — the
+    # same fatal-reporting convention `eval_narrative.py::provenance()`
+    # already uses (`raise SystemExit(message)`, no traceback) applies here.
+    try:
+        brief = build_brief(
+            output, pack,
+            triage_run_name=args.run.name,
+            triage_prompt_version=(run.get("run_meta") or {}).get("prompt_version", ""),
+            pack_sha256=hashlib.sha256(args.pack.read_bytes()).hexdigest(),
+        )
+    except ValueError as e:
+        raise SystemExit(str(e))
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(brief, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"{args.out}  status={brief['store_status']}  "

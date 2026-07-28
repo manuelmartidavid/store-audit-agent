@@ -180,3 +180,31 @@ def test_a_clean_split_with_real_overflow_does_not_raise():
     brief = build_brief.build_brief({"schema": "triage/v0.1", "findings": findings}, pack())
     assert len(brief["roadmap"]) == 8
     assert brief["overflow_count"] == 1
+
+
+# --- main(): a fatal ValueError must report, not traceback ------------------
+
+def test_main_reports_a_fatal_instead_of_a_traceback(tmp_path):
+    """A duplicate/missing-id run passed on the CLI used to let build_brief()'s
+    ValueError escape main() as a bare Python traceback. It must instead exit
+    the way the other triage/ CLIs report a fatal — `eval_narrative.py`'s
+    `provenance()` sets the precedent: `raise SystemExit(message)`, no
+    traceback, message intact."""
+    import json
+
+    findings = [finding(id=None, severity="high"),
+                finding(id=None, severity="medium")]
+    run_path = tmp_path / "run.json"
+    run_path.write_text(
+        json.dumps({"schema": "triage/v0.1", "findings": findings}), encoding="utf-8")
+    pack_path = tmp_path / "pack.json"
+    pack_path.write_text(json.dumps(pack()), encoding="utf-8")
+    out_path = tmp_path / "brief.json"
+
+    try:
+        build_brief.main([str(run_path), "--pack", str(pack_path), "-o", str(out_path)])
+    except SystemExit as e:
+        assert isinstance(e.code, str) and "<missing id>" in e.code
+    else:
+        raise AssertionError("expected SystemExit for a fatal build_brief() error")
+    assert not out_path.exists(), "no partial brief should be written on a fatal error"
