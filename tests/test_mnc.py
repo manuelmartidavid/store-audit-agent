@@ -41,10 +41,21 @@ def test_detect_patterns_match_the_serialised_output():
     assert [h["rule"] for h in hits] == ["MNC-003"]
 
 
-def test_an_invalid_regex_is_skipped_not_raised():
-    """A malformed pattern in a label must not take the whole scorer down."""
+def test_an_invalid_regex_is_a_hard_error_naming_the_label_and_pattern():
+    """V3: `mnc_screens_run` must never name a screen that evaluated nothing.
+    `declared_violations` used to catch `re.error` and `continue`, while
+    `executable_label_ids` counts any non-empty `patterns` list as a screen
+    that ran — so a label with an uncompilable pattern was reported having
+    matched nothing, when it never actually ran at all. Same treatment a
+    grammar-invalid `crawl:` pointer already gets, for the same reason."""
     labels = {"MNC-9": {"detect": {"patterns": ["[unclosed"]}}}
-    assert call(labels, [{"id": "F-01", "title": "x"}]) == []
+    try:
+        call(labels, [{"id": "F-01", "title": "x"}])
+    except ValueError as e:
+        assert "MNC-9" in str(e)
+        assert "[unclosed" in str(e)
+    else:
+        raise AssertionError("expected ValueError for an uncompilable pattern")
 
 
 def test_match_any_of_fires_on_a_forbidden_pointer():
@@ -143,3 +154,22 @@ def test_is_discharged_true_when_the_label_carries_a_discharged_block():
 
 def test_is_discharged_false_by_default():
     assert mnc.is_discharged({"detect": {"rule": "prose"}}) is False
+
+
+def test_is_discharged_false_when_by_or_note_is_missing():
+    """`discharged: true` (or a block missing `by`/`note`) must not silence a
+    must-not-claim screen with no reasoning recorded — the same accountability
+    gap as never discharging it, just quieter about it."""
+    assert mnc.is_discharged({"discharged": True}) is False
+    assert mnc.is_discharged({"discharged": {}}) is False
+    assert mnc.is_discharged({"discharged": {"by": "numeral_ban"}}) is False
+    assert mnc.is_discharged({"discharged": {"note": "why"}}) is False
+    assert mnc.is_discharged({"discharged": {"by": "", "note": ""}}) is False
+
+
+def test_discharge_incomplete_distinguishes_malformed_from_absent():
+    assert mnc.discharge_incomplete({"discharged": True}) is True
+    assert mnc.discharge_incomplete({"discharged": {"by": "x"}}) is True
+    assert mnc.discharge_incomplete({"detect": {"rule": "prose"}}) is False
+    assert mnc.discharge_incomplete(
+        {"discharged": {"by": "x", "note": "y"}}) is False

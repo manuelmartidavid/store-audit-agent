@@ -38,6 +38,27 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from crawler import pointers as ptr  # noqa: E402
 
 
+def scope_list(label: dict[str, Any]) -> list[str]:
+    """Normalise a label's `scope` to a lowercase list.
+
+    A hand-written label can spell `scope` three ways: a list (the common
+    case), a bare string (`scope: narrative` with no brackets), or the key
+    left off entirely. Iterating a bare string directly (`for x in
+    "narrative"`) silently yields one entry per character — `"n", "a",
+    "r", …` — which breaks every `in scope` check without raising anything.
+    That is the same slipped-past-the-guard failure V2 named one layer up
+    (`eval_narrative._narrative_scope_ids`), just reachable from here too, so
+    both callers normalise through this one function rather than each
+    re-deriving the same list comprehension and drifting on the edge cases.
+    """
+    raw = label.get("scope")
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        return [raw.lower()]
+    return [str(s).lower() for s in raw]
+
+
 def _screen_shapes(label: dict[str, Any]) -> tuple[bool, list[str], list[str]]:
     """The three executable shapes, isolated so `declared_violations` and
     `executable_label_ids` cannot drift on what counts as one.
@@ -47,7 +68,7 @@ def _screen_shapes(label: dict[str, Any]) -> tuple[bool, list[str], list[str]]:
     `axe:*` cannot itself be cited, only matched against, so it contributes no
     screen (`test_a_wildcard_axe_pointer_is_still_skipped_not_raised`).
     """
-    scope = [str(x).lower() for x in (label.get("scope") or [])]
+    scope = scope_list(label)
     forbidden_finding = label.get("type") == "forbidden_finding" and "all" in scope
     patterns = [p for p in ((label.get("detect") or {}).get("patterns") or [])]
     forbidden = [p for p in ((label.get("match") or {}).get("any_of") or [])
@@ -56,17 +77,39 @@ def _screen_shapes(label: dict[str, Any]) -> tuple[bool, list[str], list[str]]:
 
 
 def is_discharged(label: dict[str, Any]) -> bool:
-    """Does the label document, rather than implement, its own screen?
+    """Does the label document, rather than implement, its own screen — and
+    does it document it *completely*?
 
     A `discharged:` block is an explicit, reviewed statement that no
-    executable screen is needed at this layer — e.g. MNC-403, closed by
-    `eval_narrative.numeral_violations()`'s digit ban rather than a pattern of
-    its own. It is not a silent skip: the reasoning lives in the label, and
-    `executable_label_ids` still reports it separately from a label that
-    actually ran a screen, so a reader can tell "exempted, on the record" from
-    "nobody wired this up".
+    executable screen is needed at this layer — e.g. entry 05's MNC-002,
+    closed by the fact that `narrative/v0.1` carries no score field at all.
+    It is not a silent skip: the reasoning has to live in the label, so a
+    block is only recognised here when it carries a non-empty `by` *and* a
+    non-empty `note` — `discharged: true` or `discharged: {}` silences a
+    must-not-claim screen with exactly as little accountability as never
+    discharging it, just quieter about it. `executable_label_ids` still
+    reports a discharge separately from a label that actually ran a screen,
+    so a reader can tell "exempted, on the record" from "nobody wired this
+    up". See `discharge_incomplete()` for the third case — a `discharged:`
+    key that is present but does not qualify.
     """
-    return bool(label.get("discharged"))
+    d = label.get("discharged")
+    return isinstance(d, dict) and bool(d.get("by")) and bool(d.get("note"))
+
+
+def discharge_incomplete(label: dict[str, Any]) -> bool:
+    """True when a label carries a `discharged` key that is truthy but does
+    not qualify as `is_discharged()` — `discharged: true`, `discharged: {}`,
+    or a block missing `by` or `note`.
+
+    Distinguished from "no `discharged` key at all" (which is simply not
+    discharged, and may be perfectly fine for a label that carries its own
+    executable screen) so a caller can raise a specific, actionable error
+    instead of folding a malformed discharge into the generic "no executable
+    screen and no discharged: block" message.
+    """
+    d = label.get("discharged")
+    return bool(d) and not is_discharged(label)
 
 
 def executable_label_ids(labels: dict[str, dict[str, Any]]) -> set[str]:
@@ -110,18 +153,33 @@ def declared_violations(labels: dict[str, dict[str, Any]], *, blob: str,
     for label_id, label in labels.items():
         if not label_id.startswith("MNC-"):
             continue
-        scope = [str(x).lower() for x in (label.get("scope") or [])]
+        scope = scope_list(label)
 
         if label.get("type") == "forbidden_finding" and "all" in scope and findings:
             out.append({"rule": label_id, "finding": "*",
                         "why": f"{len(findings)} finding(s) emitted where the label "
                                f"forbids any"})
 
+        # Every pattern is compiled before any of them is trusted to have
+        # searched anything. `executable_label_ids` counts a non-empty
+        # `patterns` list as a screen that ran — that field is what a caller
+        # reads to tell "evaluated, found nothing" from "never evaluated" —
+        # so a pattern that cannot even compile must not be silently skipped
+        # (the old `except re.error: continue`). That let a label with
+        # `patterns: ["[unclosed"]` land in `mnc_screens_run` having matched
+        # nothing: the field added to prove a screen ran was itself false.
+        # Same treatment a grammar-invalid `crawl:` pointer already gets
+        # below, and for the same reason: a label that cannot run must be
+        # loud, never counted.
         for pattern in ((label.get("detect") or {}).get("patterns") or []):
             try:
-                hit = re.search(pattern, blob, re.I)
-            except re.error:
-                continue
+                compiled = re.compile(pattern, re.I)
+            except re.error as exc:
+                raise ValueError(
+                    f"{label_id}: detect.patterns entry {pattern!r} does not "
+                    f"compile as a regex ({exc}). A label that cannot run "
+                    f"must be loud, never counted as a screen that ran.")
+            hit = compiled.search(blob)
             if hit:
                 out.append({"rule": label_id, "finding": "*",
                             "why": f"output matches forbidden pattern {pattern!r} "
