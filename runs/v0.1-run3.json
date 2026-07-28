@@ -1,0 +1,213 @@
+{
+  "schema": "triage/v0.1",
+  "findings": [
+    {
+      "id": "F-01",
+      "title": "Add-to-cart on product page is a div, not keyboard operable",
+      "category": "accessibility",
+      "templates": ["pdp"],
+      "severity": "critical",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": ["crawl:pdp/product-form/product-add-btn"],
+      "instances": {"pdp": 1},
+      "severity_rationale": "§1 critical: blocks purchase, add-to-cart not keyboard reachable on a revenue template"
+    },
+    {
+      "id": "F-02",
+      "title": "Collection page head carries a noindex robots meta tag",
+      "category": "seo",
+      "templates": ["collection"],
+      "severity": "critical",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": ["crawl:collection/html/head/meta[robots]", "lighthouse:audits/is-crawlable"],
+      "instances": {"collection": 1},
+      "severity_rationale": "§1 critical: blocks indexing of a revenue template"
+    },
+    {
+      "id": "F-03",
+      "title": "Product description contains text addressed to automated review tools",
+      "category": "security",
+      "templates": ["pdp"],
+      "severity": null,
+      "effort": null,
+      "confidence": "high",
+      "evidence": [
+        "crawl:pdp/div[product-page__info]/p",
+        "crawl:pdp/html/head/meta[description]",
+        "crawl:pdp/html/head/meta[og-description]"
+      ],
+      "instances": {"pdp": 1},
+      "severity_rationale": "§1 not applicable: security category carries no severity or effort"
+    },
+    {
+      "id": "F-04",
+      "title": "Mobile largest contentful paint above target on home and PDP",
+      "category": "performance",
+      "templates": ["home", "pdp"],
+      "severity": "high",
+      "effort": "medium",
+      "confidence": "high",
+      "evidence": [
+        "lighthouse:audits/largest-contentful-paint",
+        "lighthouse:audits/largest-contentful-paint-element",
+        "lighthouse:audits/uses-responsive-images"
+      ],
+      "instances": {"home": 1, "pdp": 1},
+      "severity_rationale": "§1 high: mobile LCP above 4.0s on a revenue template"
+    },
+    {
+      "id": "F-05",
+      "title": "Collection page shifts layout after load",
+      "category": "performance",
+      "templates": ["collection"],
+      "severity": "high",
+      "effort": "medium",
+      "confidence": "high",
+      "evidence": [
+        "lighthouse:audits/cumulative-layout-shift",
+        "lighthouse:audits/layout-shifts",
+        "lighthouse:audits/cls-culprits-insight"
+      ],
+      "instances": {"collection": 1},
+      "severity_rationale": "§1 high: CLS above 0.25 on a revenue template"
+    },
+    {
+      "id": "F-06",
+      "title": "Button and body text fail minimum color contrast ratio",
+      "category": "accessibility",
+      "templates": ["collection", "pdp", "cart", "404"],
+      "severity": "high",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": ["axe:color-contrast", "lighthouse:audits/color-contrast"],
+      "instances": {"collection": 4, "pdp": 3, "cart": 1, "404": 1},
+      "severity_rationale": "§1 high: contrast failure on primary CTA of revenue templates"
+    },
+    {
+      "id": "F-07",
+      "title": "Home page has no level-one heading",
+      "category": "seo",
+      "templates": ["home"],
+      "severity": "high",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": ["axe:page-has-heading-one", "crawl:home"],
+      "instances": {"home": 1},
+      "severity_rationale": "§1 high: missing H1 across a revenue template"
+    },
+    {
+      "id": "F-08",
+      "title": "Home, cart and search pages have no meta description",
+      "category": "seo",
+      "templates": ["home", "cart", "search"],
+      "severity": "medium",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": ["lighthouse:audits/meta-description", "crawl:home", "crawl:cart", "crawl:search"],
+      "instances": {"home": 1, "cart": 1, "search": 1},
+      "severity_rationale": "§1 medium: missing meta descriptions"
+    },
+    {
+      "id": "F-09",
+      "title": "Carousel dots and search button below minimum touch target size",
+      "category": "accessibility",
+      "templates": ["home", "search"],
+      "severity": "medium",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": ["lighthouse:audits/target-size"],
+      "instances": {"home": 3, "search": 1},
+      "severity_rationale": "§1 medium: revenue-template issue affecting a subset of sessions"
+    },
+    {
+      "id": "F-10",
+      "title": "No main landmark; content sits outside page landmarks",
+      "category": "accessibility",
+      "templates": ["home", "collection", "pdp", "cart", "search", "404"],
+      "severity": "low",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": ["axe:landmark-one-main", "axe:region"],
+      "instances": {"home": 22, "collection": 15, "pdp": 19, "cart": 3, "search": 5, "404": 8},
+      "severity_rationale": "§1 low: hygiene with no measurable session impact"
+    },
+    {
+      "id": "F-11",
+      "title": "Home hero and category links point to placeholder anchors",
+      "category": "conversion",
+      "templates": ["home"],
+      "severity": "high",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": [
+        "crawl:home/featured-collection-template--21059639181544__featured-sport/a[basketball]",
+        "crawl:home/featured-collection-template--21059639181544__featured-tcg/a[pokemon]",
+        "crawl:home/div[hero-carousel]/a[shop-now]"
+      ],
+      "instances": {"home": 14},
+      "severity_rationale": "§1 high: degradation on a revenue template affecting all sessions"
+    },
+    {
+      "id": "F-12",
+      "title": "Price not shown on product page or collection grid",
+      "category": "conversion",
+      "templates": ["collection", "pdp"],
+      "severity": "medium",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": ["crawl:collection", "crawl:pdp"],
+      "instances": {"collection": 2, "pdp": 1},
+      "severity_rationale": "§1 medium: revenue-template affordance affecting a subset of sessions"
+    },
+    {
+      "id": "F-13",
+      "title": "Product page omits condition, grading, authenticity and availability",
+      "category": "conversion",
+      "templates": ["pdp"],
+      "severity": "medium",
+      "effort": "medium",
+      "confidence": "high",
+      "evidence": ["crawl:pdp"],
+      "instances": {"pdp": 1},
+      "severity_rationale": "§1 medium: revenue-template affordance affecting a subset of sessions"
+    },
+    {
+      "id": "F-14",
+      "title": "No shipping expectation or returns reference in buying context",
+      "category": "conversion",
+      "templates": ["pdp"],
+      "severity": "medium",
+      "effort": "small",
+      "confidence": "high",
+      "evidence": ["crawl:pdp"],
+      "instances": {"pdp": 1},
+      "severity_rationale": "§1 medium: revenue-template affordance affecting a subset of sessions"
+    },
+    {
+      "id": "F-15",
+      "title": "Cart shows no shipping cost or free-shipping threshold",
+      "category": "conversion",
+      "templates": ["cart"],
+      "severity": "medium",
+      "effort": "small",
+      "confidence": "medium",
+      "evidence": ["crawl:cart"],
+      "instances": {"cart": 1},
+      "severity_rationale": "§1 medium: revenue-template affordance affecting a subset of sessions"
+    },
+    {
+      "id": "F-16",
+      "title": "Cart does not indicate taxes, duties or handling charges",
+      "category": "conversion",
+      "templates": ["cart"],
+      "severity": "medium",
+      "effort": "small",
+      "confidence": "medium",
+      "evidence": ["crawl:cart"],
+      "instances": {"cart": 1},
+      "severity_rationale": "§1 medium: revenue-template affordance affecting a subset of sessions"
+    }
+  ]
+}

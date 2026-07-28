@@ -20,3 +20,8 @@ __pycache__/
 
 # Bridge/host litter, not project state.
 /_to_delete/
+
+# Derived from fixtures + prompts; regenerable, and the rendered prompts are
+# ~440 KB each. The run JSON in runs/*.json is a result and IS committed.
+/packs/
+/runs/*.rendered.md

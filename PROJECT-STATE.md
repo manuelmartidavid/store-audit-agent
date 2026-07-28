@@ -1,6 +1,6 @@
 # Store Audit Agent — project state
 
-    updated:  2026-07-27 (entry 02 frozen + labeled; learnings recorded)
+    updated:  2026-07-28 (step 7: eval loop built, finding-triager v0.1→v0.4 measured)
     supersedes: phase-numbering in 02-store-audit-brief.md (workflow detached from
                 numbered phases by explicit decision; gates kept, sequence dropped)
     for Claude: treat this file as ground truth for decisions. Do not re-open
@@ -191,7 +191,8 @@ sees it.
     not after. The freeze is one recapture with the app enabled, so tuning
     without it tunes against a configuration that will not exist — and P-02's
     3.0–3.8s window cannot absorb a widget added afterwards.
-- Prompts written: none.
+- Prompts written: `finding-triager` v0.1–v0.4 (v0.4 current, not frozen).
+  `impact-narrator` and `report-composer` still none.
 - Entries 01 (clean theme demo) and 04 (WooCommerce, reduced path + null-AOV
   trap): stores not yet selected. Entry 03 candidate: makerlab (captured).
 
@@ -220,9 +221,8 @@ Known but not blocking:
   `APP_SIGNATURES`. Decision 13 covers the extension convention only; several of
   these are now named through their extension handles instead. Growing the
   hardcoded list is the thing decision 13 was written to avoid, so leave it.
-- **`StoreAuditAgent` itself is not under version control.** The theme repo is,
-  and the eval discipline depends on being able to say what changed when — but
-  the harness that produces the fixtures has no history at all.
+- (resolved 2026-07-28, decision 19) `StoreAuditAgent` is under git; fixtures
+  and planting image assets are ignored.
 
 ## Storefront serving incident, 2026-07-27 (resolved; one guard remains)
 
@@ -352,6 +352,89 @@ provenance + expect filled. S-02 dropped, P-04 → MNC (deferred app), C-01 salv
 by the distiller fix. This is the first exact ground truth in the project — the
 target the finding-triager prompt is written against.
 
+## Step 7 — eval loop built, triager measured (2026-07-28)
+
+Full record: `evals/results/07-finding-triager.md`. Repo is now under git
+(fixtures ignored; the manifest hash is the commitment).
+
+Built: `specs/triager-io.md` (triage/v0.1 output contract, frozen) ·
+`scripts/pack_evidence.py` (pack/v0.1 — 396 KB / ~101k tokens for six templates,
+so single-pass triage is viable and granularity is a determinism choice, not a
+capacity one) · `prompts/finding-triager/v0.1–v0.4` + registry ·
+`scripts/render_prompt.py` · `scripts/eval_triage.py` (label parser, normalized
+matcher, tiered recall, severity/effort agreement, composite, MNC screens,
+automatic fails) · 48 new tests.
+
+**The 7.4 gate passed before any model ran:** the scorer recomputes score 35 and
+band "Significant work needed" from `expected/findings.md` alone.
+
+**Result — v0.4, 3 runs:** 2 of 3 detect all 13 must-catch findings; the third
+misses MC-112 and carries one invented pointer. Critical/high recall 1.00 across
+all three. **Severity agreement is exact on every matched label in all twelve
+runs across all four versions** — including both traps (MC-102 critical *and*
+trivial; MC-107 taking `medium` 85 ms under the boundary). Effort agreement is
+the weak metric at 0.30–0.73 exact, ≥0.91 within one level; effort does not enter
+the score, so it costs roadmap order only. Zero MNC violations in 11 of 12 runs.
+MC-113 passes both halves in every run — the injection was treated as data and
+reported, never once obeyed.
+
+**Not frozen as v1.** 2 of 3 is not the N ≥ 3 gate.
+
+### Decisions taken during step 7
+
+19. **Git init, fixtures ignored.** The commitment is the manifest hash recorded
+    in `expected/findings.md` and `context.yaml`, not the capture bytes.
+    (Note: the device bridge cannot unlink, so git leaves `.lock` litter after
+    every command — `mv` them into `_to_delete/gitlocks/` or the next git
+    command fails with "Another git process seems to be running".)
+20. **Single-pass triage, model-side rollup.** The pack fits; rollup is a
+    semantic judgment ("same defect") and a script would need a sameness key the
+    crawl does not provide. The script validates ceilings, `instances` keys and
+    duplicate matches instead.
+21. **`severity_rationale` kept** (≤20 words, rubric clause only) — it is what
+    makes a severity disagreement diagnosable rather than merely countable. The
+    validator flags a rationale carrying a number without a clause; if that flag
+    ever fires in a tuned version, the field loses its argument.
+22. **`expected/findings.md` gained `match:` blocks** (2026-07-28, before any
+    prompt existed). Five of the thirteen hand-written `evidence:` pointers do
+    not resolve against the fixture using the project's own matcher — scoring a
+    model against an unresolvable target fails correct findings for reasons
+    unrelated to detection. `match.any_of` carries fixture-derived resolvable
+    spellings; `templates_any_of` / `title_any_of` only ever narrow. No verdict,
+    severity or composite value changed.
+23. **MNC-404 narrowed to findings with no node-level evidence.** The search
+    input genuinely has no accessible name; the label file's third bucket says
+    an unlabeled finding is not a failure, so flagging every real defect on a
+    control template contradicts it. The discriminator is cited vs asserted.
+    This is the one place the harness got more permissive — flagged as a
+    judgment call, not settled by inference.
+
+### Blocking-adjacent findings from the loop
+
+- **Rendered prices and stock state do not survive distillation.** `$149.99` is
+  7 chars (< `TEXT_KEEP_MIN_CHARS` 20) and a price span is not interactive, so
+  `keep()` drops it. Verified: zero `$` in the distilled tree of any template.
+  Every early run reported "no price on the PDP" — a false positive caused by
+  the evidence base. Structurally identical to C-01, one layer out. **Distiller
+  fix belongs with the step-8 recapture**; v0.4 works around it by removing
+  price/stock from the presence checklist and saying why.
+- **The §9 semantic-path grammar is harder to emit than the spec assumed.** Spec
+  §9 argues models construct semantic paths correctly from the DOM they read.
+  Measured: every run before v0.3 emitted at least one unresolvable path (CSS
+  class as an anchor, qualifier from the wrong attribute, invented `main`).
+  v0.3's *trace it or drop it* rule fixed the automatic fails by trading
+  precision for resolvability, and MC-112 is the visible cost. **Open decision:**
+  carry the crawler-derived pointer on each distilled node in `pack/v0.2`,
+  making construction a lookup. Not the opaque-ID failure §9 warns about — it is
+  the semantic path itself, precomputed.
+- **`expect.score` range 30–42 does not survive a good run.** v0.4 scores 24–27
+  because it finds 4–8 legitimate findings the labels do not carry. The score is
+  behaving correctly; the range was set from the must-catch set alone. Either
+  widen it downward or promote the strongest unlabeled findings (list in the
+  results file — the missing `<h1>` on home, meta descriptions absent on three
+  templates, no `main` landmark, and `href="#"` placeholder category links all
+  look real).
+
 ## Next steps, in order
 
 1. (done) Crawler acceptance tests — suite green.
@@ -364,11 +447,21 @@ target the finding-triager prompt is written against.
 6. (done) Recapture → `fixtures/02-sabotaged` (pinned PDP), password grep clean,
    provenance filled, `expected/findings.md` labeled from the frozen fixture.
    **Entry 02 is the project's first exact ground truth.**
-7. **Write `finding-triager` against entry 02.** Map crawl/Lighthouse/axe
-   evidence → severity/effort/confidence enums + evidence pointers, no prose.
-   Measure recall against the 13 MC labels; severity-agreement separately.
+7. (done, not frozen) `finding-triager` v0.1→v0.4 measured against entry 02.
+   13/13 recall in 2 of 3 v0.4 runs; severity agreement exact throughout.
+   See `evals/results/07-finding-triager.md` and decisions 19–23.
+7a. **Decide the pointer question** — precompute node pointers into `pack/v0.2`,
+   or keep §9 construction and accept the MC-112-shaped cost. Then either freeze
+   v0.4 as v1 or spend one iteration on the last failure mode.
+7b. **Decide the score range and the promotion list** — `expect.score` 30–42 vs
+   the 24–27 a good run produces, and which unlabeled findings become MC labels.
 8. Recapture `fixtures/makerlab` and `fixtures/05` under the current crawler
    (distiller + fingerprint changes staled both); confirm makerlab as entry 03.
+   **Fix the distiller's short-text gap first** — rendered prices and stock
+   badges are dropped today, which makes two purchase-decision affordances
+   undetectable and generates false positives. It changes capture output, so it
+   belongs in the same recapture, and `fixtures/02-sabotaged` will need
+   re-freezing and re-labeling after it.
 9. Select and capture entries 01 (clean demo) and 04 (WooCommerce, null-AOV trap).
 
 ## Learnings — durable, from building entry 02 (2026-07-27)
