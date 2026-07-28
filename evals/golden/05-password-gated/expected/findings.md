@@ -76,6 +76,28 @@ type: forbidden_claim
 scope: [score, narrative]
 detect:
   rule: score_is_null_and_status_is_INACCESSIBLE   # rubric v0.4 §4 rule 3
+discharged:
+  # Added 2026-07-29 (whole-branch review, closing finding 9). Not given
+  # `patterns` — screening prose for score-like words would be a heuristic
+  # standing in for a rule the schema already makes unreachable, and this
+  # branch has twice recorded that kind of check as incomplete-by-
+  # construction (MNC-403's own discharge, and the digit-scan gate it rests
+  # on). `narrative/v0.1` has no score field at all: the schema
+  # (specs/narrator-io.md §3) is exactly `schema`, `summary`, and `findings`
+  # keyed by id, each finding carrying three prose fields (`consequence`,
+  # `affects`, `change`). No score, no status, no band — §2.5 confirms the
+  # brief withholds all three from the narrator for the same reason. A
+  # narrative cannot carry a composite score, and so cannot carry a *null*
+  # one or a *zero* one either, because the contract gives it nowhere to put
+  # one. The score this label protects is computed by script, a different
+  # layer, from the brief's findings via `triage.scoring.composite()`.
+  by: schema_has_no_score_field
+  at_layer: narrative/v0.1
+  note: >
+    Becomes a live screen again at the report-composer — specs/narrator-io.md
+    §2.5's "The composer computes the score itself... via
+    `triage.scoring.composite()`" — which does render a score and is not yet
+    built.
 reason: >
   Rubric §4 rule 3. Zero renders as "Critical" on the band table, which is a
   judgment about a store nobody saw. The failure mode here is arithmetic

@@ -59,6 +59,33 @@ table above is now a real measured value; it was not one before this
 correction. Full detail: `evals/HARNESS-CHANGELOG.md`,
 `narrative-eval/v0.1`'s correction.
 
+**Correction, 2026-07-29 (whole-branch review, closing finding 9):** entry
+05's `MNC violations: 0` above also predates the C1a hard error — MNC-002
+carried only `detect: {rule: score_is_null_and_status_is_INACCESSIBLE}`, none
+of the three executable shapes, and after C1a landed, re-scoring entry 05's
+recorded run raised `ValueError: MNC-002: scope includes 'narrative' but
+declares no executable screen …` instead of reporting a verdict at all. Not
+given `detect.patterns`: screening prose for score-like words would be a
+heuristic standing in for a rule the schema already makes unreachable.
+Instead MNC-002 gained a `discharged:` block: `narrative/v0.1` has no score
+field to carry one at all (`specs/narrator-io.md` §3 — `schema`, `summary`,
+and `findings` keyed by id with three prose fields each), so the label is
+closed structurally, the same move `evals/golden/02-sabotaged`'s MNC-403 made
+for the numeral ban. It becomes a live screen again at the report-composer,
+which does render a score and is not yet built. **The recorded run was
+re-scored and the verdict is unchanged: it still passes**
+(`mnc_screens_run: ["MNC-003"]`, `mnc_screens_discharged: ["MNC-002"]`,
+`mnc_violations: []`). Entry 05's other two narrative-scoped or
+in-scope labels were checked at the same time: MNC-001 and MNC-004 are not
+`narrative`-scoped (`[all]` and `[password_page]` respectively) so C1a's
+guard does not apply to them at all; MNC-003 was already executable
+(`detect.patterns`) before this fix. The `0` in the table above is now a real
+measured value for entry 05 too, reproducible via:
+
+    python triage/eval_narrative.py runs/05-narrator-v0.1-run1.json \
+      --brief briefs/05.brief.json --entry evals/golden/05-password-gated \
+      --prompt-version impact-narrator/v0.1
+
 ## The human read — decision 3's criterion, run for the first time
 
 Full note: `docs/superpowers/notes/2026-07-29-narrator-human-read.md`.

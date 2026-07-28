@@ -361,3 +361,23 @@ def test_flawless_summary_against_entry_02_real_labels_is_now_caught():
     result = eval_narrative.evaluate(n, brief(status="ASSESSED", roadmap=()), labels)
     assert result["mnc_violations"]
     assert result["passed"] is False
+
+
+def test_entry_05_real_labels_score_without_raising_and_mnc_002_is_discharged():
+    """Entry 05's MNC-002 forbids a composite score, but `narrative/v0.1` has no
+    score field to carry one (specs/narrator-io.md §3): schema, summary, and
+    findings keyed by id with three prose fields each. No `patterns` were added
+    — that would screen prose for a rule the schema already makes unreachable —
+    so MNC-002 carries a `discharged:` block instead. Pins that scoring entry
+    05's real label file does not trip the C1a hard error (dead narrative-scoped
+    label with no executable screen), and that MNC-002 shows up as discharged
+    rather than as an executed screen."""
+    labels = eval_narrative.eval_triage.parse_labels(
+        ROOT / "evals" / "golden" / "05-password-gated" / "expected" / "findings.md")
+    b = brief(status="INACCESSIBLE", roadmap=())
+    n = narrative(findings={},
+                  summary="The store is password-protected; we could not assess it.")
+    result = eval_narrative.evaluate(n, b, labels)
+    assert result["passed"] is True
+    assert "MNC-002" in result["mnc_screens_discharged"]
+    assert "MNC-002" not in result["mnc_screens_run"]
