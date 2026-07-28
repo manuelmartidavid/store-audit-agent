@@ -71,6 +71,7 @@ eval:
     score_min: 18
     score_max: 34
     band: "Critical"
+    status: "ASSESSED"        # rubric v0.4 §4 rule 3; INACCESSIBLE only when blocked
     # NOTE the range spans a band boundary (25). `band` is the value derived from
     # the labels; a run scoring 26 is correctly "Significant work needed" and is
     # not a failure. Band is a reporting artefact, not a gate.

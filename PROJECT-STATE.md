@@ -41,8 +41,10 @@ Top project risk: fabricated impact claims. Every quantified claim must cite
 6. **Score is a health bar, not a grade.** Weights: critical 15 / high 6 /
    medium 2 / low 1. Category cap 25. Bands: 85+ Healthy · 65–84 Minor drag ·
    45–64 Material friction · 25–44 Significant work · <25 Critical.
-7. **A blocked/unassessable store scores `null` ("Not assessed"), never 0.**
+7. **A blocked/unassessable store scores `null`, status `INACCESSIBLE`, never 0.**
    Zero is a verdict about a store nobody saw — fabrication by arithmetic.
+   (Band renamed from "Not assessed" and `status` added in rubric v0.4 —
+   decision 29.)
 8. **Storefront password entry ≠ authenticated testing** (non-goal 3 ruling).
    Site-wide gate, not a customer session. Password lives in env var
    `TSCC_STOREFRONT_PASSWORD`; committed files hold only the variable name.
@@ -74,7 +76,7 @@ Top project risk: fabricated impact claims. Every quantified claim must cite
     never observes price. This makes P-04's free-app plant a test of the rule
     rather than a stretch of it.
 
-## Rubric essentials (full text: references/rubric.md v0.3)
+## Rubric essentials (full text: references/rubric.md v0.4)
 
 - Severity: critical = blocks purchase or indexing on a revenue template
   (home/collection/pdp/cart) · high = measurable degradation on revenue template,
@@ -530,6 +532,45 @@ two different versions (repo-stale, root-current, `triager/`-current). Newest wo
 the duplicates are in `_to_delete/consolidation-2026-07-28/` for you to remove —
 the device bridge cannot delete. `triager/` is retired: it was an export, and an
 export that is not regenerated goes stale silently.
+
+## Decision 29 — blocked stores report `INACCESSIBLE` (rubric v0.4, 2026-07-28)
+
+    score:  null            band: Inaccessible      status: INACCESSIBLE
+    score:  0-100           band: per the table     status: ASSESSED
+
+Three parts, and the first is the one that matters:
+
+1. **`score` stays `null`.** Not 0, not `-1`, not `"N/A"`. Null is the only value
+   that cannot be rendered as a grade, sorted into a league table, or averaged
+   across a portfolio. Any printable sentinel reintroduces exactly the risk
+   decision 7 closes, one layer further down in whatever consumes the JSON — and
+   the failure would be arithmetic rather than prose, so it would survive a
+   read-through. **v0.4 changes the name, not the number.**
+2. **`status` is a first-class field, emitted for every store.** A field that
+   appears only on failure is a field a renderer forgets to handle. `ASSESSED`
+   on a store that was reached, `INACCESSIBLE` on one that was not. It is derived
+   from the score in `status_for()`, so the two cannot drift apart — a status
+   reading ASSESSED beside a null score would be worse than either field alone.
+3. **The band reads "Inaccessible", replacing "Not assessed".** The old name
+   describes a step that has not happened yet rather than one that cannot; it
+   reads as pending, and a client skimming a report would file it under
+   "waiting". `INACCESSIBLE` states the condition.
+
+**Scope: presentation only.** v0.4 touched §4 rule 3, the bands table, and added
+§4 rule 5. It did NOT touch §1 severity, §2 effort or §3 confidence — the only
+sections the triager prompt inlines. Consequences:
+
+- Every prompt version through **v1.0 stays frozen and valid**; their front matter
+  still pins v0.3 and that is correct, because the text they carry is unchanged.
+- **No label verdict changes.** Entry 02's 17 MC labels and its composite of 24
+  are untouched; the 18 recorded runs stand unrecomputed.
+- Only entry 05 is affected, and only in the name of its band. Its MNC-002
+  detection rule moves from `score_is_null_and_band_is_not_assessed` to
+  `score_is_null_and_status_is_INACCESSIBLE`. Verdicts unchanged: 1 of 3 pass.
+
+This is the narrow kind of rubric change — the kind that does not invalidate the
+golden set. The open decision above (MNC-001 vs §1 "store unreachable") is the
+other kind, and is still open.
 
 ## Entry 05 first-run (2026-07-28) — and an open contradiction
 

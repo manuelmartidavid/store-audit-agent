@@ -2,8 +2,8 @@
 
     file:     specs/triager-io.md · v0.1
     schema:   triage/v0.1
-    rubric:   references/rubric.md v0.3
-    pack:     pack/v0.2 (specs §4 below, implemented by triage/pack_evidence.py)
+    rubric:   references/rubric.md v0.4
+    pack:     pack/v0.2 (specs §4 below, implemented by scripts/pack_evidence.py)
     status:   frozen — the matcher, the scorer and the narrator code against this
               file, not against the prompt. Moving it after runs are recorded
               invalidates every recorded result (decision 12).
@@ -166,7 +166,7 @@ reasoning as recall and severity agreement being independent (rubric §7).
 
 ## 4. Input — `pack/v0.2`
 
-Produced by `triage/pack_evidence.py` from a fixture directory. The pack version
+Produced by `scripts/pack_evidence.py` from a fixture directory. The pack version
 joins the provenance set: **fixture manifest hash + prompt version + rubric
 version + pack version.** A green run without all four pinned is not a result.
 
@@ -210,7 +210,7 @@ both implemented:
    the rubric's thresholds are numeric, so a metric's number is evidence whether
    or not Lighthouse scored it green.
 
-The list of payload-only audit IDs lives in `triage/pack_evidence.py` as
+The list of payload-only audit IDs lives in `scripts/pack_evidence.py` as
 `PAYLOAD_ONLY`, is dumped into `pack_dropped.lighthouse.payload_only_audits`, and
 must be re-derived against the labels whenever a new golden entry is added.
 

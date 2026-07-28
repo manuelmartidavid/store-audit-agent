@@ -5,7 +5,12 @@
     manifest:    b219afac6f8234ff98ce6c4eaf004bdb4063aaf1155de78b0fe19c6512946d20
     captured_at: 2026-07-27T16:39:27+08:00
     crawler:     0.2.0 · lighthouse 12.8.2 · axe-core 4.12.1 · chrome 149.0.7827.55
-    rubric:      references/rubric.md v0.3
+    rubric:      references/rubric.md v0.3 (labeled against); still valid under
+                 v0.4 — v0.4 changed §4 rule 3 (blocked stores now carry `status: INACCESSIBLE`
+                 alongside the `null` score), the bands table, and added §4 rule 5. It did NOT
+                 touch §1 severity, §2 effort or §3 confidence — the only sections the triager
+                 prompt inlines — so every prompt version through v1.0 is valid under both, and
+                 no label verdict changes.
     amended:     2026-07-28 (a) five findings promoted from the unlabeled bucket,
                  MC-114…MC-117, plus MC-118 folded into MC-108 — composite recomputed 35 → 24; (b) MNC-404 kept
                  strict with a scope note; (c) `match:` blocks added to every MC

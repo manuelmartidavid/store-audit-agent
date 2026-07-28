@@ -80,7 +80,9 @@ def test_bands_match_the_rubric():
     assert eval_triage.band_for(84) == "Minor drag"
     assert eval_triage.band_for(35) == "Significant work needed"
     assert eval_triage.band_for(24) == "Critical"
-    assert eval_triage.band_for(None) == "Not assessed"
+    assert eval_triage.band_for(None) == "Inaccessible"
+    assert eval_triage.status_for(None) == "INACCESSIBLE"
+    assert eval_triage.status_for(24) == "ASSESSED"
 
 
 def test_roadmap_puts_the_trivial_critical_first():
@@ -422,7 +424,8 @@ def test_a_blocked_store_has_no_score_not_a_zero():
     """Rubric §4 rule 3 / decision 7 — zero is a verdict about a store nobody saw."""
     out = eval_triage.composite([finding(severity="critical")], blocked=True)
     assert out["score"] is None
-    assert out["band"] == "Not assessed"
+    assert out["status"] == "INACCESSIBLE"
+    assert out["band"] == "Inaccessible"
 
 
 @needs_blocked
@@ -430,7 +433,8 @@ def test_the_scorer_does_not_score_a_blocked_crawl(blocked_fixture, blocked_labe
     result = eval_triage.evaluate({"schema": "triage/v0.1", "findings": []},
                                   blocked_labels, blocked_fixture)
     assert result["composite"]["score"] is None
-    assert result["composite"]["band"] == "Not assessed"
+    assert result["composite"]["status"] == "INACCESSIBLE"
+    assert result["composite"]["band"] == "Inaccessible"
 
 
 @needs_blocked
@@ -475,3 +479,25 @@ def test_platform_inference_on_a_blocked_store_is_caught_by_the_declared_regex(
         evidence=["crawl:home"])]}
     result = eval_triage.evaluate(out, blocked_labels, blocked_fixture)
     assert any(m["rule"] == "MNC-003" for m in result["mnc_violations"])
+
+
+def test_status_is_never_a_number_and_never_disagrees_with_the_score():
+    """A printable sentinel (0, "N/A", -1) reintroduces the risk rule 3 closes —
+    something downstream will sort, average or render it as a grade. null is the
+    only value arithmetic cannot act on; the STATUS carries the meaning."""
+    blocked = eval_triage.composite([], blocked=True)
+    assert blocked["score"] is None and not isinstance(blocked["score"], (int, float))
+    assert blocked["status"] == eval_triage.STATUS_INACCESSIBLE
+
+    live = eval_triage.composite([finding(severity="low")])
+    assert isinstance(live["score"], int)
+    assert live["status"] == eval_triage.STATUS_ASSESSED
+    # derived from the score, so the two cannot drift apart
+    assert eval_triage.status_for(live["score"]) == live["status"]
+
+
+def test_every_composite_carries_a_status():
+    """A field that appears only on failure is one a renderer forgets to handle."""
+    for c in (eval_triage.composite([]), eval_triage.composite([], blocked=True),
+              eval_triage.composite([finding(severity="critical")])):
+        assert "status" in c and c["status"] in ("ASSESSED", "INACCESSIBLE")

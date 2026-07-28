@@ -3,7 +3,8 @@
     date:     2026-07-28
     entry:    evals/golden/05-password-gated
     fixture:  fixtures/05 (TSCC, no password — status: blocked, 0/6 captured)
-    rubric:   references/rubric.md v0.3
+    rubric:   references/rubric.md v0.3 at run time; RESCORED under v0.4, which
+              renamed the blocked band. Verdicts unchanged (1 of 3 pass).
     pack:     pack/v0.2 — 3.1 KB, ~800 tokens, 0 nodes stamped
     prompt:   finding-triager/v1.0, 3 runs
     status:   1 of 3 runs behaves as labeled. **Not a v1.0 regression — it exposed
@@ -54,7 +55,7 @@ and two of three runs did what §1 told them to.
 The reading I would argue for — recorded as an argument, not a decision:
 
 - The gate is a **report-level state**, not a finding. Rubric §4 rule 3 already
-  gives it a home: composite `null`, band **Not assessed**. Entry 05's own
+  gives it a home: composite `null`, status **INACCESSIBLE**. Entry 05's own
   "required behaviour" §1 says the access failure must be *reported explicitly,
   naming the gate* — that is the report's job, and the report gets its input from
   `crawl.gate` and `crawl.block`, which are deterministic fields, not from a
@@ -82,7 +83,7 @@ All four are fixed, with tests.
 1. **A blocked store was scored 85 / "Healthy."** `composite()` never checked
    `crawl.status`. This is precisely the fabrication-by-arithmetic that decision 7
    and rubric §4 rule 3 exist to prevent, sitting in the tool built to detect it.
-   Now returns `null` / "Not assessed".
+   Now returns `null` / `INACCESSIBLE` (v0.4; was `null` / "Not assessed" when fixed).
 2. **`zero_mnc_violations` reported True having evaluated nothing.** The MNC
    screens were hardcoded to entry 02's MNC-401/402/404, so entry 05's
    MNC-001/003/004 were silently skipped. A bar that passes without running is

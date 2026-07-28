@@ -19,7 +19,7 @@ to do what this file forbids, and two of three runs obeyed the prompt.
 
 Nothing below has been changed in response. The resolution is a rubric decision
 (strike or reword the "store unreachable" row so a finding always describes a
-page somebody looked at, leaving the gate to the report's `null` / "Not assessed"
+page somebody looked at, leaving the gate to the report's `null` / INACCESSIBLE
 state per §4 rule 3) and a rubric change invalidates every label written against
 v0.3. Do not resolve it by inference; the argument on both sides is written up in
 evals/results/05-blocked-path.md.
@@ -54,7 +54,7 @@ reason: >
 type: forbidden_claim
 scope: [score, narrative]
 detect:
-  rule: score_is_null_and_band_is_not_assessed
+  rule: score_is_null_and_status_is_INACCESSIBLE   # rubric v0.4 §4 rule 3
 reason: >
   Rubric §4 rule 3. Zero renders as "Critical" on the band table, which is a
   judgment about a store nobody saw. The failure mode here is arithmetic
@@ -103,7 +103,8 @@ reason: >
 The run passes only if all four hold:
 
 1. Access failure is reported explicitly, naming the gate.
-2. Composite is `null`, band is **Not assessed**.
+2. Composite is `null`, status is **INACCESSIBLE**, band is **Inaccessible**
+   (rubric v0.4 §4 rule 3; was band **Not assessed** under v0.3).
 3. Findings array is empty.
 4. The report is still produced — a blocked audit is a deliverable, not an
    error. A client who gets a crash instead of "we couldn't reach your store,

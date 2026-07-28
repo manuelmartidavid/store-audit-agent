@@ -3,7 +3,9 @@
     date:     2026-07-28
     entry:    evals/golden/02-sabotaged
     fixture:  manifest b219afac6f8234ff98ce6c4eaf004bdb4063aaf1155de78b0fe19c6512946d20
-    rubric:   references/rubric.md v0.3
+    rubric:   references/rubric.md v0.3 — the pin these runs were measured under.
+              v0.4 (2026-07-28) changed §4 rule 3 presentation only; §1–§3 are
+              byte-identical, so every number below stands unrecomputed.
     prompts:  finding-triager v0.1 → v1.0, 3 runs each, nothing else varied within a version
     status:   **v1.0 FROZEN 2026-07-28** — 3 of 3 runs clear every bar at 17/17 recall
     packs:    pack/v0.1 for v0.1–v0.4 · pack/v0.2 for v0.5–v1.0
@@ -297,16 +299,16 @@ through. See the correction note above about the landmark row's frequency claim.
 ## Reproducing
 
 ```sh
-python triage/eval_triage.py --self-test          # 35 from the labels alone
-python triage/pack_evidence.py fixtures/02-sabotaged \
+python scripts/eval_triage.py --self-test          # 35 from the labels alone
+python scripts/pack_evidence.py fixtures/02-sabotaged \
     --context evals/golden/02-sabotaged/context.yaml -o packs/02-sabotaged.pack.json
-python triage/render_prompt.py prompts/finding-triager/v1.0.md \
+python scripts/render_prompt.py prompts/finding-triager/v1.0.md \
     --pack packs/02-sabotaged.pack.json --indent 0 -o runs/v1.0.rendered.md
 # run the rendered prompt, capture the JSON, then:
-python triage/eval_triage.py runs/v1.0-run1.json --prompt-version finding-triager/v1.0
+python scripts/eval_triage.py runs/v1.0-run1.json --prompt-version finding-triager/v1.0
 ```
 
 Runs were executed as independent agent sessions against the rendered prompt,
 each one told to read nothing else in the repository. There is no scripted API
-runner yet (`.env` holds no API key); `triage/render_prompt.py` exists so that
+runner yet (`.env` holds no API key); `scripts/render_prompt.py` exists so that
 adding one is a small job and the rendered artefact is identical either way.

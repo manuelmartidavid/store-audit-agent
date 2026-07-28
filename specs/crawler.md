@@ -1,7 +1,7 @@
 # Crawler interface spec
 
     file:     specs/crawler.md · v0.1
-    rubric:   references/rubric.md v0.3
+    rubric:   references/rubric.md v0.4
     status:   interface frozen on acceptance; implementation free to change
 
 This document specifies the contract, not the implementation. Anything that reads

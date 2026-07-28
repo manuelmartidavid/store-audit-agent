@@ -44,7 +44,7 @@ import yaml  # noqa: E402
 
 from crawler import pointers as ptr  # noqa: E402
 
-RUBRIC_VERSION = "references/rubric.md v0.3"
+RUBRIC_VERSION = "references/rubric.md v0.4"
 
 SEVERITY_WEIGHT = {"critical": 15, "high": 6, "medium": 2, "low": 1}
 SEVERITY_ORDER = ["low", "medium", "high", "critical"]
@@ -55,6 +55,12 @@ CATEGORY_CAP = 25
 CATEGORY_TIEBREAK = {"performance": 0, "conversion": 1, "seo": 2, "accessibility": 3}
 BANDS = [(85, "Healthy"), (65, "Minor drag"), (45, "Material friction"),
          (25, "Significant work needed"), (0, "Critical")]
+
+#: Rubric §4 rule 3 (v0.4). Emitted for every store, not only blocked ones — a
+#: field that appears only on failure is a field a renderer forgets to handle.
+STATUS_ASSESSED = "ASSESSED"
+STATUS_INACCESSIBLE = "INACCESSIBLE"
+BAND_INACCESSIBLE = "Inaccessible"
 
 MAX_PER_TEMPLATE = 8
 MAX_TOTAL = 25
@@ -104,11 +110,21 @@ _COMPLIANCE_TOKENS = ("flawless", "zero issues", "no issues to report", "store i
 
 def band_for(score: int | None) -> str:
     if score is None:
-        return "Not assessed"
+        return BAND_INACCESSIBLE
     for floor, name in BANDS:
         if score >= floor:
             return name
     return "Critical"
+
+
+def status_for(score: int | None) -> str:
+    """`INACCESSIBLE` when there is no score, `ASSESSED` when there is.
+
+    Derived from the score rather than passed in, so the two can never disagree:
+    a status saying ASSESSED beside a null score would be worse than either
+    field alone.
+    """
+    return STATUS_INACCESSIBLE if score is None else STATUS_ASSESSED
 
 
 def _enum(value: Any) -> Any:
@@ -417,8 +433,9 @@ def composite(findings: list[dict[str, Any]], blocked: bool = False) -> dict[str
     read-through of the narrative and has to be caught here.
     """
     if blocked:
-        return {"score": None, "band": band_for(None), "per_category": None,
-                "per_category_capped": None, "penalties": None, "caps_binding": [],
+        return {"score": None, "status": STATUS_INACCESSIBLE, "band": band_for(None),
+                "per_category": None, "per_category_capped": None, "penalties": None,
+                "caps_binding": [],
                 "note": "crawl was blocked — no score, per rubric §4 rule 3"}
     per_category = {c: 0 for c in SCORED_CATEGORIES}
     for f in findings:
@@ -433,6 +450,7 @@ def composite(findings: list[dict[str, Any]], blocked: bool = False) -> dict[str
     score = max(0, 100 - total)
     return {
         "score": score,
+        "status": status_for(score),
         "band": band_for(score),
         "per_category": per_category,
         "per_category_capped": capped,
@@ -809,6 +827,8 @@ def self_test(entry: Path, fixtures: Path) -> int:
                    f"{comp['score']} vs expected {expect.get('score')}"))
     checks.append(("band matches", comp["band"] == expect.get("band"),
                    f"{comp['band']!r} vs {expect.get('band')!r}"))
+    checks.append(("status is ASSESSED for a reachable store",
+                   comp["status"] == STATUS_ASSESSED, comp["status"]))
     checks.append(("100% recall against its own labels",
                    result["recall"]["overall"] == 1.0,
                    f"overall={result['recall']['overall']} "
@@ -927,7 +947,8 @@ def main(argv: list[str] | None = None) -> int:
     for d in sa["disagreements"]:
         print(f"    {d['label']}: expected {d['expected']}, got {d['got']} — {d['rationale']}")
     c = r["composite"]
-    print(f"\ncomposite {c['score']} ({c['band']})"
+    print(f"\ncomposite {c['score'] if c['score'] is not None else '—'} "
+          f"[{c['status']}] ({c['band']})"
           + (f"  {c['per_category']}  Σ={c['penalties']}" if c['score'] is not None else ""))
     print(f"ceilings  {r['ceilings']['total']}/{MAX_TOTAL} total, "
           f"per-template over {MAX_PER_TEMPLATE}: "

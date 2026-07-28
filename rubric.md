@@ -1,6 +1,6 @@
 # Scoring rubric — Store Audit Agent
 
-`references/rubric.md` · v0.3 draft · Phase 0 close
+`references/rubric.md` · v0.4 draft · Phase 0 close
 
 This file does double duty. It is the bounded vocabulary the `finding-triager` prompt
 is constrained to, **and** it is the labeling guide used to hand-label
@@ -114,13 +114,14 @@ Severity weights:
 
 Bands, reported alongside the number so a client reads it the intended way:
 
-| Score | Band |
-|---|---|
-| 85–100 | Healthy |
-| 65–84 | Minor drag |
-| 45–64 | Material friction |
-| 25–44 | Significant work needed |
-| 0–24 | Critical |
+| Score | Status | Band |
+|---|---|---|
+| 85–100 | `ASSESSED` | Healthy |
+| 65–84 | `ASSESSED` | Minor drag |
+| 45–64 | `ASSESSED` | Material friction |
+| 25–44 | `ASSESSED` | Significant work needed |
+| 0–24 | `ASSESSED` | Critical |
+| `null` | **`INACCESSIBLE`** | **Inaccessible** |
 
 Rules:
 
@@ -130,14 +131,36 @@ Rules:
    a store with forty axe violations and nothing else wrong is not a dead store.
    The cap is set so that it binds only in pathological cases; if it is binding
    on ordinary stores, the weights are wrong, not the cap.
-3. **A store that could not be assessed has no score.** If the crawl was blocked,
-   gated, or otherwise produced no usable fixtures, the composite is `null` and the
-   band is **Not assessed**. It is *not* 0. Zero means "this store is broken," which
-   is a judgment, and emitting it about a store you never saw is fabrication by
-   arithmetic. This is the pass condition for entry 05 and adversarial cases 1–2.
+3. **A store that could not be assessed has no score, and says so loudly.**
+   If the crawl was blocked, gated, or otherwise produced no usable fixtures:
+
+       score:  null            (v0.4 — never a number, never 0, never a sentinel
+                                that arithmetic could act on)
+       status: INACCESSIBLE    (v0.4 — replaces the passive "Not assessed")
+       band:   Inaccessible
+
+   It is *not* 0. Zero means "this store is broken," which is a judgment, and
+   emitting it about a store you never saw is fabrication by arithmetic. This is
+   the pass condition for entry 05 and adversarial cases 1–2.
+
+   **v0.4 changes the name, not the number.** `score` stays `null` because null
+   is the only value that cannot be rendered as a grade, sorted into a league
+   table, or averaged across a portfolio — a printable sentinel like `0`, `"N/A"`
+   or `-1` reintroduces exactly the risk rule 3 exists to close, one layer down
+   in whatever consumes the JSON. What changes is that the *status* now states
+   the condition in its own field rather than leaving a renderer to infer it from
+   an absent number. `INACCESSIBLE` is deliberately harder to skim past than
+   "Not assessed", which reads like a step that has not happened yet rather than
+   one that cannot.
+
+   `status` is emitted for every store, not only blocked ones: a field that only
+   appears on failure is a field a renderer forgets to handle.
 4. **Effort does not enter the score.** A store is not healthier because its
    problems are expensive. Effort drives roadmap order only.
-5. Score is reported alongside per-category subscores. The headline number is the
+5. `status` is reported alongside the score and the band, always. A consumer
+   that reads `score` without checking `status` will print a blank where it
+   should print a reason.
+6. Score is reported alongside per-category subscores. The headline number is the
    part a client quotes; the subscores are the part that survives scrutiny.
 
 ### Roadmap ordering
