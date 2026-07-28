@@ -629,6 +629,11 @@ def _level_gap(a: str | None, b: str | None, order: list[str]) -> int | None:
 # the run
 # ---------------------------------------------------------------------------
 
+#: The only gate names `expect.gates` may declare. A name outside this set is a
+#: typo, not a new gate the module happens not to implement yet.
+_KNOWN_GATES = {"max_findings", "findings_above_medium", "score_range"}
+
+
 def expect_bars(findings: list[dict[str, Any]], comp: dict[str, Any],
                 expect: dict[str, Any] | None) -> dict[str, bool]:
     """Precision bars, declared per entry by `expect.gates`.
@@ -644,26 +649,72 @@ def expect_bars(findings: list[dict[str, Any]], comp: dict[str, Any],
     whole purpose is the false-positive test (rubric §5: <= 3 findings, none
     above medium, score >= 90), declares all three from the start, so its grader
     exists before its answers do.
+
+    A gate that is declared but produces no bar is worse than no gate: it reads
+    as measured coverage that was never actually checked — the same failure this
+    task exists to close, just smaller. So a name in `gates` that is not one of
+    the three above, or a known gate with no value to check findings against,
+    stops the run rather than passing it quietly (decision 12's rule for the
+    provenance pins, applied here to the gates).
     """
     expect = expect or {}
     gates = set(expect.get("gates") or [])
     bars: dict[str, bool] = {}
 
-    if "max_findings" in gates and expect.get("max_findings") is not None:
+    unknown = gates - _KNOWN_GATES
+    if unknown:
+        raise SystemExit(
+            f"eval.expect.gates names {sorted(unknown)}, not a known gate.\n"
+            f"  known gates: {sorted(_KNOWN_GATES)}\n"
+            "A typo in gates: is a silent pass otherwise, not a caught error. Fix the "
+            "name in context.yaml, or remove it from gates.")
+
+    if "max_findings" in gates:
+        if expect.get("max_findings") is None:
+            raise SystemExit(
+                "eval.expect.gates declares 'max_findings' but eval.expect.max_findings "
+                "is not set.\n"
+                "A declared gate with no value checks nothing and reports nothing — a "
+                "green run that measured nothing. Set eval.expect.max_findings in "
+                "context.yaml, or remove 'max_findings' from gates.")
         bars["max_findings_respected"] = len(findings) <= expect["max_findings"]
 
-    if "findings_above_medium" in gates and expect.get("findings_above_medium") is not None:
+    if "findings_above_medium" in gates:
+        if expect.get("findings_above_medium") is None:
+            raise SystemExit(
+                "eval.expect.gates declares 'findings_above_medium' but "
+                "eval.expect.findings_above_medium is not set.\n"
+                "A declared gate with no value checks nothing and reports nothing — a "
+                "green run that measured nothing. Set eval.expect.findings_above_medium "
+                "in context.yaml, or remove 'findings_above_medium' from gates.")
         above = sum(1 for f in findings if f.get("severity") in ("critical", "high"))
         bars["findings_above_medium_respected"] = above <= expect["findings_above_medium"]
 
     if "score_range" in gates:
+        if "score_min" not in expect or "score_max" not in expect:
+            raise SystemExit(
+                "eval.expect.gates declares 'score_range' but eval.expect.score_min "
+                "and/or score_max is not set.\n"
+                "Both keys must be present — null is a real value here (no bound on "
+                "that side; both null together is the blocked-store pass condition), "
+                "not a stand-in for absent. Set both in context.yaml, or remove "
+                "'score_range' from gates.")
         low, high, score = expect.get("score_min"), expect.get("score_max"), comp.get("score")
         if low is None and high is None:
             # An entry that expects no score at all — the blocked store. `null` is
             # the pass condition (rubric §4 rule 3); 0 is the failure it exists for.
             bars["score_within_expect"] = score is None
         else:
-            bars["score_within_expect"] = score is not None and low <= score <= high
+            # Each bound applies independently: a null score_min means "no lower
+            # bound", a null score_max means "no upper bound" — not "compare
+            # against None", which used to raise TypeError mid-scoring instead of
+            # returning a verdict. Entry 01's own pass condition is one-sided
+            # exactly this way: rubric §5 wants score >= 90 with no ceiling.
+            bars["score_within_expect"] = (
+                score is not None
+                and (low is None or score >= low)
+                and (high is None or score <= high)
+            )
 
     return bars
 

@@ -17,6 +17,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -72,3 +73,56 @@ def test_entry_05_gates_max_findings():
     data = yaml.safe_load(
         (ROOT / "evals" / "golden" / "05-password-gated" / "context.yaml").read_text(encoding="utf-8"))
     assert "max_findings" in data["eval"]["expect"]["gates"]
+
+
+# ---------------------------------------------------------------------------
+# Finding 1 — a one-sided score range must not raise, on either side
+# ---------------------------------------------------------------------------
+
+def test_score_range_lower_bound_only():
+    # score_max present and explicitly null: "no ceiling", not "unset". Entry
+    # 01's own pass condition is exactly this shape (rubric §5: score >= 90).
+    expect = {"gates": ["score_range"], "score_min": 90, "score_max": None}
+    assert eval_triage.expect_bars([], {"score": 90}, expect)["score_within_expect"]
+    assert eval_triage.expect_bars([], {"score": 100}, expect)["score_within_expect"]
+    assert not eval_triage.expect_bars([], {"score": 89}, expect)["score_within_expect"]
+
+
+def test_score_range_upper_bound_only():
+    # score_min present and explicitly null: "no floor", not "unset".
+    expect = {"gates": ["score_range"], "score_min": None, "score_max": 90}
+    assert eval_triage.expect_bars([], {"score": 90}, expect)["score_within_expect"]
+    assert eval_triage.expect_bars([], {"score": 0}, expect)["score_within_expect"]
+    assert not eval_triage.expect_bars([], {"score": 91}, expect)["score_within_expect"]
+
+
+# ---------------------------------------------------------------------------
+# Finding 2 — a declared gate with no value, or no known name, must not pass
+# silently
+# ---------------------------------------------------------------------------
+
+def test_declared_gate_with_missing_value_raises():
+    expect = {"gates": ["max_findings"]}  # max_findings never set
+    with pytest.raises(SystemExit, match="max_findings"):
+        eval_triage.expect_bars(_findings(1), {"score": 95}, expect)
+
+
+def test_declared_findings_above_medium_with_missing_value_raises():
+    expect = {"gates": ["findings_above_medium"]}
+    with pytest.raises(SystemExit, match="findings_above_medium"):
+        eval_triage.expect_bars(_findings(1), {"score": 95}, expect)
+
+
+def test_declared_score_range_with_missing_bounds_raises():
+    # gates declares score_range but never sets score_min/score_max at all —
+    # distinct from entry 05's blocked-store case, which sets both to null
+    # explicitly.
+    expect = {"gates": ["score_range"]}
+    with pytest.raises(SystemExit, match="score_range"):
+        eval_triage.expect_bars([], {"score": 95}, expect)
+
+
+def test_unknown_gate_name_raises():
+    expect = {"gates": ["max_findigns"], "max_findigns": 3}  # typo'd gate name
+    with pytest.raises(SystemExit, match="not a known gate"):
+        eval_triage.expect_bars(_findings(1), {"score": 95}, expect)
