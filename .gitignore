@@ -26,6 +26,10 @@ __pycache__/
 /packs/
 /runs/*.rendered.md
 
+# Derived from a triage run + pack; the provenance block inside is the
+# commitment, not the bytes — same principle as /packs/ above.
+/briefs/
+
 # Git lock files the device bridge cannot unlink (host quirk, not project state).
 /.tmplocks/
 
