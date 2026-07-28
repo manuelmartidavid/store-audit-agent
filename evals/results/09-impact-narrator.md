@@ -102,3 +102,7 @@ Three further limits the green bars do not distinguish:
   of the "zero failures" this plan expected — recorded here rather than edited
   away, since fixing `triage/`, `tests/`, or the file's own assumption is
   outside this step's "records, does not change behaviour" scope.
+  **Update:** This was fixed in commit `dbea3e1`, which made the schema check
+  schema-aware so that an unknown schema is now a hard failure rather than a
+  silent skip. The full suite has since been re-run: 423 passed, 1 skipped,
+  zero failures.
