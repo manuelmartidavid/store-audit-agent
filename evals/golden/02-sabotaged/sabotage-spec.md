@@ -3,7 +3,7 @@
     status:  spec only, nothing planted yet
     store:   torontosportscard.myshopify.com (TSCC) — disposable
     theme:   record name and version at baseline capture
-    rubric:  references/rubric.md v0.3
+    rubric:  rubric.md v0.3
 
 **This store is also entry 05.** Crawled with the password it is entry 02; crawled
 without it, it is the blocked-store case. Two fixtures, one storefront, no second

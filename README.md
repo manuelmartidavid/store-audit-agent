@@ -78,6 +78,10 @@ evals/golden/             the hand-labeled evaluation set
   02-sabotaged/           TSCC with deliberately planted defects (exact ground truth)
   05-password-gated/      the same store with no password — the blocked-store case
 
+triage/                   the eval loop — pack_evidence · render_prompt · eval_triage
+planting/                 defect-planting tooling (measure · inspect_lcp · fit_image)
+prompts/                  finding-triager v0.1 … v1.0, registry-versioned
+
 tests/                    unit + browser-integration tests for the crawler
 ```
 
@@ -189,11 +193,12 @@ machinery beneath them.
 | Component | State |
 |---|---|
 | Crawler (`crawler/`) | **Implemented and tested** — `specs/crawler.md` v0.1 |
-| Scoring rubric (`rubric.md`) | Drafted (v0.2), pending calibration freeze against entry 02 |
-| Golden set (`evals/golden/`) | Entries 02 & 05 specified; entry 05 labels written; 02 labels pending capture; entries 01/03/04 not yet present |
-| Triager / narrator / report | Specified in the rubric and briefs; **not yet implemented** |
-| `references/benchmarks.md` | Referenced by the rubric; **not yet present** |
-| Eval harness / matcher | Contract defined (evidence-pointer grammar, §9); **not yet implemented** |
+| Scoring rubric (`rubric.md`) | v0.4; calibrated against entry 02, not yet frozen |
+| Golden set (`evals/golden/`) | Entries 02 (17 MC / 4 MNC, frozen) & 05 (labeled); 01/03/04 not yet present |
+| Triager (`prompts/finding-triager/`) | **v1.0 frozen** — 21 recorded runs, in-sample (see `evals/PROMOTION-PROTOCOL.md`) |
+| Narrator / report composer | Specified; **not yet implemented** |
+| `references/benchmarks.md` | Referenced by the rubric; **not yet present**  <!-- STALE-OK --> |
+| Eval harness (`triage/eval_triage.py`) | **Implemented** — matcher, tiered recall, composite, MNC screens |
 
 The evidence-pointer matcher and `crawl.json` schema check that the harness will
 need already ship inside the crawler (`crawler/pointers.py`, `crawler/schema.py`)

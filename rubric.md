@@ -1,6 +1,13 @@
 # Scoring rubric — Store Audit Agent
 
-`references/rubric.md` · v0.4 draft · Phase 0 close
+`rubric.md` (canonical path) · v0.4 draft · Phase 0 close
+
+> Cited as `references/rubric.md` in every `finding-triager` prompt front matter  <!-- STALE-OK -->
+> and in labels written before 2026-07-28. That spelling is an alias for this
+> file and always was — there has never been a `references/` directory.
+> Frozen artifacts keep the old spelling deliberately: their bytes are a
+> provenance pin (decision 12), and correcting a path in them would invalidate
+> 21 recorded runs to fix a typo.
 
 This file does double duty. It is the bounded vocabulary the `finding-triager` prompt
 is constrained to, **and** it is the labeling guide used to hand-label

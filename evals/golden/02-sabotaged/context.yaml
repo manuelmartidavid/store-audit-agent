@@ -58,9 +58,10 @@ eval:
       pdp: "https://torontosportscard.myshopify.com/products/2023-24-upper-deck-series-1-hockey-hobby-box"
 
   expect:
-    # From fixtures/02-sabotaged, rubric v0.3. Composite = 24 from the 18
-    # must-catch findings; band "Critical". Recomputed 2026-07-28 when five
-    # findings were promoted out of the unlabeled bucket (MC-114…MC-118) — the
+    # From fixtures/02-sabotaged, rubric v0.3. Composite = 24 from the 17
+    # must-catch findings; band "Critical". Recomputed 2026-07-28 when four
+    # findings were promoted out of the unlabeled bucket (MC-114…MC-117; a
+    # fifth candidate, MC-118, was folded into MC-108 rather than added) — the
     # 13-label value was 35 / "Significant work needed", and the runs recorded
     # against it in evals/results/07-finding-triager.md are scored on that basis.
     #

@@ -76,7 +76,7 @@ Top project risk: fabricated impact claims. Every quantified claim must cite
     never observes price. This makes P-04's free-app plant a test of the rule
     rather than a stretch of it.
 
-## Rubric essentials (full text: references/rubric.md v0.4)
+## Rubric essentials (full text: rubric.md v0.4)
 
 - Severity: critical = blocks purchase or indexing on a revenue template
   (home/collection/pdp/cart) · high = measurable degradation on revenue template,
@@ -105,7 +105,7 @@ sees it.
 
 ## Artifact inventory (delivered as store-audit-phase0.zip)
 
-- `references/rubric.md` (v0.2)
+- `references/rubric.md` (v0.2)  <!-- STALE-OK: historical inventory of the phase-0 delivery zip -->
 - `specs/crawler.md` (v0.1) — interface contract: crawl.json shape, template
   discovery (one page per template, ~12 fetches max — bounds the 40k-catalog
   case by construction), distillation rules (keep interactive elements with all
@@ -486,7 +486,7 @@ reported, never once obeyed.
 
 The harness was briefly split: the whole repo moved into `crawler/` and the
 step-7 work sat outside it. Reverted to one repo, with the layers as top-level
-directories, and `scripts/` — which had become a grab-bag — split by concern:
+directories, and `scripts/` — which had become a grab-bag — split by concern:  <!-- STALE-OK: historical record of the pre-split layout -->
 
     crawler/     the evidence-production package (crawl, distill, pointers, …)
     triage/      pack_evidence.py · eval_triage.py · render_prompt.py

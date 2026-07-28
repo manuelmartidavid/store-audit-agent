@@ -2,7 +2,7 @@
 
     schema:    findings/v0.1
     labeled:   PENDING capture — but the labels below do not depend on it
-    rubric:    references/rubric.md v0.2 (written against; v0.3 changed §2 only)
+    rubric:    rubric.md v0.2 (written against; v0.3 changed §2 only)
     store:     torontosportscard.myshopify.com, crawled with no password
     first run: 2026-07-28, finding-triager v1.0 × 3 against fixtures/05.
                1 of 3 behaved as labeled. MNC-002/003/004 held in all three;
