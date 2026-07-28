@@ -5,7 +5,7 @@
   "description": "Node-side scanners for the crawler: Lighthouse (Node API, shared browser) and axe-core.",
   "type": "module",
   "dependencies": {
-    "axe-core": "^4.10.2",
-    "lighthouse": "^12.2.1"
+    "axe-core": "4.12.1",
+    "lighthouse": "12.8.2"
   }
 }

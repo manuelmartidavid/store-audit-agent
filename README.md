@@ -110,13 +110,16 @@ details and internals are in [`crawler/README.md`](crawler/README.md).
 ### Setup
 
 ```bash
-pip install -r requirements.txt        # playwright, pyyaml, pytest
+python -m pip install --user -r requirements.txt   # exact pins — see the file
 python -m playwright install chromium
-npm install                            # lighthouse + axe-core (pinned)
+npm ci                                             # ci, not install: honours the lock
 ```
 
-> On this machine global pip is broken; use `python -m pip install --user -r requirements.txt`
-> and call tools as modules (`python -m pytest`, `python -m playwright`).
+> On this machine global pip is broken; use `python -m pip install --user` and
+> call tools as modules (`python -m pytest`, `python -m playwright`).
+>
+> Use `npm ci`, never `npm install`. The pinned Lighthouse and axe-core versions
+> are an input to the golden labels, and `npm install` may resolve past them.
 
 ### The storefront password
 

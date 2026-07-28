@@ -1,9 +1,15 @@
-# Runtime
-playwright>=1.44
+# Pinned exactly, not floored. These versions are an input to the ground truth:
+# entry 02's labels were measured under playwright 1.61.0 (chromium 149) and one
+# of them (MC-107, home LCP 3.92s) sits 85ms under a rubric threshold. A floor
+# lets a clean install move a label. tests/test_toolchain_pins.py holds the line.
 
-# Optional: --context reads a golden entry's context.yaml. The CLI falls back to
-# a two-key line scan when this is absent, so it is genuinely optional.
-PyYAML>=6.0
+# Runtime
+playwright==1.61.0
+
+# --context reads a golden entry's context.yaml. The CLI falls back to a two-key
+# line scan when this is absent, so it is genuinely optional — but the harness
+# (triage/eval_triage.py) imports it unconditionally.
+PyYAML==6.0.3
 
 # Tests
-pytest>=8.0
+pytest==9.1.1
