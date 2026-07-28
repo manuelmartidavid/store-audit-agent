@@ -1,6 +1,7 @@
 # Store Audit Agent — project state
 
-    updated:  2026-07-28 (v1.0 frozen · repo consolidated · entry 05 first-run)
+    updated:  2026-07-28 (v1.0 frozen · repo consolidated · entry 05 first-run ·
+              step 8 measurement hardening · pushed to a private GitHub remote)
     supersedes: phase-numbering in 02-store-audit-brief.md (workflow detached from
                 numbered phases by explicit decision; gates kept, sequence dropped)
     for Claude: treat this file as ground truth for decisions. Do not re-open
@@ -618,11 +619,17 @@ real store and catalogues its defects.
 
 The point of the step was to make the measurement machinery worth trusting
 *before* the distiller fix retires every number in here. **The suite went from
-aborting at collection and running zero tests to 349 passing** — `test_measure`
+aborting at collection and running zero tests to 351 passing** — `test_measure`
 still imported the grab-bag directory decision 28 split by concern, so
 `pytest tests/` had been reporting one error and running nothing.
 
-**Decision 12's pins are now verified, not printed.** The fixture hash was
+**Decision 12's pins are now verified, not printed.** Note the count has grown
+and the decision text above has not been rewritten: decision 12 as recorded names
+**three** pins, `plans/08-measurement-hardening-plan.md` quotes it as four (adding
+the pack version), and step 8 verifies **five** (adding the harness). The decision
+is left as written because it is settled history; five is what the code enforces.
+
+The fixture hash was
 computed and never compared; `--prompt-version` defaulted to the free-text string
 `"unpinned"`; the rubric version was a constant that could not notice a rubric
 edit. All five pins now carry a status so silence stops reading as verification:
