@@ -70,7 +70,16 @@ def _live_docs() -> list[Path]:
 
 
 @pytest.mark.parametrize("path", _live_docs(), ids=lambda p: p.relative_to(ROOT).as_posix())
-def test_no_live_doc_names_a_path_that_does_not_exist(path: Path):
+def test_no_live_doc_contains_a_known_stale_path_spelling(path: Path):
+    """Grep for the literal spellings in `_STALE`. Nothing more.
+
+    This is a denylist of two strings, not a path resolver: it says nothing
+    about whether any *other* path a document names actually exists. A dead
+    reference to a file that was never on this list passes here silently, and
+    one already has. Making it a general resolution check is a different test
+    with a real false-positive surface (prose, globs, paths in other repos),
+    and is not what this one is.
+    """
     text = path.read_text(encoding="utf-8")
     hits = []
     for stale, why in _STALE.items():

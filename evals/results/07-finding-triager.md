@@ -322,9 +322,14 @@ adding one is a small job and the rendered artefact is identical either way.
 
 ## Re-score under `eval/v0.1` (2026-07-28) — how much of v0.4 → v1.0 was the harness?
 
-The bars moved four times between v0.4 and v1.0 (see `evals/HARNESS-CHANGELOG.md`),
-always after a run failed them, and no result in this file was measured under the
-pre-change harness. This re-scores the three recorded v0.4 runs (`runs/v0.4-run1.json`
+The harness changed six times across v0.1 → v1.0 (`evals/HARNESS-CHANGELOG.md`
+lists them and numbers the rows): four moved in the direction that let a failing
+run pass, two moved back toward strict. Each was argued from something concrete —
+a run that failed a bar, a label that would not resolve — though not every one is
+traceable to a failing run; the changelog's row 3 records no motivating run at
+all. No result in this file was measured under the pre-change harness.
+
+This re-scores the three recorded v0.4 runs (`runs/v0.4-run1.json`
 through `run3.json`) under the current one, with `--pack-version pack/v0.1` — the
 pack version these runs were actually built against, per this file's header — so
 the pack pin is not misrecorded in the process. The prompt is identical; only the
@@ -338,30 +343,64 @@ and that move is itself one of the changes `evals/HARNESS-CHANGELOG.md` lists.**
 
 | Run | Recall c/h — as recorded | under eval/v0.1 | Verdict — as recorded | under eval/v0.1 |
 |---|---|---|---|---|
-| v0.4-run1 | 1.00 | 0.875 | PASS | FAIL |
-| v0.4-run2 | 1.00 | 0.875 | PASS | FAIL |
-| v0.4-run3 | 1.00 | 0.875 | FAIL | FAIL |
+| v0.4-run1 | 1.00 (6/6) | 0.875 (7/8) | PASS | FAIL |
+| v0.4-run2 | 1.00 (6/6) | 0.875 (7/8) | PASS | FAIL |
+| v0.4-run3 | 1.00 (6/6) | 0.875 (7/8) | FAIL | FAIL |
+
+**Read the fractions, not the rates.** The two sides of the recall column have
+different denominators, and the rate falls while detection rises: every one of
+these runs catches *seven* critical/high labels under `eval/v0.1` where six were
+all that existed when they were scored. Two of decision 26's four promotions
+(MC-114, MC-117) landed in the critical/high band; the runs had already been
+finding MC-114 and get credit for it now, and miss only MC-117. A 12.5-point
+drop in the rate is a band that grew by two against a run that gained one — not
+a prompt that got worse. The verdict columns carry no denominator and compare
+directly: a verdict is a boolean against the bars, not a fraction.
 
 All three misses under `eval/v0.1` are the same label: MC-117 (sixteen home CTAs
 and category cards linking to `#`), one of the four promoted labels, and one the
 v0.4 prompt was never instructed to look for — the `href="#"` check was added in
-the v0.5 → v0.6 step, after v0.4 was frozen. `recall.overall` moved from 1.00 /
-1.00 / 0.92 (as recorded) to 0.882 / 0.882 / 0.824, driven by the same promoted
-pair (MC-117 and, in medium/low, MC-116, the missing `main` landmark — also added
-by a v0.5 → v0.6 prompt change, also missed in all three re-scored runs).
+the v0.5 → v0.6 step, after v0.4 was frozen.
+
+`recall.overall` moved from 1.00 (13/13) / 1.00 (13/13) / 0.92 (12/13) as
+recorded to 0.882 (15/17) / 0.882 (15/17) / 0.824 (14/17) — the same shape again,
+a falling rate over a rising numerator and a denominator that grew by four —
+driven by the same promoted pair (MC-117 and, in medium/low, MC-116, the missing
+`main` landmark — also added by a v0.5 → v0.6 prompt change, also missed in all
+three re-scored runs).
 `ceilings.per_template_breaches` is empty (`{}`) in all three re-scored runs, and
 the composite score is unchanged from what is recorded — 27, 26, 24 — so none of
 the delta above came from the ceiling or the score. v0.4-run3's automatic fail is
 also unchanged (the same dead pointer that failed it originally still resolves to
 nothing), but it now also trips `zero_mnc_violations`: MNC-404, in its current
 decision-25 (reverted, stricter) state, flags one of run3's unlabeled findings as
-a negative-control violation that the decision-23 (narrowed) screen in effect when
-run3 was originally scored did not flag. So run3's FAIL verdict is unchanged, but
-for one more reason than originally recorded.
+a negative-control violation. Run3's recorded score carries no such violation, so
+one of the two stricter changes on the changelog's list introduced it. Which one
+is an inference, not a check: the decision-25 revert is the obvious candidate
+because it is the change that touches MNC-404's screen, but the MNC-evaluator bug
+fix on the same list also changes what that bar evaluates, and the harness code as
+it stood when run3 was scored is not reachable — so neither the run output nor the
+diff can settle it. What is verified is the current behaviour: run3's FAIL verdict
+is unchanged, but under today's harness it fails for one more reason than
+originally recorded.
 
 Read it this way: two of three v0.4 runs that passed at the time no longer pass —
 not because the prompt regressed, but because the label contract they are measured
 against grew by four after those runs were scored, and two of the four (MC-116,
 MC-117) are ones the v0.4 prompt had no instruction to find. v1.0's 17/17 was
-measured against the same 17-label set this re-score uses, which is exactly why
-that comparison is clean where this one is not.
+measured against the same 17-label set this re-score uses, so on the label-set
+axis — and only that axis — v1.0's number is clean where these are not.
+
+**What this re-score does not touch.** The concern the harness version exists to
+answer is not only that the label contract grew. It is that the bars themselves
+were loosened — the per-template ceiling downgraded from a bar to advisory,
+`match.any_of` unioned into matching, the MNC-404 screen narrowed (changelog rows
+5, 1 and 2) — and that **v1.0's 17/17 was measured only on the right-hand side of
+that column.** This re-score cannot test that, and does not. The harness code as
+it stood before those changes is not reachable, so what ran here is today's
+harness against old runs, which isolates the label-contract growth (row 4) and
+nothing else. The permissive bar and matcher changes remain unmeasured against
+any run, because no recorded run predates them; nothing in this section addresses
+them, and no number above is evidence about them in either direction. Closing that
+gap needs a run scored under both harnesses, which means a future prompt version,
+not a re-score of frozen ones.
