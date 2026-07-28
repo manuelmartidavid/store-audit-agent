@@ -237,7 +237,13 @@ def _no_real_subprocess(monkeypatch):
             "a test in test_run_triager.py reached a real subprocess spawn — "
             "inject a fake `runner` instead")
 
-    monkeypatch.setattr(run_triager, "_RUNNER", _boom)
+    # `_RUNNER` now lives in triage/model_runner.py — `cli_version` and
+    # `call_model_via_cli` were extracted there, and their lookup of `_RUNNER`
+    # resolves in that module's own globals, not run_triager's. Patching
+    # `run_triager.model_runner._RUNNER` reaches the actual seam; patching a
+    # same-named attribute on `run_triager` itself would not (see the note by
+    # the import block in run_triager.py).
+    monkeypatch.setattr(run_triager.model_runner, "_RUNNER", _boom)
     monkeypatch.setattr(run_triager.subprocess, "run", _boom)
     monkeypatch.setattr(run_triager.subprocess, "Popen", _boom)
 
@@ -575,7 +581,7 @@ def test_runner_falls_back_to_the_module_level_indirection_when_omitted(monkeypa
     # Looking `_RUNNER` up inside the function body means this patch is seen.
     captured = {}
     monkeypatch.setattr(
-        run_triager, "_RUNNER",
+        run_triager.model_runner, "_RUNNER",
         _fake_runner(_FakeCompletedProcess(0, "2.1.218", ""), captured))
 
     result = run_triager.cli_version()  # no runner= passed
