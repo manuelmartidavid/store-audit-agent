@@ -13,3 +13,7 @@ PyYAML==6.0.3
 
 # Tests
 pytest==9.1.1
+
+# The scripted runner (triage/run_triager.py). Pinned like the rest: the SDK
+# version is part of what produced a run, so it goes in the run record.
+anthropic==0.120.0

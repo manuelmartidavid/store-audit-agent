@@ -251,6 +251,21 @@ def provenance(entry: Path, fixtures: Path, prompt_version: str, pack_version: s
     }
 
 
+def load_run_output(path: Path) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Read a run file. Returns (triage output, run_meta or None).
+
+    Two shapes, deliberately. The 21 runs recorded before `triage/run_triager.py`
+    existed are the model's bare JSON, and they are frozen evidence — rewriting
+    them to a new shape would edit the record to suit the tool. Runs produced by
+    the runner wrap that same JSON in `output` and put the model, the parameters
+    and the digests beside it in `run_meta`.
+    """
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if isinstance(data.get("output"), dict) and "run_meta" in data:
+        return data["output"], data["run_meta"]
+    return data, None
+
+
 def _enum(value: Any) -> Any:
     """`—` in a hand label means 'no level applies', which is null, not a string."""
     if value in ("—", "-", "", None):
@@ -1033,7 +1048,7 @@ def main(argv: list[str] | None = None) -> int:
 
     labels = parse_labels(args.entry / "expected" / "findings.md")
     fixture = Fixture(args.fixtures)
-    output = json.loads(args.output.read_text(encoding="utf-8"))
+    output, run_meta = load_run_output(args.output)
     result = evaluate(output, labels, fixture)
 
     record = {
@@ -1041,7 +1056,7 @@ def main(argv: list[str] | None = None) -> int:
                                  args.pack_version,
                                  allow_unpinned=args.allow_unpinned_fixture,
                                  pack_path=args.pack)
-                      | {"run_file": str(args.output)},
+                      | {"run_file": str(args.output), "run_meta": run_meta},
         "result": result,
     }
     if args.json:

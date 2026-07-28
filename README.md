@@ -185,6 +185,27 @@ python -m crawler.archive --check archives/02-sabotaged.tar.gz --expect <manifes
 Copy `archives/` somewhere off this machine. The `--expect` value is the
 `manifest:` line in that entry's `expected/findings.md`.
 
+### Running the triager
+
+`triage/run_triager.py` calls the model directly (requires `ANTHROPIC_API_KEY`)
+and writes a run file that records what produced it — model, effort, thinking,
+max_tokens, the SDK version, token usage, and a digest of the exact rendered
+prompt and pack fed in — instead of just the model's bare JSON:
+
+```bash
+python triage/pack_evidence.py fixtures/02-sabotaged \
+    --context evals/golden/02-sabotaged/context.yaml -o packs/02-sabotaged.pack.json
+python triage/render_prompt.py prompts/finding-triager/v1.0.md \
+    --pack packs/02-sabotaged.pack.json --indent 0 -o runs/v1.0.rendered.md
+python triage/run_triager.py runs/v1.0.rendered.md --pack packs/02-sabotaged.pack.json \
+    --prompt-version finding-triager/v1.0 -o runs/v1.0-run4.json
+python triage/eval_triage.py runs/v1.0-run4.json --prompt-version finding-triager/v1.0
+```
+
+`triage/eval_triage.py` reads both this wrapped shape and the bare `{schema,
+findings}` shape the 21 recorded runs use — the frozen runs are read unchanged,
+never rewritten.
+
 ---
 
 ## Tests
@@ -215,6 +236,7 @@ machinery beneath them.
 | Narrator / report composer | Specified; **not yet implemented** |
 | `references/benchmarks.md` | Referenced by the rubric; **not yet present**  <!-- STALE-OK --> |
 | Eval harness (`triage/eval_triage.py`) | **Implemented** — matcher, tiered recall, composite, MNC screens |
+| Scripted runner (`triage/run_triager.py`) | **Implemented, not yet run** — the 21 recorded runs to date were executed as interactive agent sessions and carry no model, parameters, or timestamp; this runner calls the API directly and records all three alongside the model's JSON |
 
 The evidence-pointer matcher and `crawl.json` schema check that the harness will
 need already ship inside the crawler (`crawler/pointers.py`, `crawler/schema.py`)
