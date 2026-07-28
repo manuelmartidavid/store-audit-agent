@@ -1,0 +1,154 @@
+{
+  "run_meta": {
+    "model": "claude-opus-5",
+    "effort": "high",
+    "prompt_version": "impact-narrator/v0.1",
+    "rendered_sha256": "0a2e46c8611cfc3a777e7d02b183960b1220f8f872399c23ee279b0732db6651",
+    "started_at": "2026-07-29T04:24:30+08:00",
+    "via": "claude-code-cli",
+    "cli_version": "2.1.218 (Claude Code)",
+    "system_prompt": "You are being evaluated. Follow the user message exactly. Do not add instructions, context, or behavior beyond what it specifies.",
+    "comparability": "NOT COMPARABLE to an anthropic-sdk run: max_tokens and thinking are not controllable through the claude-code-cli path, and roughly 1.7k tokens of Claude Code harness context (system prompt scaffolding, even with --tools \"\" --strict-mcp-config) precede the prompt on every request. effort and the resolved model ARE pinned on this path, the same as on anthropic-sdk, so those two fields — and only those two — can be compared across the two backends.",
+    "usage": {
+      "input_tokens": 2,
+      "output_tokens": 5384,
+      "raw": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 9308,
+        "output_tokens": 5384,
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 0,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 5384,
+            "cache_read_input_tokens": 9308,
+            "cache_creation_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 0
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "resolved_model": "claude-opus-5",
+      "total_cost_usd": 0.139264,
+      "session_id": "c1f48cd6-a8fd-44ac-b469-a99f080eeb73",
+      "num_turns": 1,
+      "stop_reason": "end_turn"
+    },
+    "brief_sha256": "07999816d180ebfb33a2861ac7401fb6ca05ef4bc5b7acfb2d906ff940eddfbf"
+  },
+  "output": {
+    "schema": "narrative/v0.1",
+    "summary": "Your store is losing sales at both ends of the visit. Shoppers arriving from search can't find your collections, and those who land on the home page hit links that go nowhere. On product pages, buyers wait a long time for images, can't use the add-to-cart control without a mouse, and find nothing about shipping, tax or returns. Most of the fixes below are small; start at the top.",
+    "findings": {
+      "F-02": {
+        "consequence": "Search engines are told to leave your category pages out of their results, so shoppers searching won't find them.",
+        "affects": "Anyone who would have arrived from a search engine.",
+        "change": "Remove the instruction telling search engines not to index the collection template."
+      },
+      "F-01": {
+        "consequence": "A shopper using a keyboard or a screen reader cannot add a card to the cart at all.",
+        "affects": "Every visitor who doesn't use a mouse.",
+        "change": "Rebuild the add-to-cart control as a real button element."
+      },
+      "F-07": {
+        "consequence": "The category page jumps around while loading, so shoppers tap the wrong card or lose their place.",
+        "affects": "Everyone browsing collections, most sharply on phones.",
+        "change": "Have a developer reserve space for the elements that load late on collection pages."
+      },
+      "F-04": {
+        "consequence": "Main home page buttons and category links go nowhere, so shoppers can't reach the catalogue from the front page.",
+        "affects": "Every visitor landing on the home page.",
+        "change": "Point the hero and category links at their real collection pages."
+      },
+      "F-09": {
+        "consequence": "The name shown in search results and browser tabs describes the template, not the cards on the page, so listings look generic.",
+        "affects": "Shoppers scanning search results, and anyone with many tabs open.",
+        "change": "Write titles that describe the home page and each collection specifically."
+      },
+      "F-14": {
+        "consequence": "The home page never states in its main heading what the shop sells, so search engines and screen readers miss the point.",
+        "affects": "Search visitors and anyone using a screen reader.",
+        "change": "Add a main heading to the home page describing what the store sells."
+      },
+      "F-03": {
+        "consequence": "Button text is hard to read against its background, so shoppers miss the main action in bright light or with weaker eyesight.",
+        "affects": "Shoppers on collection, product, cart and error pages.",
+        "change": "Darken the button colour or lighten its text until the contrast passes."
+      },
+      "F-05": {
+        "consequence": "A shopper on a phone waits at a mostly blank product page long enough that many will leave before the card appears.",
+        "affects": "Most shoppers, since the majority arrive on phones.",
+        "change": "Have a developer make the product page's main content appear sooner on phones."
+      },
+      "F-08": {
+        "consequence": "Pages pull down far heavier images than they actually display, so everything feels slow and burns mobile data.",
+        "affects": "Every visitor, especially those on mobile data.",
+        "change": "Serve images sized for how they are actually displayed."
+      },
+      "F-16": {
+        "consequence": "Shoppers reach the cart without knowing what shipping costs, and many abandon rather than find out at checkout.",
+        "affects": "Everyone who adds a card to the cart.",
+        "change": "Show shipping cost, and any free-shipping threshold, in the cart."
+      },
+      "F-17": {
+        "consequence": "Shoppers can't tell what tax or cross-border duty will be added, so the checkout total comes as a surprise.",
+        "affects": "Cart visitors, especially cross-border buyers.",
+        "change": "State tax and any duty expectation in the cart."
+      },
+      "F-18": {
+        "consequence": "Shoppers deciding on a graded card see nothing about returns, so cautious buyers hesitate over an item they can't inspect.",
+        "affects": "Everyone weighing up a product page.",
+        "change": "Add a returns and refund reference to the product page."
+      },
+      "F-19": {
+        "consequence": "Shoppers can't tell when a card would arrive, which matters most when they're buying it for a date.",
+        "affects": "Everyone on a product page.",
+        "change": "State delivery or shipping expectations on the product page."
+      },
+      "F-10": {
+        "consequence": "Search engines write their own snippet for these pages, so the listing may not describe what the shop offers.",
+        "affects": "Shoppers seeing the store in search results.",
+        "change": "Write meta descriptions for the home, cart and search pages."
+      },
+      "F-11": {
+        "consequence": "Supporting text and breadcrumbs sit faint against the background, so card details are hard to read on a phone outdoors.",
+        "affects": "Shoppers with weaker eyesight, and anyone in bright light.",
+        "change": "Darken the muted grey text until it reads clearly."
+      },
+      "F-12": {
+        "consequence": "Form fields lose their prompt as soon as someone types, and screen readers can't say what is being asked for.",
+        "affects": "Anyone filling in a form, especially screen reader users.",
+        "change": "Give every input a visible label instead of relying on placeholder text."
+      },
+      "F-15": {
+        "consequence": "Trust badges are read aloud as file names rather than what they promise, so the reassurance is lost.",
+        "affects": "Home page visitors using a screen reader.",
+        "change": "Rewrite the badge alt text to say what each badge means."
+      },
+      "F-06": {
+        "consequence": "The home page pauses noticeably on a phone before anything appears, and some shoppers won't wait that out.",
+        "affects": "Mobile shoppers arriving on the home page.",
+        "change": "Have a developer make the home page's main content appear sooner."
+      },
+      "F-21": {
+        "consequence": "Some product page copy is addressed to automated tools rather than to shoppers, and it sits on your live site.",
+        "affects": "Anyone reading that product page, and tools that read it.",
+        "change": "Review the product copy and remove text not intended for shoppers."
+      }
+    }
+  }
+}

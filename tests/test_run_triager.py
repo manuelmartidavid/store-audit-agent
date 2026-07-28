@@ -120,12 +120,61 @@ def test_the_21_frozen_runs_are_still_bare_and_none_are_missing():
         assert meta is None, f"{name}.json was rewritten — recorded runs are frozen"
 
 
-def test_every_other_run_file_still_loads_a_valid_triage_output():
+def _validate_triage_v0_1(output: dict, name: str) -> None:
+    # Unchanged from before this test went schema-aware: the whole check for
+    # this schema always was "does it claim to be one", so that's what stays.
+    assert output.get("schema") == "triage/v0.1", name
+
+
+def _validate_narrative_v0_1(output: dict, name: str) -> None:
+    # Deliberately shallow: `findings` is an object and `summary` is a
+    # non-empty string. `triage/eval_narrative.py` is the actual gate for this
+    # schema (word caps, digit ban, exact-set coverage, MNC rules — see
+    # specs/narrator-io.md §4) — re-checking those here would be a second,
+    # driftable spelling of that module, which is exactly the duplication
+    # this project keeps removing. This only proves the file is structurally
+    # loadable, not that it is a good narrative.
+    assert isinstance(output.get("findings"), dict), f"{name}: `findings` is not an object"
+    summary = output.get("summary")
+    assert isinstance(summary, str) and summary.strip(), \
+        f"{name}: `summary` is not a non-empty string"
+
+
+#: Every schema this project's run files are allowed to carry, and how to
+#: check one for structural validity. A schema not in this map is a failure,
+#: not a skip — see the test below for why that distinction was the whole
+#: point of this change.
+_KNOWN_RUN_SCHEMAS = {
+    "triage/v0.1": _validate_triage_v0_1,
+    "narrative/v0.1": _validate_narrative_v0_1,
+}
+
+
+def test_every_other_run_file_still_loads_a_valid_output():
     # Anything in runs/*.json outside the frozen 21 is allowed — expected,
     # even — to be wrapped by run_triager.py. But "allowed to be wrapped"
     # isn't "allowed to be garbage": a malformed new run file should still
     # fail somewhere, not slide through unnoticed just because it's exempt
     # from the bareness rule above.
+    #
+    # This test predates a second layer: it used to assert every non-frozen
+    # run carries `schema == "triage/v0.1"`, which broke the moment
+    # `runs/05-narrator-v0.1-run1.json` (schema `narrative/v0.1`) landed —
+    # the assumption was written when only one schema existed, not a bug in
+    # the narrator's run file. "Valid" is schema-dependent now, so this looks
+    # up the schema each file claims and validates against that schema's own
+    # rules — rather than narrowing the glob to skip anything not
+    # `triage/v0.1`, which would pass vacuously exactly the way
+    # `evals/results/05-blocked-path.md` did (a screen reporting no
+    # violations having evaluated nothing). An unknown schema is therefore a
+    # hard failure here, never something silently skipped.
+    #
+    # Still lives in tests/test_run_triager.py rather than a dedicated file:
+    # it walks runs/ wholesale (both schemas together) and its sibling test
+    # above (the frozen-21 check) already established that this file is the
+    # home for "is everything in runs/ still loadable" — splitting one
+    # schema's half out would separate two checks that read the same
+    # directory listing for the same reason.
     other_paths = [
         path for path in sorted((ROOT / "runs").glob("*.json"))
         if path.stem not in _FROZEN_RUN_NAMES
@@ -133,7 +182,14 @@ def test_every_other_run_file_still_loads_a_valid_triage_output():
     assert other_paths, "expected at least one non-frozen run file (e.g. a runner-produced run)"
     for path in other_paths:
         output, _meta = eval_triage.load_run_output(path)
-        assert output.get("schema") == "triage/v0.1", path.name
+        schema = output.get("schema")
+        validator = _KNOWN_RUN_SCHEMAS.get(schema)
+        assert validator is not None, (
+            f"{path.name}: schema {schema!r} is not one this project knows "
+            f"(known: {sorted(_KNOWN_RUN_SCHEMAS)}) — an unknown schema is a "
+            "failure here, not something to skip"
+        )
+        validator(output, path.name)
 
 
 # --- --via claude-cli backend -----------------------------------------------
@@ -237,7 +293,13 @@ def _no_real_subprocess(monkeypatch):
             "a test in test_run_triager.py reached a real subprocess spawn — "
             "inject a fake `runner` instead")
 
-    monkeypatch.setattr(run_triager, "_RUNNER", _boom)
+    # `_RUNNER` now lives in triage/model_runner.py — `cli_version` and
+    # `call_model_via_cli` were extracted there, and their lookup of `_RUNNER`
+    # resolves in that module's own globals, not run_triager's. Patching
+    # `run_triager.model_runner._RUNNER` reaches the actual seam; patching a
+    # same-named attribute on `run_triager` itself would not (see the note by
+    # the import block in run_triager.py).
+    monkeypatch.setattr(run_triager.model_runner, "_RUNNER", _boom)
     monkeypatch.setattr(run_triager.subprocess, "run", _boom)
     monkeypatch.setattr(run_triager.subprocess, "Popen", _boom)
 
@@ -575,7 +637,7 @@ def test_runner_falls_back_to_the_module_level_indirection_when_omitted(monkeypa
     # Looking `_RUNNER` up inside the function body means this patch is seen.
     captured = {}
     monkeypatch.setattr(
-        run_triager, "_RUNNER",
+        run_triager.model_runner, "_RUNNER",
         _fake_runner(_FakeCompletedProcess(0, "2.1.218", ""), captured))
 
     result = run_triager.cli_version()  # no runner= passed

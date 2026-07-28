@@ -103,13 +103,19 @@ Top project risk: fabricated impact claims. Every quantified claim must cite
   toward ceilings, reviewed and promoted; this is how "findings I'd have missed"
   becomes measurable).
 
-## Prompt architecture (target; none written yet)
+## Prompt architecture
 
 Three separate prompts, registry-versioned: `finding-triager` (audit JSON →
 severity/effort/confidence enums + evidence pointers, no prose) ·
 `impact-narrator` (highest guardrail density) · `report-composer`. Kept separate
 so impact language cannot bias triage. Triage runs before narration and never
 sees it.
+
+`finding-triager` is frozen at v1.0 (v1.1 also recorded, decision 30).
+`impact-narrator` v0.1 exists and is measured: entry 02 3/3, entry 05 1/1,
+editing cost ≈5% at N=1 (agent-conducted, a proxy for the human read decision
+3 calls for) — `evals/results/09-impact-narrator.md`. `report-composer` is
+still none.
 
 ## Artifact inventory (delivered as store-audit-phase0.zip)
 
@@ -209,7 +215,8 @@ sees it.
       entry 05    3  v1.0 — 1 of 3 as labeled; found the §1/§6 contradiction
       entry 05    3  v1.1 — 3 of 3, after decision 30
 
-  `impact-narrator` and `report-composer` still none.
+  `impact-narrator` v0.1 exists and is measured (entry 02 3/3, entry 05 1/1 —
+  `evals/results/09-impact-narrator.md`); `report-composer` still none.
   (This line previously carried a literal `\n` mid-sentence from a bad edit, and
   said 21 runs. Both fixed 2026-07-29.)
 - Entries 01 (clean theme demo) and 04 (WooCommerce, reduced path + null-AOV
@@ -951,13 +958,22 @@ is the intended behaviour and the signal to re-label.
    rubric v0.5, prompt v1.1, entry 05 now 3/3). **Two left:** #2 waits on entry
    01, and #3 (MC-116 severity — label `medium`, two of three runs `low`) is
    still a ten-minute read.
-9. **Write `impact-narrator` — this is the next step.** Input contract
-   `triage/v0.1` is frozen and 19 entry-02 run JSONs carry findings to narrate,
-   so it can be built and evaluated without touching a fixture. Highest guardrail
-   density in the project: automatic-fail #1
-   (fabricated statistic) is *its* gate, since the triage schema has no number
-   field. Also inherits the per-template report ceiling (decision 27) — it is the
-   layer that can truncate by roadmap rank.
+9. ~~**Write `impact-narrator`.**~~ **Done 2026-07-29.** v0.1 built and
+   measured: entry 02 3/3, entry 05 1/1, zero numerals, zero MNC violations,
+   editing cost ≈5% at N=1 (agent-conducted) against decision 3's >~30% kill
+   line. `evals/results/09-impact-narrator.md`. Automatic-fail #1 (fabricated
+   statistic) is its gate, since the triage schema has no number field — held
+   clean on every run.
+   **Correction, 2026-07-29:** this line previously said the narrator "also
+   inherits the per-template report ceiling (decision 27) — it is the layer
+   that can truncate by roadmap rank." That was wrong on its own terms:
+   roadmap rank is `severity_weight ÷ effort_cost`, rubric §4's arithmetic,
+   which is script work — `triage/build_brief.py` computes it and truncates
+   by it before either the narrator or the composer sees a brief (per
+   `specs/narrator-io.md` §2.2: "The narrator never ranks and never
+   truncates. Roadmap rank is script work"). Noted as corrected here rather
+   than silently rewritten, matching how decision 30's section handles the
+   same situation.
 10. **Select the entry-01 store** (clean theme demo — the false-positive test) and
     the **entry-04 store** (WooCommerce, reduced path, null-AOV trap). Selection
     is free; capture is not.
@@ -979,8 +995,20 @@ is the intended behaviour and the signal to re-label.
 
 ### Then — the deliverable
 
-14. `report-composer`, including ceiling truncation by roadmap rank and the
-    "N additional minor items" line (rubric §5).
+14. `report-composer`, rendering rubric §5's "N additional minor items" line
+    from the brief's `overflow_count`. Inherits two obligations recorded
+    during step 9, not yet built: rendering the `noted` bucket
+    (`specs/narrator-io.md` §2.3 — a report section the rubric never assigns
+    a home to), and computing the score itself from `triage.scoring.composite()`.
+    **Correction, 2026-07-29:** this item previously said the composer does
+    "ceiling truncation by roadmap rank" — the same imprecision item 9's
+    correction above already fixed for the narrator. Roadmap rank
+    (`severity_weight ÷ effort_cost`, rubric §4) and the truncation itself
+    (max 8/template, max 25 total, rubric §5) are both `triage/build_brief.py`
+    (`specs/narrator-io.md` §2.2), which hands the composer `overflow_count`
+    already computed. The composer renders that count; it does not rank or
+    truncate. Noted as corrected here rather than silently rewritten, matching
+    decision 30's section and item 9's correction above.
 15. End-to-end on a real store; test decision 3's kill criterion (>30% editing
     cost) for the first time.
 16. **Cost and latency at portfolio scale.** The runner shipped in step 8, so this

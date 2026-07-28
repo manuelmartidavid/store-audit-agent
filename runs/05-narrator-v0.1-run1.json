@@ -1,0 +1,58 @@
+{
+  "run_meta": {
+    "model": "claude-opus-5",
+    "effort": "high",
+    "prompt_version": "impact-narrator/v0.1",
+    "rendered_sha256": "0fa716bfa48336e00e06e2208995803bebd6005dd24ee10db1dc85d1bde861b7",
+    "started_at": "2026-07-29T04:25:48+08:00",
+    "via": "claude-code-cli",
+    "cli_version": "2.1.218 (Claude Code)",
+    "system_prompt": "You are being evaluated. Follow the user message exactly. Do not add instructions, context, or behavior beyond what it specifies.",
+    "comparability": "NOT COMPARABLE to an anthropic-sdk run: max_tokens and thinking are not controllable through the claude-code-cli path, and roughly 1.7k tokens of Claude Code harness context (system prompt scaffolding, even with --tools \"\" --strict-mcp-config) precede the prompt on every request. effort and the resolved model ARE pinned on this path, the same as on anthropic-sdk, so those two fields — and only those two — can be compared across the two backends.",
+    "usage": {
+      "input_tokens": 2,
+      "output_tokens": 254,
+      "raw": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 5153,
+        "cache_read_input_tokens": 0,
+        "output_tokens": 254,
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 5153,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 254,
+            "cache_read_input_tokens": 0,
+            "cache_creation_input_tokens": 5153,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 5153
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard"
+      },
+      "resolved_model": "claude-opus-5",
+      "total_cost_usd": 0.05788999999999999,
+      "session_id": "35672aaa-fe24-4e9b-8acc-1c53d41d94f0",
+      "num_turns": 1,
+      "stop_reason": "end_turn"
+    },
+    "brief_sha256": "385921072b7f98d4d38d9a99c2ef90ee9ea14dced096b0b6b3e9a52f4ed66a06"
+  },
+  "output": {
+    "schema": "narrative/v0.1",
+    "summary": "This store could not be reached during the audit. No page could be opened or inspected, so nothing about the storefront was examined and no assessment of it was possible. Nothing in this report describes the condition of the store, and no conclusion about it should be drawn from the absence of findings. Once the store can be reached, a full audit can be run and reported normally.",
+    "findings": {}
+  }
+}

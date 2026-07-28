@@ -6,7 +6,7 @@ before narration and never sees it.
 | Prompt | Reads | Writes | Status |
 |---|---|---|---|
 | `finding-triager` | `pack/v0.2` | `triage/v0.1` | **v1.1 — current**, entry 05 only (3/3, fix verification). **v1.0** remains the entry-02 number: 3/3 at 17/17 recall (in-sample, see `evals/PROMOTION-PROTOCOL.md`) |
-| `impact-narrator` | `triage/v0.1` + `references/benchmarks.md` | narrative | not written — next |
+| `impact-narrator` | `brief/v0.1` (specs/narrator-io.md) | `narrative/v0.1` | **v0.1** — no numbers at all; `references/benchmarks.md` does not exist, so rubric §6.1's only exemption is unavailable. Quantification is v0.2 (in-sample, see `evals/PROMOTION-PROTOCOL.md`) |
 | `report-composer` | narrative + score | HTML report | not written |
 
 ## Versioning
@@ -56,6 +56,30 @@ worth knowing about: it omitted `--pack-version`, which has had no default since
 step 8 and now exits fatally, and it named `runs/v1.0-run1.json`, **a file that
 never existed** — v1.0's entry-02 headline is the three v0.6 runs.
 
+### Running the narrator
+
+```sh
+# 1. build the brief from a recorded triage run
+python triage/build_brief.py runs/v1.0-cli-run1.json \
+    --pack packs/02-sabotaged.pack.json -o briefs/02-sabotaged.brief.json
+
+# 2. render
+python triage/render_prompt.py prompts/impact-narrator/v0.1.md \
+    --brief briefs/02-sabotaged.brief.json --indent 0 \
+    -o runs/02-narrator-v0.1.rendered.md
+
+# 3. call the model
+python triage/run_narrator.py runs/02-narrator-v0.1.rendered.md \
+    --brief briefs/02-sabotaged.brief.json \
+    --prompt-version impact-narrator/v0.1 --via claude-cli \
+    -o runs/narrator-v0.1-run1.json
+
+# 4. gate it
+python triage/eval_narrative.py runs/narrator-v0.1-run1.json \
+    --brief briefs/02-sabotaged.brief.json \
+    --entry evals/golden/02-sabotaged --prompt-version impact-narrator/v0.1
+```
+
 ## Version history
 
 | | change | 3-run recall (crit/high · med/low) |
@@ -90,3 +114,9 @@ above are therefore in-sample — `evals/PROMOTION-PROTOCOL.md` rule 3.
 `{{PACK}}` inside the `<input_data>` block is the only substitution. It is the
 last thing in the prompt on purpose: the instructions are read before the data,
 and the data cannot appear to be continuing them.
+
+## `impact-narrator`
+
+| | change | result |
+|---|---|---|
+| v0.1 | first version. Three word-capped fields per finding plus a store summary; zero digits permitted anywhere | see `evals/results/09-impact-narrator.md` (in-sample, see `evals/PROMOTION-PROTOCOL.md`) |

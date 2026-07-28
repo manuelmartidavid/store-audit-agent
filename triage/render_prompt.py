@@ -1,12 +1,17 @@
-"""Render a prompt template against an evidence pack. One substitution, no engine.
+"""Render a prompt template against its input data. One substitution, no engine.
 
-`{{PACK}}` inside the template's `<input_data>` block is replaced with the pack
-JSON. Nothing else is substituted — a template language here would be a second
+`{{PACK}}` inside a triager template's `<input_data>` block is replaced with the
+pack JSON; `{{BRIEF}}` does the same for a narrator template against a brief.
+Exactly one of `--pack`/`--brief` is given per call, so exactly one placeholder
+is substituted. Nothing else is — a template language here would be a second
 place for the prompt to change, and prompt versions have to mean one file.
 
 Usage:
     python triage/render_prompt.py prompts/finding-triager/v0.1.md \
         --pack packs/02-sabotaged.pack.json -o runs/v0.1.rendered.md
+
+    python triage/render_prompt.py prompts/impact-narrator/v0.1.md \
+        --brief briefs/02-sabotaged.brief.json -o runs/narrator-v0.1.rendered.md
 """
 
 from __future__ import annotations
@@ -21,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from triage import token_estimate  # noqa: E402
 
-PLACEHOLDER = "{{PACK}}"
+PLACEHOLDER = "{{PACK}}"   # kept: the triager's templates and its docs name it
 _FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.S)
 
 
@@ -38,25 +43,38 @@ def prompt_version(template_text: str) -> str:
     return f"{name}/{version}" if name and version else "unpinned"
 
 
-def render(template_path: Path, pack_path: Path, indent: int | None = None) -> tuple[str, str]:
+def render(template_path: Path, data_path: Path, indent: int | None = None,
+           placeholder: str = "PACK") -> tuple[str, str]:
+    """Substitute one placeholder. Still no template engine.
+
+    `placeholder` names the token rather than spelling it, so the narrator can
+    render `{{BRIEF}}` through the same one substitution the triager uses. A
+    second renderer would be a second place for a prompt to change.
+    """
+    token = "{{" + placeholder + "}}"
     text = template_path.read_text(encoding="utf-8")
-    if PLACEHOLDER not in text:
-        raise SystemExit(f"{template_path} has no {PLACEHOLDER} placeholder")
-    pack = json.loads(pack_path.read_text(encoding="utf-8"))
+    if token not in text:
+        raise SystemExit(f"{template_path} has no {token} placeholder")
+    data = json.loads(data_path.read_text(encoding="utf-8"))
     separators = None if indent else (",", ":")
-    body = json.dumps(pack, indent=indent, separators=separators, default=str)
-    return text.replace(PLACEHOLDER, body), prompt_version(text)
+    body = json.dumps(data, indent=indent, separators=separators, default=str)
+    return text.replace(token, body), prompt_version(text)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("template", type=Path)
-    parser.add_argument("--pack", type=Path, required=True)
+    parser.add_argument("--pack", type=Path, help="evidence pack (the triager's input)")
+    parser.add_argument("--brief", type=Path, help="narrator brief (the narrator's input)")
     parser.add_argument("-o", "--out", type=Path, required=True)
     parser.add_argument("--indent", type=int, default=None)
     args = parser.parse_args(argv)
 
-    text, version = render(args.template, args.pack, args.indent)
+    if bool(args.pack) == bool(args.brief):
+        raise SystemExit("give exactly one of --pack or --brief")
+    data, placeholder = (args.pack, "PACK") if args.pack else (args.brief, "BRIEF")
+
+    text, version = render(args.template, data, args.indent, placeholder)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(text, encoding="utf-8")
     # The character count is printed beside the estimate deliberately: chars are

@@ -330,6 +330,52 @@ triage.
 If the numeral ban ever collides with something legitimate, that is a finding
 against this design and gets recorded — not silently exempted.
 
+**Correction, 2026-07-29 (whole-branch review, finding C1):** the MNC-screens
+row above claims MNC-403, MNC-402, and entry 05's MNC-002/MNC-003 were all read
+by this gate. Of those four, only MNC-003 actually was: `declared_violations`
+only fires on `type: forbidden_finding`+`scope:[all]`, `detect.patterns`, or
+`match.any_of`, and MNC-402 and MNC-403 both carried only `detect: {rule:
+<prose>}` — a human-readable statement, not one of the three. The narrative-eval
+harness reported `zero_mnc_violations: True` against entry 02 having evaluated
+neither. Fixed in `triage/mnc.py` (`executable_label_ids`,
+`is_discharged`) and `triage/eval_narrative.py` (hard error on a
+`narrative`-scoped label with no executable screen and no `discharged:`
+block); MNC-402 gained `detect.patterns`; MNC-403 was documented as discharged
+structurally by the numeral ban rather than given patterns of its own. Detail:
+`evals/HARNESS-CHANGELOG.md`, `narrative-eval/v0.1`'s correction, and
+`evals/results/09-impact-narrator.md`. **Entry 05's MNC-002 carries the same
+prose-only shape and is not fixed here** — it was outside this review's
+authorised scope (golden-file edits were authorised only for entry 02's
+MNC-402/403) — so scoring a real run against entry 05 will now hit the same
+hard error MNC-402 used to silently avoid, until MNC-002 is either given a
+`discharged:` block or an executable rule.
+
+**Correction, 2026-07-29 (later the same day, verification review, finding
+V4): the "is not fixed here" sentence directly above is stale.** Commit
+`cddd64c` gave entry 05's MNC-002 exactly the `discharged:` block this
+correction said it lacked, one commit after this correction was written —
+`by: schema_has_no_score_field`, the same structural argument C1c made for
+MNC-403 (`narrative/v0.1` has no score field to carry a null or zero one at
+all, `specs/narrator-io.md` §3). Scoring a real run against entry 05 no longer
+hits the hard error; it re-scores clean (`mnc_screens_run: ["MNC-001",
+"MNC-003"]`, `mnc_screens_discharged: ["MNC-002"]`). Left uncorrected in
+`evals/HARNESS-CHANGELOG.md`'s `narrative-eval/v0.1` entry until now — see that
+file's own new correction alongside this one.
+
+**Correction, 2026-07-29 (later the same day, verification review, finding
+V1): this same paragraph's claim that "MNC-403 was documented as discharged
+structurally by the numeral ban" is also now wrong, and was wrong on the
+premise even before this fix.** The numeral ban is on digit *characters*; it
+does not touch a quantity spelled out in words, and "MNC-403 stays
+non-executable by design" understated the resulting hole: `"roughly a third of
+its mobile revenue"` and `"twice as many shoppers"` both carry zero digits and
+both scored clean against the discharged label. MNC-403 now carries
+`detect.patterns` (built from `eval_narrative.QUANTITY_GATE_WORDS`, minus
+`"most of"` — see that constant's comment for why) and is an executable screen
+like MNC-402, not a discharge. The three recorded entry-02 runs were re-scored
+again under the new patterns and still pass. Full detail:
+`evals/HARNESS-CHANGELOG.md`, `narrative-eval/v0.1`'s second correction.
+
 ### Heuristic — and stated as one
 
 Banning digits does not ban *"roughly a third of shoppers"*. A spelled-out-quantity
