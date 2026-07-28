@@ -995,11 +995,20 @@ is the intended behaviour and the signal to re-label.
 
 ### Then — the deliverable
 
-14. `report-composer`, including ceiling truncation by roadmap rank and the
-    "N additional minor items" line (rubric §5). Inherits two obligations
-    recorded during step 9, not yet built: rendering the `noted` bucket
+14. `report-composer`, rendering rubric §5's "N additional minor items" line
+    from the brief's `overflow_count`. Inherits two obligations recorded
+    during step 9, not yet built: rendering the `noted` bucket
     (`specs/narrator-io.md` §2.3 — a report section the rubric never assigns
     a home to), and computing the score itself from `triage.scoring.composite()`.
+    **Correction, 2026-07-29:** this item previously said the composer does
+    "ceiling truncation by roadmap rank" — the same imprecision item 9's
+    correction above already fixed for the narrator. Roadmap rank
+    (`severity_weight ÷ effort_cost`, rubric §4) and the truncation itself
+    (max 8/template, max 25 total, rubric §5) are both `triage/build_brief.py`
+    (`specs/narrator-io.md` §2.2), which hands the composer `overflow_count`
+    already computed. The composer renders that count; it does not rank or
+    truncate. Noted as corrected here rather than silently rewritten, matching
+    decision 30's section and item 9's correction above.
 15. End-to-end on a real store; test decision 3's kill criterion (>30% editing
     cost) for the first time.
 16. **Cost and latency at portfolio scale.** The runner shipped in step 8, so this
