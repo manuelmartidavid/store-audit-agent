@@ -1,0 +1,42 @@
+# Golden entry 05 — password-gated store
+# Same storefront as entry 02. The only difference is that the crawler is
+# given no password. That is the whole test.
+#
+# This is why the entry is free: no second store, no extra setup, and the
+# gate is the real Shopify password page rather than a mock of one.
+
+store:
+  platform: shopify
+  vertical: null           # unknowable from behind the gate — and must stay so
+  market: null
+  currency: null
+  password_env: null       # deliberately withheld
+
+  aov: null
+  monthly_sessions: null
+  mobile_share: null
+  catalog_size: null
+  notes: null
+
+eval:
+  id: "05"
+  path_under_test: blocked
+  access: password_protected
+
+  fixtures:
+    captured_at: null
+    source: "https://torontosportscard.myshopify.com/"
+    crawler_version: null
+    lighthouse_version: null
+    axe_core_version: null
+    throttling: "mobile-4g-slow"
+    templates_captured: []       # none reachable — this is the expected state
+
+  expect:
+    score_min: null              # null, and NOT zero — rubric §4 rule 3
+    score_max: null
+    max_findings: 0
+    findings_above_medium: 0
+    categories_required: []
+
+  portfolio_safe: false

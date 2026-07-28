@@ -1,0 +1,72 @@
+# Golden entry 02 — deliberately sabotaged store
+# Store: torontosportscard.myshopify.com (TSCC), disposable.
+# Same store as entry 05. Two crawler configurations, one storefront.
+
+store:
+  platform: shopify
+  vertical: collectibles
+  market: CA
+  currency: CAD
+  password_env: TSCC_STOREFRONT_PASSWORD    # value lives in .env, gitignored
+
+  # Declared, not measured. TSCC has no sales history, so there is no real
+  # AOV to discover. Setting one here is a legitimate input — you are
+  # telling the narrator what to reason from. Inventing one where the
+  # field is null is the failure; supplying one deliberately is not.
+  #
+  # This entry therefore tests the *positive* case: given a number and a
+  # supporting benchmark, does the narrator quantify correctly and cite?
+  # The negative case — null AOV, no number permitted — moves to entry 04.
+  aov: 85
+  monthly_sessions: <10k
+  mobile_share: 0.7
+
+  catalog_size: 50-500
+
+  notes: >
+    Sports card and collectibles retailer serving the Greater Toronto Area.
+    Single-unit inventory — most listings are one-of-one graded or raw cards
+    rather than restockable SKUs. Sells domestically with occasional
+    cross-border shipping.
+
+eval:
+  id: "02"
+  path_under_test: full_shopify
+  access: password_protected     # crawler supplies the password for this entry
+
+  fixtures:
+    captured_at: "2026-07-27T16:39:27+08:00"
+    source: "https://torontosportscard.myshopify.com/"
+    crawler_version: "0.2.0"
+    lighthouse_version: "12.8.2"
+    axe_core_version: "4.12.1"
+    chrome_version: "149.0.7827.55"
+    manifest_sha256: "b219afac6f8234ff98ce6c4eaf004bdb4063aaf1155de78b0fe19c6512946d20"
+    theme_id: "155926888680"          # tsc-theme-v3, live; name alone is ambiguous (two themes share source)
+    throttling: "mobile-4g-slow"     # must match every other entry
+    templates_captured: [home, collection, pdp, cart, search, 404]
+
+    # Pinned targets (eval-only; read by the crawler, never rendered, never
+    # reach a prompt). The PDP is pinned because discovery reads "first product
+    # in the collection", which on this cached storefront raced between the
+    # Upper Deck box and the clean-control card seconds apart — making the
+    # capture non-reproducible. Pinning the box (where X-01, P-02 and the
+    # product defects live) fixes it by construction. Collection stays
+    # discovered: its defects (C-02, S-01, P-03) are template-level and do not
+    # depend on which products the grid happens to show.
+    targets:
+      pdp: "https://torontosportscard.myshopify.com/products/2023-24-upper-deck-series-1-hockey-hobby-box"
+
+  expect:
+    # From fixtures/02-sabotaged, rubric v0.3. Composite = 35 from the 13
+    # must-catch findings; band "Significant work needed". Range allows for
+    # medium/low recall variance (≥75% bar) and promoted unlabeled findings.
+    score: 35
+    score_min: 30
+    score_max: 42
+    band: "Significant work needed"
+    max_findings: 25
+    findings_above_medium: 6          # 2 critical (C-01, C-02) + 4 high (P-02, P-03, A-01, S-01)
+    categories_required: [performance, seo, accessibility, conversion]
+
+  portfolio_safe: false          # disposable, but sabotaged — never demo this one

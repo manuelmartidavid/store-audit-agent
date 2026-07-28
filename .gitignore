@@ -1,0 +1,22 @@
+# Secrets — the storefront password lives here, never committed (sabotage-spec §gate)
+.env
+.env.*
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# Crawl output goes to a fixtures dir the operator chooses; the default one is
+# working output, not source.
+/fixtures/
+
+# Planting assets — regenerable from scripts/make_hero_p01.py --seed (decision 12
+# provenance is the printed sha256, not the blob).
+/*.png
+/*.jpg
+
+# Bridge/host litter, not project state.
+/_to_delete/

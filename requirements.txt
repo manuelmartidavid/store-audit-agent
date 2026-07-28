@@ -1,0 +1,9 @@
+# Runtime
+playwright>=1.44
+
+# Optional: --context reads a golden entry's context.yaml. The CLI falls back to
+# a two-key line scan when this is absent, so it is genuinely optional.
+PyYAML>=6.0
+
+# Tests
+pytest>=8.0

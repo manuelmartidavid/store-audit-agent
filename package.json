@@ -1,0 +1,11 @@
+{
+  "name": "store-audit-agent-tooling",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Node-side scanners for the crawler: Lighthouse (Node API, shared browser) and axe-core.",
+  "type": "module",
+  "dependencies": {
+    "axe-core": "^4.10.2",
+    "lighthouse": "^12.2.1"
+  }
+}

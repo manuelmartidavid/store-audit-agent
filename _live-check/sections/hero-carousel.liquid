@@ -1,0 +1,364 @@
+{% if section.settings.text_font != blank %}
+  <style>{{ section.settings.text_font | font_face: font_display: 'swap' }}</style>
+  {% style %}
+    #shopify-section-{{ section.id }} .hero-carousel__text {
+      font-family: {{ section.settings.text_font.family }}, {{ section.settings.text_font.fallback_families }};
+    }
+  {% endstyle %}
+{% endif %}
+
+{% if section.blocks.size > 0 %}
+  <div
+    class="hero-carousel full-width"
+    style="--slide-count: {{ section.blocks.size }};"
+    data-carousel-root
+    data-carousel-autoplay="{{ section.settings.autoplay }}"
+    data-carousel-speed="{{ section.settings.autoplay_speed }}"
+  >
+    <div class="hero-carousel__track" data-carousel-track>
+      {% for block in section.blocks %}
+        {% if block.type == 'slide' %}
+          <div
+            class="hero-carousel__slide"
+            style="--slide-bg: {{ block.settings.background_color }}; --headline-color: {{ block.settings.headline_color }}; --subtitle-color: {{ block.settings.subtitle_color }}; --desc-color: {{ block.settings.description_color }}; --btn-primary-bg: {{ block.settings.primary_btn_bg }}; --btn-primary-fg: {{ block.settings.primary_btn_fg }}; --btn-secondary-color: {{ block.settings.secondary_btn_color }};{% if block.settings.dark_background_color != blank %} --slide-bg-dark: {{ block.settings.dark_background_color }};{% endif %}{% if block.settings.dark_text_color != blank %} --text-color-dark: {{ block.settings.dark_text_color }};{% endif %}{% if block.settings.dark_primary_btn_bg != blank %} --btn-primary-bg-dark: {{ block.settings.dark_primary_btn_bg }};{% endif %}{% if block.settings.dark_primary_btn_fg != blank %} --btn-primary-fg-dark: {{ block.settings.dark_primary_btn_fg }};{% endif %}"
+            {{ block.shopify_attributes }}
+          >
+            <div class="hero-carousel__content-grid">
+              <div class="hero-carousel__text">
+                {% if block.settings.subtitle != blank %}
+                  <p class="hero-carousel__subtitle">{{ block.settings.subtitle }}</p>
+                {% endif %}
+                {% if block.settings.headline != blank %}
+                  <h2 class="hero-carousel__headline">{{ block.settings.headline }}</h2>
+                {% endif %}
+                {% if block.settings.description != blank %}
+                  <p class="hero-carousel__description">{{ block.settings.description }}</p>
+                {% endif %}
+                <div class="hero-carousel__buttons">
+                  {% if block.settings.primary_button_label != blank %}
+                    <a href="{{ block.settings.primary_button_link | default: '#' }}" class="btn hero-carousel__btn--primary">
+                      {{ block.settings.primary_button_label }}
+                    </a>
+                  {% endif %}
+                  {% if block.settings.secondary_button_label != blank %}
+                    <a href="{{ block.settings.secondary_button_link | default: '#' }}" class="btn hero-carousel__btn--secondary">
+                      {{ block.settings.secondary_button_label }}
+                    </a>
+                  {% endif %}
+                </div>
+              </div>
+              {% if block.settings.slide_image %}
+                <div class="hero-carousel__slide-image">
+                  {%- if forloop.first -%}
+                    <img
+                      src="{{ block.settings.slide_image | image_url }}"
+                      alt="{{ block.settings.headline | escape }}"
+                      width="{{ block.settings.slide_image.width }}"
+                      height="{{ block.settings.slide_image.height }}"
+                      loading="eager"
+                      class="hero-carousel__slide-img"
+                    >
+                  {%- else -%}
+                    {{ block.settings.slide_image | image_url: width: 800 | image_tag: alt: block.settings.headline, loading: 'eager', class: 'hero-carousel__slide-img' }}
+                  {%- endif -%}
+                </div>
+              {% else %}
+                <div class="hero-carousel__card-grid" aria-hidden="true">
+                  <div class="hero-carousel__card hero-carousel__card--1"></div>
+                  <div class="hero-carousel__card hero-carousel__card--2"></div>
+                  <div class="hero-carousel__card hero-carousel__card--3"></div>
+                  <div class="hero-carousel__card hero-carousel__card--4"></div>
+                </div>
+              {% endif %}
+            </div>
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    {% if section.blocks.size > 1 %}
+      <button class="hero-carousel__arrow hero-carousel__arrow--prev" data-carousel-prev aria-label="{{ 'sections.hero_carousel.previous' | t }}">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <button class="hero-carousel__arrow hero-carousel__arrow--next" data-carousel-next aria-label="{{ 'sections.hero_carousel.next' | t }}">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+      <div class="hero-carousel__dots">
+        {% for block in section.blocks %}
+          <button class="hero-carousel__dot{% if forloop.first %} hero-carousel__dot--active{% endif %}" data-carousel-dot="{{ forloop.index0 }}" aria-label="{{ 'sections.hero_carousel.go_to' | t: index: forloop.index }}"></button>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+{% endif %}
+
+{% stylesheet %}
+/* recompile */
+.hero-carousel {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+}
+.hero-carousel__track {
+  display: flex;
+  transition: transform 0.5s ease;
+}
+.hero-carousel__slide {
+  flex: 0 0 100%;
+  width: 100%;
+  background-color: var(--slide-bg, #1e3a5f);
+  position: relative;
+  min-height: 380px;
+  display: flex;
+  align-items: center;
+}
+.hero-carousel__content-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2rem;
+  padding: 3rem var(--page-margin);
+  max-width: var(--page-width);
+  margin: 0 auto;
+  width: 100%;
+  align-items: center;
+}
+@media (min-width: 768px) {
+  .hero-carousel__slide { min-height: 520px; }
+  .hero-carousel__content-grid { grid-template-columns: 1fr 1fr; }
+}
+.hero-carousel__subtitle {
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--subtitle-color, var(--color-accent));
+  margin: 0 0 0.5rem;
+}
+.hero-carousel__headline {
+  font-size: clamp(2rem, 4.5vw, 3.25rem);
+  font-weight: 800;
+  color: var(--headline-color, #fff);
+  margin: 0 0 1rem;
+  line-height: 1.1;
+  font-family: var(--font-heading--family);
+}
+.hero-carousel__description {
+  font-size: 1.0625rem;
+  color: var(--desc-color, rgba(255,255,255,0.8));
+  margin: 0 0 1.75rem;
+  line-height: 1.6;
+  max-width: 36ch;
+}
+.hero-carousel__buttons { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+.hero-carousel__btn--primary {
+  background: var(--btn-primary-bg, var(--color-accent));
+  border-color: var(--btn-primary-bg, var(--color-accent));
+  color: var(--btn-primary-fg, #1f2937);
+}
+.hero-carousel__btn--primary:hover { opacity: 0.88; }
+.hero-carousel__btn--secondary {
+  background: transparent;
+  border-color: var(--btn-secondary-color, #fff);
+  color: var(--btn-secondary-color, #fff);
+}
+.hero-carousel__btn--secondary:hover { opacity: 0.88; }
+.hero-carousel__slide-image {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 100%;
+  height: clamp(280px, 38vw, 440px);
+  border-radius: 0.625rem;
+  overflow: hidden;
+}
+.hero-carousel__slide-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.hero-carousel__card-grid {
+  display: none;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 0.625rem;
+  height: 260px;
+  align-self: center;
+}
+@media (min-width: 768px) { .hero-carousel__card-grid { display: grid; } }
+.hero-carousel__card {
+  border-radius: 0.625rem;
+  border: 2px solid rgba(255,255,255,0.15);
+}
+.hero-carousel__card--1 { background: linear-gradient(135deg, #2d6a9f, #1e3a5f); }
+.hero-carousel__card--2 { background: linear-gradient(135deg, #c4963a, #8b6914); }
+.hero-carousel__card--3 { background: linear-gradient(135deg, #6d4c9e, #4a2d7a); }
+.hero-carousel__card--4 { background: linear-gradient(135deg, #2d8f6f, #1b5e42); }
+.hero-carousel__arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.25);
+  color: #fff;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  transition: background 0.15s;
+}
+.hero-carousel__arrow:hover { background: rgba(255,255,255,0.3); }
+.hero-carousel__arrow--prev { left: 1rem; }
+.hero-carousel__arrow--next { right: 1rem; }
+.hero-carousel__dots {
+  position: absolute;
+  bottom: 1.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 0.5rem;
+  z-index: 10;
+}
+.hero-carousel__dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: rgba(255,255,255,0.4);
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.2s, width 0.2s;
+}
+.hero-carousel__dot--active { background: #fff; width: 1.25rem; }
+
+/* Dark mode overrides — fall back to global tokens when per-slide dark colors are blank. */
+html[data-theme="dark"] .hero-carousel__slide { background: var(--slide-bg-dark, var(--color-background)); }
+html[data-theme="dark"] .hero-carousel__slide .hero-carousel__headline,
+html[data-theme="dark"] .hero-carousel__slide .hero-carousel__subtitle,
+html[data-theme="dark"] .hero-carousel__slide .hero-carousel__description {
+  color: var(--text-color-dark, var(--color-foreground));
+}
+html[data-theme="dark"] .hero-carousel__slide .hero-carousel__btn--primary {
+  background: var(--btn-primary-bg-dark, var(--color-primary));
+  color: var(--btn-primary-fg-dark, var(--color-primary-foreground));
+  border-color:var(--btn-primary-bg-dark, var(--color-primary))
+}
+html[data-theme="dark"] .hero-carousel__slide .hero-carousel__btn--secondary {
+  border-color: var(--btn-primary-fg-dark, var(--color-primary-foreground));
+  color: var(--btn-primary-fg-dark, var(--color-primary-foreground));
+}
+{% endstylesheet %}
+
+{% javascript %}
+(function() {
+  document.addEventListener('DOMContentLoaded', function() {
+    var carousels = document.querySelectorAll('[data-carousel-root]');
+    carousels.forEach(function(root) {
+      var track = root.querySelector('[data-carousel-track]');
+      if (!track) return;
+      var dots = root.querySelectorAll('[data-carousel-dot]');
+      var total = dots.length;
+      var current = 0;
+      var timer = null;
+      var autoplay = root.dataset.carouselAutoplay === 'true';
+      var speed = parseInt(root.dataset.carouselSpeed) || 5000;
+
+      function goTo(index) {
+        current = (index + total) % total;
+        track.style.transform = 'translateX(-' + (current * 100) + '%)';
+        dots.forEach(function(d, i) {
+          d.classList.toggle('hero-carousel__dot--active', i === current);
+        });
+      }
+
+      function start() {
+        if (!autoplay || total < 2) return;
+        timer = setInterval(function() { goTo(current + 1); }, speed);
+      }
+
+      function stop() { clearInterval(timer); }
+
+      var prevBtn = root.querySelector('[data-carousel-prev]');
+      var nextBtn = root.querySelector('[data-carousel-next]');
+      if (prevBtn) prevBtn.addEventListener('click', function() { stop(); goTo(current - 1); start(); });
+      if (nextBtn) nextBtn.addEventListener('click', function() { stop(); goTo(current + 1); start(); });
+      dots.forEach(function(d) {
+        d.addEventListener('click', function() { stop(); goTo(parseInt(d.dataset.carouselDot)); start(); });
+      });
+
+      root.addEventListener('mouseenter', stop);
+      root.addEventListener('mouseleave', start);
+
+      start();
+    });
+  });
+})();
+{% endjavascript %}
+
+{% schema %}
+{
+  "name": "t:general.hero_carousel",
+  "blocks": [
+    {
+      "type": "slide",
+      "name": "t:general.slide",
+      "settings": [
+        { "type": "header", "content": "t:general.background" },
+        { "type": "color", "id": "background_color", "default": "#1e3a5f", "label": "t:labels.background_color" },
+        { "type": "image_picker", "id": "slide_image", "label": "t:labels.slide_image" },
+        { "type": "header", "content": "t:general.content" },
+        { "type": "text", "id": "headline", "label": "t:labels.headline", "default": "Shop the finest trading cards" },
+        { "type": "text", "id": "subtitle", "label": "t:labels.subtitle", "default": "New arrivals weekly" },
+        { "type": "textarea", "id": "description", "label": "t:labels.description", "default": "Singles, sealed packs, graded cards and more. In-store and online." },
+        { "type": "header", "content": "t:general.text_colors" },
+        { "type": "color", "id": "headline_color", "default": "#ffffff", "label": "t:labels.headline_color" },
+        { "type": "color", "id": "subtitle_color", "default": "#d4a842", "label": "t:labels.subtitle_color" },
+        { "type": "color", "id": "description_color", "default": "#cccccc", "label": "t:labels.description_color" },
+        { "type": "header", "content": "t:general.buttons" },
+        { "type": "text", "id": "primary_button_label", "label": "t:labels.primary_button", "default": "Shop now" },
+        { "type": "url", "id": "primary_button_link", "label": "t:labels.primary_button_link" },
+        { "type": "color", "id": "primary_btn_bg", "default": "#d4a842", "label": "t:labels.primary_btn_bg" },
+        { "type": "color", "id": "primary_btn_fg", "default": "#1f2937", "label": "t:labels.primary_btn_fg" },
+        { "type": "text", "id": "secondary_button_label", "label": "t:labels.secondary_button" },
+        { "type": "url", "id": "secondary_button_link", "label": "t:labels.secondary_button_link" },
+        { "type": "color", "id": "secondary_btn_color", "default": "#ffffff", "label": "t:labels.secondary_btn_color" },
+        { "type": "header", "content": "t:labels.dark_mode_colors" },
+        { "type": "color", "id": "dark_background_color", "label": "t:labels.background_color" },
+        { "type": "color", "id": "dark_text_color", "label": "t:labels.text_color" },
+        { "type": "color", "id": "dark_primary_btn_bg", "label": "t:labels.primary_btn_bg" },
+        { "type": "color", "id": "dark_primary_btn_fg", "label": "t:labels.primary_btn_fg" }
+      ]
+    }
+  ],
+  "settings": [
+    { "type": "font_picker", "id": "text_font", "default": "work_sans_n4", "label": "t:labels.text_font" },
+    { "type": "checkbox", "id": "autoplay", "default": true, "label": "t:labels.autoplay" },
+    { "type": "range", "id": "autoplay_speed", "min": 2000, "max": 8000, "step": 500, "default": 5000, "label": "t:labels.autoplay_speed" }
+  ],
+  "presets": [
+    {
+      "name": "t:general.hero_carousel",
+      "blocks": [
+        {
+          "type": "slide",
+          "settings": {
+            "background_color": "#1e3a5f",
+            "headline": "Shop the finest trading cards",
+            "subtitle": "New arrivals weekly",
+            "description": "Singles, sealed packs, graded cards and more. In-store and online.",
+            "primary_button_label": "Shop now",
+            "secondary_button_label": "View new arrivals"
+          }
+        }
+      ]
+    }
+  ],
+  "disabled_on": { "groups": ["header", "footer"] }
+}
+{% endschema %}

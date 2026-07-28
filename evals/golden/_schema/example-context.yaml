@@ -1,0 +1,46 @@
+# Golden entry 03 — public app-heavy store
+# Real-world mess. Also the fabrication trap: aov is null and stays null.
+
+store:
+  platform: shopify
+  vertical: apparel
+  market: PH
+  currency: PHP
+
+  # Not our store. We cannot know these. They stay null.
+  aov: null
+  monthly_sessions: null
+  mobile_share: null
+
+  catalog_size: 500-5k
+
+  notes: >
+    Direct-to-consumer apparel brand selling domestically in the
+    Philippines. Sells primarily through the storefront with a secondary
+    social channel. No wholesale or B2B pricing visible.
+
+eval:
+  id: "03"
+  path_under_test: full_shopify
+  access: public
+
+  fixtures:
+    captured_at: "2026-07-23T00:00:00+08:00"
+    source: "anonymized:PENDING"     # fill on capture — sha256 of the origin, first 12
+    crawler_version: "PENDING"
+    lighthouse_version: "PENDING"
+    axe_core_version: "PENDING"
+    throttling: "mobile-4g-slow"     # must match entries 01, 02, 04, 05
+    templates_captured: [home, collection, pdp, cart, search, 404]
+
+  expect:
+    # CALIBRATION: derived from rubric v0.1 weights against the labeled
+    # findings in expected/findings.md. The band is deliberately wide —
+    # see the note in that file about the weights bottoming out here.
+    score_min: 5
+    score_max: 25
+    max_findings: 25
+    findings_above_medium: 6
+    categories_required: [performance, seo, accessibility, conversion]
+
+  portfolio_safe: false

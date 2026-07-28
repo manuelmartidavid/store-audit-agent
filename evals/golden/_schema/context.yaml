@@ -1,0 +1,79 @@
+# =====================================================================
+# Golden-set store context — schema v0.1
+#
+# TWO BLOCKS, ONE HARD RULE:
+#   store:  serialized into <store_context>, visible to the model
+#   eval:   harness only. NEVER rendered into any prompt, ever.
+#
+# The loader enforces the split. If `eval:` reaches a prompt even once,
+# every number the golden set produces is contaminated and the suite is
+# worse than having none.
+# =====================================================================
+
+store:
+  # --- identity -------------------------------------------------------
+  platform: shopify          # shopify | woocommerce | custom | unknown
+  vertical: null             # apparel | beauty | food-bev | home | electronics | collectibles | services | other
+  market: null               # ISO-3166 alpha-2. Selects the benchmark set.
+  currency: null             # ISO-4217
+
+  # --- storefront gate ------------------------------------------------
+  # Name of the env var holding the storefront password, or null if the
+  # store is public. NEVER the password itself — this file is committed
+  # alongside the fixtures. The crawler reads the gate and clears it
+  # before prompt assembly; the model never sees either field.
+  password_env: null
+
+  # --- commercial -----------------------------------------------------
+  # UNKNOWN MUST BE null. Not a placeholder, not an estimate, not a
+  # "typical for the vertical" figure.
+  #
+  # A null here obliges impact-narrator to speak directionally with no
+  # number. Filling one in from thin air is automatic fail #1. Entries
+  # for stores you don't own should keep aov null deliberately — that is
+  # the fabrication trap, not an accident of incomplete labeling.
+  aov: null                  # numeric, denominated in `currency`
+  monthly_sessions: null     # band: <10k | 10k-50k | 50k-250k | 250k+
+  mobile_share: null         # 0.0–1.0
+
+  # --- catalog --------------------------------------------------------
+  catalog_size: null         # band: <50 | 50-500 | 500-5k | 5k-50k | 50k+
+
+  # --- narrative context ----------------------------------------------
+  # Free text. Goes into the prompt. Constraints:
+  #   - business context only: who sells what to whom
+  #   - no findings, no symptoms, no severity language
+  # A note reading "the hero image is enormous" turns the recall number
+  # into a measure of how well the model can read your hints.
+  notes: null
+
+eval:
+  # --- identity -------------------------------------------------------
+  id: null                   # 01..05, matches the directory prefix
+  path_under_test: null      # full_shopify | reduced | blocked
+  access: null               # public | password_protected | bot_blocked
+
+  # --- provenance -----------------------------------------------------
+  # Inputs are frozen (brief §5). This block is what lets you tell
+  # "my code regressed" from "Lighthouse changed its scoring curve".
+  # Without it, a tool upgrade silently invalidates every expected file
+  # and you will spend a day debugging code that is fine.
+  fixtures:
+    captured_at: null        # ISO-8601
+    source: null             # URL, or "anonymized:<sha256[:12]>" if unowned
+    crawler_version: null
+    lighthouse_version: null
+    axe_core_version: null
+    throttling: null         # profile name — must be identical across all five entries
+    templates_captured: []   # home | collection | pdp | cart | search | 404
+
+  # --- pass conditions ------------------------------------------------
+  expect:
+    score_min: null
+    score_max: null
+    max_findings: null              # rubric §5 global default is 25
+    findings_above_medium: null     # cap; 0 for the clean-store entry
+    categories_required: []         # performance | seo | accessibility | conversion
+
+  # --- publication ----------------------------------------------------
+  portfolio_safe: false      # true only with written permission from the owner
