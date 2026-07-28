@@ -48,6 +48,12 @@ ROOT = Path(__file__).resolve().parent.parent
 RUBRIC_PATH = ROOT / "rubric.md"
 PROMPTS_DIR = ROOT / "prompts"
 
+#: The fifth provenance pin. Bump on ANY change to a bar, a matcher rule, or the
+#: label contract, and add an entry to evals/HARNESS-CHANGELOG.md. Between v0.1
+#: and v1.0 of the prompt this file's bars moved four times, each time toward
+#: letting a failing run pass, and nothing recorded that they had moved.
+HARNESS_VERSION = "eval/v0.1"
+
 SEVERITY_WEIGHT = {"critical": 15, "high": 6, "medium": 2, "low": 1}
 SEVERITY_ORDER = ["low", "medium", "high", "critical"]
 EFFORT_COST = {"trivial": 1, "small": 2, "medium": 5, "large": 10}
@@ -248,6 +254,7 @@ def provenance(entry: Path, fixtures: Path, prompt_version: str, pack_version: s
         "rubric_version": rubric_version(),
         "pack_version": pack_version,
         "pack_pin": pack_pin,
+        "harness_version": HARNESS_VERSION,
     }
 
 

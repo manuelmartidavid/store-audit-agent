@@ -165,3 +165,19 @@ def test_the_manifest_pin_falls_back_to_the_label_files_header(tmp_path):
         "    captured_at: 2026-07-27T16:39:27+08:00\n",
         encoding="utf-8")
     assert eval_triage.expected_manifest_sha256(entry) == digest
+
+
+def test_the_harness_version_is_a_fifth_pin(tmp_path):
+    fixtures = _fixtures(tmp_path, "crawler_version: 0.2.0\n")
+    digest = hashlib.sha256((fixtures / "manifest.yaml").read_bytes()).hexdigest()
+    entry = _entry(tmp_path, digest)
+    record = eval_triage.provenance(entry, fixtures, "finding-triager/v1.0", "pack/v0.2")
+    assert record["harness_version"] == eval_triage.HARNESS_VERSION
+    assert eval_triage.HARNESS_VERSION.startswith("eval/v")
+
+
+def test_every_harness_version_has_a_changelog_entry():
+    changelog = (ROOT / "evals" / "HARNESS-CHANGELOG.md").read_text(encoding="utf-8")
+    assert f"## {eval_triage.HARNESS_VERSION}" in changelog, (
+        "the current harness version has no changelog entry — a bar change with "
+        "no record is how an eval drifts toward the model")

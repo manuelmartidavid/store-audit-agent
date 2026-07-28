@@ -319,3 +319,49 @@ Runs were executed as independent agent sessions against the rendered prompt,
 each one told to read nothing else in the repository. There is no scripted API
 runner yet (`.env` holds no API key); `triage/render_prompt.py` exists so that
 adding one is a small job and the rendered artefact is identical either way.
+
+## Re-score under `eval/v0.1` (2026-07-28) — how much of v0.4 → v1.0 was the harness?
+
+The bars moved four times between v0.4 and v1.0 (see `evals/HARNESS-CHANGELOG.md`),
+always after a run failed them, and no result in this file was measured under the
+pre-change harness. This re-scores the three recorded v0.4 runs (`runs/v0.4-run1.json`
+through `run3.json`) under the current one, with `--pack-version pack/v0.1` — the
+pack version these runs were actually built against, per this file's header — so
+the pack pin is not misrecorded in the process. The prompt is identical; only the
+harness differs.
+
+**One caveat that bears directly on the crit/high column below: the recorded v0.4
+numbers were measured against the 13-label must-catch set, and this re-score is
+measured against the 17-label set current today (decision 26 promoted four), so
+this is not a clean prompt-held-constant comparison — the ground truth moved too,
+and that move is itself one of the changes `evals/HARNESS-CHANGELOG.md` lists.**
+
+| Run | Recall c/h — as recorded | under eval/v0.1 | Verdict — as recorded | under eval/v0.1 |
+|---|---|---|---|---|
+| v0.4-run1 | 1.00 | 0.875 | PASS | FAIL |
+| v0.4-run2 | 1.00 | 0.875 | PASS | FAIL |
+| v0.4-run3 | 1.00 | 0.875 | FAIL | FAIL |
+
+All three misses under `eval/v0.1` are the same label: MC-117 (sixteen home CTAs
+and category cards linking to `#`), one of the four promoted labels, and one the
+v0.4 prompt was never instructed to look for — the `href="#"` check was added in
+the v0.5 → v0.6 step, after v0.4 was frozen. `recall.overall` moved from 1.00 /
+1.00 / 0.92 (as recorded) to 0.882 / 0.882 / 0.824, driven by the same promoted
+pair (MC-117 and, in medium/low, MC-116, the missing `main` landmark — also added
+by a v0.5 → v0.6 prompt change, also missed in all three re-scored runs).
+`ceilings.per_template_breaches` is empty (`{}`) in all three re-scored runs, and
+the composite score is unchanged from what is recorded — 27, 26, 24 — so none of
+the delta above came from the ceiling or the score. v0.4-run3's automatic fail is
+also unchanged (the same dead pointer that failed it originally still resolves to
+nothing), but it now also trips `zero_mnc_violations`: MNC-404, in its current
+decision-25 (reverted, stricter) state, flags one of run3's unlabeled findings as
+a negative-control violation that the decision-23 (narrowed) screen in effect when
+run3 was originally scored did not flag. So run3's FAIL verdict is unchanged, but
+for one more reason than originally recorded.
+
+Read it this way: two of three v0.4 runs that passed at the time no longer pass —
+not because the prompt regressed, but because the label contract they are measured
+against grew by four after those runs were scored, and two of the four (MC-116,
+MC-117) are ones the v0.4 prompt had no instruction to find. v1.0's 17/17 was
+measured against the same 17-label set this re-score uses, which is exactly why
+that comparison is clean where this one is not.
