@@ -372,6 +372,18 @@ def call_model_via_cli(prompt: str, *, model: str, effort: str, system_prompt: s
 
 
 def main(argv: list[str] | None = None) -> int:
+    # A Windows console defaults to cp1252, which cannot encode the `✓` in the
+    # success line — so a run that had already called the model, written its
+    # record and cost real money died on the print and exited non-zero. The
+    # expensive work was done and the file was on disk; only the report failed.
+    # `errors="replace"` rather than a plain reconfigure: a console that cannot
+    # render a character should degrade, never abort.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass                                # not a reconfigurable stream
+
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("rendered", type=Path, help="a rendered prompt from render_prompt.py")
     parser.add_argument("--pack", type=Path, required=True)
