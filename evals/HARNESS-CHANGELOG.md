@@ -158,3 +158,19 @@ one matched through `any_of`. There is no printed line to read the
 counterfactual off. Quantifying row 1 needs the matcher itself run both ways
 against the same runs — harness code that does not exist today — not a reading
 of recorded output.
+
+---
+
+## eval/v0.2 — 2026-07-29 · bytes moved, no bar moved
+
+`composite()`, `roadmap()`, `band_for()`, `status_for()` and the rubric §4 weight
+tables moved from `triage/eval_triage.py` into `triage/scoring.py`;
+`eval_triage.py` re-exports them. `triage/build_brief.py` needs the identical
+roadmap ordering, and a second spelling of that rule fails silently rather than
+loudly (decision 28, argument 3).
+
+**No bar, matcher rule or label-contract shape changed.** The harness pin is
+derived from `eval_triage.py`'s bytes, so it moves anyway — that is the pin
+working as designed rather than a signal. `tests/test_scoring.py` pins the
+recorded composite of `runs/v1.0-cli-run1.json` (14) so a behavioural change
+during the move would have been loud.

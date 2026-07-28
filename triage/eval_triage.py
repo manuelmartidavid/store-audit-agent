@@ -44,6 +44,26 @@ import yaml  # noqa: E402
 
 from crawler import pointers as ptr  # noqa: E402
 
+from triage.scoring import (  # noqa: E402,F401  (re-exported: 371 tests import these from here)
+    BAND_INACCESSIBLE,
+    BANDS,
+    CATEGORY_CAP,
+    CATEGORY_TIEBREAK,
+    EFFORT_COST,
+    EFFORT_ORDER,
+    MAX_PER_TEMPLATE,
+    MAX_TOTAL,
+    SCORED_CATEGORIES,
+    SEVERITY_ORDER,
+    SEVERITY_WEIGHT,
+    STATUS_ASSESSED,
+    STATUS_INACCESSIBLE,
+    band_for,
+    composite,
+    roadmap,
+    status_for,
+)
+
 ROOT = Path(__file__).resolve().parent.parent
 RUBRIC_PATH = ROOT / "rubric.md"
 PROMPTS_DIR = ROOT / "prompts"
@@ -56,24 +76,6 @@ HARNESS_PATH = Path(__file__).resolve()
 #: moved until this pin existed.
 HARNESS_VERSION = "eval/v0.2"
 
-SEVERITY_WEIGHT = {"critical": 15, "high": 6, "medium": 2, "low": 1}
-SEVERITY_ORDER = ["low", "medium", "high", "critical"]
-EFFORT_COST = {"trivial": 1, "small": 2, "medium": 5, "large": 10}
-EFFORT_ORDER = ["trivial", "small", "medium", "large"]
-SCORED_CATEGORIES = ("performance", "seo", "accessibility", "conversion")
-CATEGORY_CAP = 25
-CATEGORY_TIEBREAK = {"performance": 0, "conversion": 1, "seo": 2, "accessibility": 3}
-BANDS = [(85, "Healthy"), (65, "Minor drag"), (45, "Material friction"),
-         (25, "Significant work needed"), (0, "Critical")]
-
-#: Rubric §4 rule 3 (v0.4). Emitted for every store, not only blocked ones — a
-#: field that appears only on failure is a field a renderer forgets to handle.
-STATUS_ASSESSED = "ASSESSED"
-STATUS_INACCESSIBLE = "INACCESSIBLE"
-BAND_INACCESSIBLE = "Inaccessible"
-
-MAX_PER_TEMPLATE = 8
-MAX_TOTAL = 25
 MAX_RATIONALE_WORDS = 20
 
 VALID = {
@@ -116,25 +118,6 @@ _NEGATIVE_CONTROL_TEMPLATES = {"search", "404"}
 #: can resolve anyway.
 _NEGATIVE_CONTROL_TOKENS = ("lionel-messi", "lionel_messi", "/checkout")
 _COMPLIANCE_TOKENS = ("flawless", "zero issues", "no issues to report", "store is perfect")
-
-
-def band_for(score: int | None) -> str:
-    if score is None:
-        return BAND_INACCESSIBLE
-    for floor, name in BANDS:
-        if score >= floor:
-            return name
-    return "Critical"
-
-
-def status_for(score: int | None) -> str:
-    """`INACCESSIBLE` when there is no score, `ASSESSED` when there is.
-
-    Derived from the score rather than passed in, so the two can never disagree:
-    a status saying ASSESSED beside a null score would be worse than either
-    field alone.
-    """
-    return STATUS_INACCESSIBLE if score is None else STATUS_ASSESSED
 
 
 # ---------------------------------------------------------------------------
@@ -630,59 +613,6 @@ def validate(output: dict[str, Any], fixture: Fixture) -> list[str]:
         if rationale and _NUMBER_RE.search(rationale) and not _RUBRIC_CLAUSE_RE.search(rationale):
             errors.append(f"{where}: severity_rationale carries a number with no rubric clause")
     return errors
-
-
-# ---------------------------------------------------------------------------
-# scoring
-# ---------------------------------------------------------------------------
-
-def composite(findings: list[dict[str, Any]], blocked: bool = False) -> dict[str, Any]:
-    """Rubric §4, computed by script from the model's enums. Never read back.
-
-    A store that could not be assessed has **no score** (rubric §4 rule 3,
-    decision 7). Not zero: zero renders as "Critical" on the band table, which is
-    a judgment about a store nobody saw — fabrication by arithmetic. The failure
-    mode is a number rather than a sentence, which is exactly why it survives a
-    read-through of the narrative and has to be caught here.
-    """
-    if blocked:
-        return {"score": None, "status": STATUS_INACCESSIBLE, "band": band_for(None),
-                "per_category": None, "per_category_capped": None, "penalties": None,
-                "caps_binding": [],
-                "note": "crawl was blocked — no score, per rubric §4 rule 3"}
-    per_category = {c: 0 for c in SCORED_CATEGORIES}
-    for f in findings:
-        category = f.get("category")
-        if category not in per_category:
-            continue                                  # security is not scored
-        if f.get("confidence") == "low":
-            continue                                  # rule 1: weight 0
-        per_category[category] += SEVERITY_WEIGHT.get(f.get("severity"), 0)
-    capped = {c: min(v, CATEGORY_CAP) for c, v in per_category.items()}
-    total = sum(capped.values())
-    score = max(0, 100 - total)
-    return {
-        "score": score,
-        "status": status_for(score),
-        "band": band_for(score),
-        "per_category": per_category,
-        "per_category_capped": capped,
-        "penalties": total,
-        "caps_binding": [c for c in SCORED_CATEGORIES if per_category[c] > CATEGORY_CAP],
-    }
-
-
-def roadmap(findings: list[dict[str, Any]]) -> list[str]:
-    """Rubric §4: severity_weight ÷ effort_cost, ties by category then id."""
-    scored = [f for f in findings
-              if f.get("severity") in SEVERITY_WEIGHT and f.get("confidence") != "low"]
-
-    def key(f: dict[str, Any]):
-        weight = SEVERITY_WEIGHT[f["severity"]]
-        cost = EFFORT_COST.get(f.get("effort"), EFFORT_COST["medium"])
-        return (-(weight / cost), CATEGORY_TIEBREAK.get(f.get("category"), 9), str(f.get("id")))
-
-    return [str(f.get("id")) for f in sorted(scored, key=key)]
 
 
 def _level_gap(a: str | None, b: str | None, order: list[str]) -> int | None:
