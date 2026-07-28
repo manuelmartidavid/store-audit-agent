@@ -1,12 +1,17 @@
-"""Render a prompt template against an evidence pack. One substitution, no engine.
+"""Render a prompt template against its input data. One substitution, no engine.
 
-`{{PACK}}` inside the template's `<input_data>` block is replaced with the pack
-JSON. Nothing else is substituted — a template language here would be a second
+`{{PACK}}` inside a triager template's `<input_data>` block is replaced with the
+pack JSON; `{{BRIEF}}` does the same for a narrator template against a brief.
+Exactly one of `--pack`/`--brief` is given per call, so exactly one placeholder
+is substituted. Nothing else is — a template language here would be a second
 place for the prompt to change, and prompt versions have to mean one file.
 
 Usage:
     python triage/render_prompt.py prompts/finding-triager/v0.1.md \
         --pack packs/02-sabotaged.pack.json -o runs/v0.1.rendered.md
+
+    python triage/render_prompt.py prompts/impact-narrator/v0.1.md \
+        --brief briefs/02-sabotaged.brief.json -o runs/narrator-v0.1.rendered.md
 """
 
 from __future__ import annotations

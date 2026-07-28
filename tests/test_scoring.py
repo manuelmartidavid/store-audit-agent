@@ -62,3 +62,20 @@ def test_recorded_entry_02_run_still_scores_14():
     out = scoring.composite(run["output"]["findings"])
     assert out["score"] == 14
     assert out["status"] == "ASSESSED"
+
+
+def test_recorded_entry_02_run_still_ranks_the_same_roadmap_order():
+    """Characterisation for roadmap(), the other half of the claim
+    docs/superpowers/specs/2026-07-29-impact-narrator-design.md makes about this
+    extraction ("a test asserting composite() and roadmap() return identically
+    for recorded runs") — only composite() was actually pinned until this test.
+    roadmap() is the function `triage/build_brief.py` depends on for production
+    ordering, so it is the one whose silent drift would matter most. Pinned
+    against the same recorded run as the composite test above; if this fails,
+    the extraction moved behaviour — STOP and report rather than editing the
+    expected order."""
+    run = json.loads((ROOT / "runs" / "v1.0-cli-run1.json").read_text(encoding="utf-8"))
+    order = scoring.roadmap(run["output"]["findings"])
+    assert order == ["F-02", "F-01", "F-07", "F-04", "F-09", "F-14", "F-03",
+                     "F-05", "F-08", "F-16", "F-17", "F-18", "F-19", "F-10",
+                     "F-11", "F-12", "F-13", "F-15", "F-06", "F-20"]
