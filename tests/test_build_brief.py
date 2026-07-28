@@ -10,6 +10,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
@@ -135,3 +137,46 @@ def test_the_brief_carries_no_score_and_no_band():
     """The narrator emits no numbers; handing it the composite hands it one to quote."""
     brief = build_brief.build_brief({"schema": "triage/v0.1", "findings": [finding()]}, pack())
     assert "score" not in brief and "band" not in brief
+
+
+# --- I3: the split must be total ---------------------------------------------
+
+def test_an_off_enum_severity_finding_is_not_silently_lost():
+    """scoring.roadmap() re-filters on `severity in SEVERITY_WEIGHT`, so a
+    finding that is eligible for the roadmap (non-null severity, not
+    low-confidence) but carries an off-enum value like 'blocker' — a typo, a
+    future rubric level, anything not in {critical, high, medium, low} — is
+    silently dropped by roadmap() before truncate() ever sees it. It lands in
+    no bucket and is not counted in overflow_count. Verified reproduction from
+    the review: two findings in, one 'blocker' — roadmap=['F-02'] needs=0
+    noted=0 overflow=0, and F-01 is simply gone. That must now raise instead."""
+    findings = [finding(id="F-01", severity="blocker"),
+                finding(id="F-02", severity="high")]
+    try:
+        build_brief.build_brief({"schema": "triage/v0.1", "findings": findings}, pack())
+    except ValueError as e:
+        assert "F-01" in str(e)
+        assert "F-02" not in str(e)
+    else:
+        raise AssertionError("expected ValueError naming the lost finding F-01")
+
+
+def test_a_finding_with_no_id_is_not_silently_lost():
+    """The same failure by a different route: a finding with no `id` collides
+    with another such finding in the id-keyed lookup `build_brief` builds
+    on the way to the roadmap, so one of them would vanish instead of
+    appearing in any bucket."""
+    findings = [finding(id=None, severity="high"),
+                finding(id=None, severity="medium")]
+    with pytest.raises(ValueError):
+        build_brief.build_brief({"schema": "triage/v0.1", "findings": findings}, pack())
+
+
+def test_a_clean_split_with_real_overflow_does_not_raise():
+    """The ceiling truncation `truncate()` performs is not a loss — it is
+    counted in overflow_count by design (rubric §5) — so the totality check
+    must not fire on it."""
+    findings = [finding(id=f"F-{i:02d}", templates=["pdp"]) for i in range(1, 10)]
+    brief = build_brief.build_brief({"schema": "triage/v0.1", "findings": findings}, pack())
+    assert len(brief["roadmap"]) == 8
+    assert brief["overflow_count"] == 1

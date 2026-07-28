@@ -6,7 +6,7 @@ before narration and never sees it.
 | Prompt | Reads | Writes | Status |
 |---|---|---|---|
 | `finding-triager` | `pack/v0.2` | `triage/v0.1` | **v1.1 — current**, entry 05 only (3/3, fix verification). **v1.0** remains the entry-02 number: 3/3 at 17/17 recall (in-sample, see `evals/PROMOTION-PROTOCOL.md`) |
-| `impact-narrator` | `brief/v0.1` (specs/narrator-io.md) | `narrative/v0.1` | **v0.1** — no numbers at all; `references/benchmarks.md` does not exist, so rubric §6.1's only exemption is unavailable. Quantification is v0.2 |
+| `impact-narrator` | `brief/v0.1` (specs/narrator-io.md) | `narrative/v0.1` | **v0.1** — no numbers at all; `references/benchmarks.md` does not exist, so rubric §6.1's only exemption is unavailable. Quantification is v0.2 (in-sample, see `evals/PROMOTION-PROTOCOL.md`) |
 | `report-composer` | narrative + score | HTML report | not written |
 
 ## Versioning
@@ -119,4 +119,4 @@ and the data cannot appear to be continuing them.
 
 | | change | result |
 |---|---|---|
-| v0.1 | first version. Three word-capped fields per finding plus a store summary; zero digits permitted anywhere | see `evals/results/09-impact-narrator.md` |
+| v0.1 | first version. Three word-capped fields per finding plus a store summary; zero digits permitted anywhere | see `evals/results/09-impact-narrator.md` (in-sample, see `evals/PROMOTION-PROTOCOL.md`) |
