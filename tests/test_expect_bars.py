@@ -256,6 +256,19 @@ def test_main_carries_the_entrys_gates_from_context_yaml_into_the_bars(tmp_path,
     assert "max_findings_respected=False" in printed
     assert code == 1
 
+    # The header line's pin-status annotations (decision: "silence reads as
+    # verification") — display-only, but a pin printed without its status
+    # invites the reader to assume the strongest reading available. This is
+    # what stops that header from silently reverting to its pre-fix, unstatused
+    # format: `prompt_pin` is always "exists", `fixture_pin` is "matched" here
+    # (the entry pins a manifest hash and does not derive it after labeling),
+    # and both `pack_pin` and `harness_pin` are "asserted" — two independent
+    # pins sharing one word, so a count catches either one going missing where
+    # a plain substring check would not.
+    assert "(exists)" in printed
+    assert "(matched)" in printed
+    assert printed.count("(asserted)") == 2
+
     # …and the same run under an entry that declares no gate is silent about it.
     (entry / "context.yaml").write_text(
         "eval:\n  fixtures:\n"
