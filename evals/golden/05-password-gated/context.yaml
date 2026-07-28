@@ -29,6 +29,11 @@ eval:
     crawler_version: null
     lighthouse_version: null
     axe_core_version: null
+    # Computed 2026-07-28 from the existing capture. The capture predates this
+    # pin, so unlike entry 02 the pin does not attest that the labels were
+    # written against these bytes; it attests only that scoring is now
+    # anchored to one capture.
+    manifest_sha256: "12899ce706b92f3ff9d300d6036dd8231460904de8e53e6f53a718c1336dbba5"
     throttling: "mobile-4g-slow"
     templates_captured: []       # none reachable — this is the expected state
 

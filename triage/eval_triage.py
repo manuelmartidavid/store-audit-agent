@@ -44,7 +44,9 @@ import yaml  # noqa: E402
 
 from crawler import pointers as ptr  # noqa: E402
 
-RUBRIC_VERSION = "references/rubric.md v0.4"
+ROOT = Path(__file__).resolve().parent.parent
+RUBRIC_PATH = ROOT / "rubric.md"
+PROMPTS_DIR = ROOT / "prompts"
 
 SEVERITY_WEIGHT = {"critical": 15, "high": 6, "medium": 2, "low": 1}
 SEVERITY_ORDER = ["low", "medium", "high", "critical"]
@@ -125,6 +127,97 @@ def status_for(score: int | None) -> str:
     field alone.
     """
     return STATUS_INACCESSIBLE if score is None else STATUS_ASSESSED
+
+
+# ---------------------------------------------------------------------------
+# provenance — decision 12's four pins, verified rather than printed
+# ---------------------------------------------------------------------------
+#
+# The scorer used to compute the fixture hash and never compare it, name the
+# rubric in a string constant that could not notice a rubric edit, and accept
+# any text at all as a prompt version. All four pins were operator-asserted.
+# A pin nobody checks is a comment.
+
+def rubric_version(path: Path = RUBRIC_PATH) -> str:
+    """`rubric.md v0.4+<sha8>` — derived from the file, so an edit shows up.
+
+    The version number is the rubric's own header claim; the digest is what
+    makes the pin honest. Two runs whose rubric text differed by one clause
+    carry different pins even if nobody bumped the version.
+    """
+    text = path.read_text(encoding="utf-8")
+    header = text.split("\n---", 1)[0]
+    match = re.search(r"\bv(\d+\.\d+)\b", header)
+    version = match.group(1) if match else "unknown"
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()[:8]
+    return f"rubric.md v{version}+{digest}"
+
+
+def resolve_prompt_version(name: str, prompts_dir: Path = PROMPTS_DIR) -> str:
+    """`finding-triager/v1.0` must name a prompt file that exists."""
+    if not name or name == "unpinned":
+        raise SystemExit(
+            "--prompt-version is required: a run scored without a prompt pin is not "
+            "a result (decision 12)")
+    path = prompts_dir / f"{name}.md"
+    if not path.exists():
+        raise SystemExit(f"--prompt-version {name!r} names no prompt file ({path})")
+    return name
+
+
+def expected_manifest_sha256(entry: Path) -> str | None:
+    """The fixture hash the labels were written against.
+
+    `context.yaml eval.fixtures.manifest_sha256` is authoritative; the label
+    file's `manifest:` header is the fallback, because entry 02 carries both and
+    a future entry might carry only one.
+    """
+    context = Path(entry) / "context.yaml"
+    if context.exists():
+        data = yaml.safe_load(context.read_text(encoding="utf-8")) or {}
+        pin = ((data.get("eval") or {}).get("fixtures") or {}).get("manifest_sha256")
+        if pin:
+            return str(pin).strip()
+    labels = Path(entry) / "expected" / "findings.md"
+    if labels.exists():
+        match = re.search(r"^\s*manifest:\s*([0-9a-f]{64})\s*$",
+                          labels.read_text(encoding="utf-8"), re.M)
+        if match:
+            return match.group(1)
+    return None
+
+
+def provenance(entry: Path, fixtures: Path, prompt_version: str, pack_version: str,
+               *, allow_unpinned: bool = False) -> dict[str, Any]:
+    """All four pins, verified. Raises SystemExit rather than scoring blind."""
+    manifest = Path(fixtures) / "manifest.yaml"
+    computed = (hashlib.sha256(manifest.read_bytes()).hexdigest()
+                if manifest.exists() else None)
+    pinned = expected_manifest_sha256(entry)
+
+    if pinned and computed and pinned != computed:
+        raise SystemExit(
+            f"fixture manifest hash does not match the pin.\n"
+            f"  labels pin: {pinned}\n"
+            f"  {manifest}: {computed}\n"
+            "The labels describe a different capture than the one being scored. "
+            "Re-label, or point --fixtures at the archived capture "
+            "(python -m crawler.archive --check).")
+    if not pinned and not allow_unpinned:
+        raise SystemExit(
+            f"{entry} records no fixture manifest hash, so this run cannot be pinned "
+            "(decision 12). Record eval.fixtures.manifest_sha256 in context.yaml, or "
+            "pass --allow-unpinned-fixture and accept that the result is not a result.")
+    if not computed:
+        raise SystemExit(f"{manifest} is missing — nothing to pin.")
+
+    return {
+        "fixture_manifest_sha256": computed,
+        "fixture_pin": "matched" if pinned else "absent",
+        "prompt_version": resolve_prompt_version(prompt_version),
+        "rubric_version": rubric_version(),
+        "pack_version": pack_version,
+    }
 
 
 def _enum(value: Any) -> Any:
@@ -894,6 +987,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fixtures", type=Path, default=Path("fixtures/02-sabotaged"))
     parser.add_argument("--prompt-version", default="unpinned")
     parser.add_argument("--pack-version", default="pack/v0.2")
+    parser.add_argument("--allow-unpinned-fixture", action="store_true",
+                        help="score against a fixture the entry does not pin (not a result)")
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--json", action="store_true", help="emit the run record only")
     args = parser.parse_args(argv)
@@ -908,16 +1003,11 @@ def main(argv: list[str] | None = None) -> int:
     output = json.loads(args.output.read_text(encoding="utf-8"))
     result = evaluate(output, labels, fixture)
 
-    manifest = args.fixtures / "manifest.yaml"
     record = {
-        "provenance": {
-            "fixture_manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest()
-            if manifest.exists() else None,
-            "prompt_version": args.prompt_version,
-            "rubric_version": RUBRIC_VERSION,
-            "pack_version": args.pack_version,
-            "run_file": str(args.output),
-        },
+        "provenance": provenance(args.entry, args.fixtures, args.prompt_version,
+                                 args.pack_version,
+                                 allow_unpinned=args.allow_unpinned_fixture)
+                      | {"run_file": str(args.output)},
         "result": result,
     }
     if args.json:
@@ -925,7 +1015,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if result["passed"] else 1
 
     r = result
-    print(f"== {args.output.name} · {args.prompt_version} · {RUBRIC_VERSION} · {args.pack_version}")
+    prov = record["provenance"]
+    print(f"== {args.output.name} · {prov['prompt_version']} · {prov['rubric_version']} "
+          f"· {prov['pack_version']} · fixture {prov['fixture_manifest_sha256'][:12]} "
+          f"({prov['fixture_pin']})")
     if r["schema_errors"]:
         print("\nSCHEMA ERRORS")
         for e in r["schema_errors"]:
