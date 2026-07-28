@@ -36,14 +36,27 @@ it anything else overstates it.
      `evals/golden/02-sabotaged/expected/findings.md` splits the 17 must-catch
      labels. **MC-101…MC-113 (13) predate every triager prompt**: planted
      defects labeled 2026-07-27 from the frozen fixture. **MC-114…MC-117 (4)
-     were promoted** on 2026-07-28. The four MNC labels carry no model input.
+     were promoted** on 2026-07-28. The four MNC labels carry no model input
+     today: MNC-404's decision-23 narrowing was motivated by a run
+     observation, but decision 25 reverted it, so no MNC rule now rests on a
+     run.
    - **Entry 05** — nothing promoted. Its header records that the labels do not
      depend on the capture and that nothing in them was changed in response to
      the three runs.
 3. **A prompt scored against a label set containing labels promoted from that
    prompt's own lineage is IN-SAMPLE.** Say so wherever the number appears — the
-   results file, PROJECT-STATE, the prompt's front matter if it quotes a recall
-   figure. "17/17" without that qualifier is an overstatement.
+   results file, PROJECT-STATE, the prompt registry (`prompts/README.md`).
+   "17/17" without that qualifier is an overstatement.
+
+   **Frozen prompt front matter is the exception, and it is not an oversight.**
+   A frozen prompt's bytes (anything under `prompts/finding-triager/`) are a
+   provenance pin: decision 12 makes a result the tuple of fixture manifest
+   hash, prompt version, rubric version and pack version, and editing frozen
+   front matter to add a qualifier would invalidate the runs recorded against
+   those bytes exactly as editing the number itself would. Frozen front matter
+   therefore carries its recall figure unqualified, by necessity — the results
+   file is the qualifier's authority, and that is where a reader who finds an
+   unqualified figure in frozen front matter should be sent.
 4. **The out-of-sample recall number comes from an entry whose labels predate
    every run against it.** Entries 01, 03 and 04 are that opportunity, and it is
    single-use per entry: label from the fixture, freeze, *then* run. (Entry 05
@@ -51,6 +64,20 @@ it anything else overstates it.
    yields an out-of-sample behavioural check and no recall figure.)
 5. **A promotion wave never lands in the same commit as a run it is scored by.**
    Promote, commit, re-run, report. The order is the evidence.
+
+## What the suite enforces today
+
+Rule 2's `source:` key is enforced by nothing: no label carries one yet, and no
+test requires one — a labeler who omits it gets no red test, only the reading
+above that treats silence as promoted (except the two exempted entries). Rule 5
+is prose discipline only; nothing in the suite can see commit order, so nothing
+would catch a promotion wave landing beside the run it is scored by. Rules 1, 3
+and 4 are judgment calls a test cannot make either — whether a label set is
+in-sample, whether an entry's ordering qualifies it as out-of-sample — with one
+exception: `test_every_citation_of_the_promotion_protocol_resolves` (task 9)
+checks that this file's citations resolve, not that the claims made where they
+are cited are correct. A labeler who mislabels provenance will not get a red
+test for it. The discipline is the enforcement.
 
 ## Consequences for what is already recorded
 

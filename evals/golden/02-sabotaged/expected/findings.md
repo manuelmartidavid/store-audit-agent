@@ -15,7 +15,7 @@
                  separately because they do not share it:
 
                  (a) MC-114…MC-117 promoted to must-catch, and a fifth candidate
-                     folded into MC-108. Composite recomputed 35 → 24.
+                     (MC-118) folded into MC-108. Composite recomputed 35 → 24.
                      SOURCE: the unlabeled bucket of finding-triager v0.4 runs —
                      i.e. model output. Each was then verified in the fixture
                      independently, but the *selection* was not independent, and

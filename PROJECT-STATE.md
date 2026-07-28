@@ -370,7 +370,7 @@ automatic fails) · 48 new tests.
 **The 7.4 gate passed before any model ran:** the scorer recomputes score 35 and
 band "Significant work needed" from `expected/findings.md` alone.
 
-**Result — v1.0 FROZEN, 3 runs, all three clear every bar at 17/17 recall.**
+**Result — v1.0 FROZEN, 3 runs, all three clear every bar at 17/17 recall (in-sample — `evals/PROMOTION-PROTOCOL.md` rule 3).**
 Zero unresolvable pointers, zero MNC violations, MC-113 both halves every run.
 Severity agreement exact or ±1 throughout; effort agreement 0.56–0.81 exact and
 ±1 everywhere, which costs roadmap order, not the score.
@@ -606,16 +606,16 @@ labels this harness has never seen.
 
 ## Readiness — where the agent actually stands (2026-07-28)
 
-**Recall is proven in-sample. Precision has never been measured.** Four of
-entry 02's 17 must-catch labels were promoted from v0.4 run output before v1.0
-was scored against them (`evals/PROMOTION-PROTOCOL.md`), so 17/17 measures
-detection against a target partly drawn from the lineage's own findings. Every
-number in this project also comes from one store built to be found out. On a
-sabotaged store almost
-anything you find is real, so the unlabeled bucket falling from 8 to 2-3 per run
-says nothing about a healthy store. Point v1.0 at a well-built Shopify store today
-and it might emit 3 findings or 15 - nothing here would catch the difference, and
-the project's stated top risk is a plausible-but-wrong claim reaching a client.
+**Recall is proven in-sample. Precision has never been measured.** Four of entry
+02's 17 must-catch labels were promoted from v0.4 run output before v1.0 was
+scored against them (`evals/PROMOTION-PROTOCOL.md`), so 17/17 measures detection
+against a target partly drawn from the lineage's own findings. Every number in
+this project also comes from one store built to be found out. On a sabotaged store
+almost anything you find is real, so the unlabeled bucket falling from 8 to 2-3
+per run says nothing about a healthy store. Point v1.0 at a well-built Shopify
+store today and it might emit 3 findings or 15 - nothing here would catch the
+difference, and the project's stated top risk is a plausible-but-wrong claim
+reaching a client.
 
 Not ready for a client deliverable. Ready for **shadow runs** - point it at a real
 store, read the output, send nothing. That is also how the entry-01 candidate gets
