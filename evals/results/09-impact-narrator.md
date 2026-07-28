@@ -80,8 +80,9 @@ Three further limits the green bars do not distinguish:
 - **Entry 05's pass is on an empty findings object**, so coverage, word caps and
   template containment all pass by construction there. The informative part of
   that run is the summary — specifically that MNC-003 held.
-- **`change` was read by a human on one run of 3.** The remediation-fabrication
-  surface this contract accepted is checked at n=1.
+- **`change` was read once — by the agent that ran the pipeline, not a human,
+  and not the project owner — on one run of 3.** The remediation-fabrication
+  surface this contract accepted is checked at n=1, by a proxy reader.
 
 ## Open, carried forward
 
