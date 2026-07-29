@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from crawler.fingerprint import Signals, build, empty
+from crawler.fingerprint import Signals, build, detect_platform, empty
 
 
 def test_shopify_is_detected_from_asset_urls_and_the_theme_object():
@@ -189,3 +189,31 @@ def test_app_order_is_stable_regardless_of_url_order():
     forward = [a["name"] for a in build(Signals(urls=list(urls)))["apps"]]
     reverse = [a["name"] for a in build(Signals(urls=list(reversed(urls))))["apps"]]
     assert forward == reverse == ["Klaviyo", "al-bulk-discount-manager", "multilocation-2"]
+
+
+# --- detect_platform (D3 selects a discovery profile from this) --------------
+
+def test_the_platform_verdict_is_available_without_building_a_whole_fingerprint():
+    signals = Signals(urls=["https://cdn.shopify.com/s/files/1/assets/theme.js"])
+    platform, evidence = detect_platform(signals)
+    assert platform == "shopify"
+    assert "cdn.shopify.com asset URLs" in evidence
+
+
+def test_the_verdict_matches_what_build_reports():
+    """One verdict, one code path — discovery and the fixture must not disagree."""
+    cases = [
+        Signals(urls=["https://cdn.shopify.com/s/files/x.js"]),
+        Signals(urls=["https://shop.test/wp-content/plugins/woocommerce/x.js"]),
+        Signals(meta={"generator": "WooCommerce 8.2.1"}),
+        Signals(urls=["https://shop.test/static/app.js"]),
+        Signals(),
+    ]
+    for signals in cases:
+        platform, evidence = detect_platform(signals)
+        built = build(signals)
+        assert (platform, evidence) == (built["platform"], built["evidence"])
+
+
+def test_a_store_with_no_signals_at_all_is_unknown_not_guessed():
+    assert detect_platform(Signals())[0] == "unknown"

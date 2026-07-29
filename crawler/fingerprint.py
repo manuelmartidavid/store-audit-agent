@@ -183,11 +183,15 @@ def _detect_apps(signals: Signals) -> list[dict[str, str]]:
     return sorted(apps, key=lambda app: app["name"])
 
 
-def build(signals: Signals, observed: bool = True) -> Fingerprint:
-    """Build the fingerprint block from the collected signals (spec §4)."""
-    if not observed:
-        return empty()
+def detect_platform(signals: Signals) -> tuple[str, list[str]]:
+    """The platform verdict and the evidence for it (spec §4).
 
+    Split out of `build` so discovery can pick a URL table off the home page's
+    signals before the rest of the fingerprint exists.
+
+    Invariant: one verdict, one code path. If discovery and the written fixture
+    could disagree about the platform, a capture would be self-contradictory.
+    """
     evidence: list[str] = []
     platform = "unknown"
 
@@ -225,10 +229,17 @@ def build(signals: Signals, observed: bool = True) -> Fingerprint:
                 evidence.append(f"generator meta: {signals.meta.get('generator')}")
 
     # Stable order, no duplicates — these lists are compared across runs.
-    deduped = list(dict.fromkeys(evidence))
+    return platform, list(dict.fromkeys(evidence))
+
+
+def build(signals: Signals, observed: bool = True) -> Fingerprint:
+    """Build the fingerprint block from the collected signals (spec §4)."""
+    if not observed:
+        return empty()
+    platform, evidence = detect_platform(signals)
     return {
         "platform": platform,
-        "evidence": deduped,
+        "evidence": evidence,
         "theme": _detect_theme(signals),
         "apps": _detect_apps(signals),
     }
