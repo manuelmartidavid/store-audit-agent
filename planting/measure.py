@@ -283,13 +283,16 @@ def sample_url(url: str, *, runs: int = 1, password: str | None = None,
         # across runs therefore keeps its HTTP cache too. Run 1 pays for the
         # assets, every run after it reads them back warm, and the result looks
         # like variance while being nothing of the sort: 13.38s then 1.50s then
-        # 1.50s is one measurement and two cache hits.
+        # 1.50s is one measurement and two cache hits. You cannot aim an image
+        # at a 3.0-3.8s window from that.
         #
         # A new browser is a new profile and therefore a cold cache. The two
         # cheaper fixes do not work here: Network.clearBrowserCache cannot reach
-        # the default context where Lighthouse opens its tabs, and letting
+        # the default context where Lighthouse opens its tabs (contexts have
+        # separate caches, and Playwright exposes no page there), and letting
         # Lighthouse reset storage would clear the gate cookie along with the
-        # cache and drop every run onto /password.
+        # cache and drop every run onto /password. The cost is one gate
+        # navigation per run.
         with Session(origin, debug_port=debug_port) as session:
             gate = session.open_gate(password)
             if gate.gate == "blocked":

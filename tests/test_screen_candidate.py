@@ -318,6 +318,27 @@ def test_permalink_gate_is_not_applicable_to_shopify():
     assert "n/a" in gate.detail.lower()
 
 
+def test_permalink_gate_refuses_a_nested_category_path():
+    # `_WOO_COLLECTION` matches exactly ONE category segment
+    # (`/product-category/{slug}`), not a nested one
+    # (`/product-category/{parent}/{child}/`) — the discovery table this gate
+    # protects (design D3) only knows the one-segment shape, so a store whose
+    # only collection link is nested must fail here, the same way it would
+    # fail discovery.
+    html = '<a href="/product-category/food/bakery/">Bakery</a>'
+    gate = sc.permalink_gate(html, "ex.test", "woocommerce")
+    assert gate.passed is False
+
+
+def test_permalink_gate_excludes_a_cross_host_link():
+    # A link to a different host must not satisfy the gate — `parsed.netloc`
+    # is compared against `host`, and a mismatch is skipped rather than
+    # treated as a same-site collection URL.
+    html = '<a href="https://other.example.com/shop">Shop</a>'
+    gate = sc.permalink_gate(html, "ex.test", "woocommerce")
+    assert gate.passed is False
+
+
 # --- perf_gates -------------------------------------------------------------
 
 def _run(*pairs):

@@ -20,8 +20,13 @@ HARD GATES — any failure disqualifies the candidate:
     indexable    no `meta robots: noindex` on any revenue template  -> a critical
     lcp          LCP <= 4.0s on home/collection/pdp                 -> a high
     cls          CLS <= 0.25 on home/collection/pdp                 -> a high
-    platform     crawler.fingerprint agrees with the declared platform
     permalinks   WooCommerce only: default /shop|/product-category|/product
+
+There is deliberately NO platform gate. `crawler.fingerprint.build` needs real
+HTTP response headers, live browser cookies, and `page.evaluate` results
+(`window.Shopify`, via crawler/js/signals.js) — none of which this screen's
+plain `urllib` head-probe fetch produces, so a live `crawler.Session` would be
+required to check it here.
 
 RECORDED, never disqualifying:
 
@@ -53,6 +58,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from html import unescape as _html_unescape
 from pathlib import Path
 from urllib.parse import urlparse, urlsplit
 
@@ -270,7 +276,11 @@ def assemble_head_gates(
     if template in _REVENUE_TEMPLATES:
         gates.append(indexable_gate(template, facts))
 
-    hygiene_line = (f"  {template:<11} title={facts.title!r}"
+    # `facts.title` is raw HTML text content — entities and all (e.g. "Bags
+    # &ndash; theme-dawn-demo"). This line is explicitly a label, so it is
+    # unescaped before printing rather than shown as markup.
+    title = _html_unescape(facts.title) if facts.title else facts.title
+    hygiene_line = (f"  {template:<11} title={title!r}"
                     f"  description={'present' if facts.description else 'ABSENT'}")
     return gates, hygiene_line
 
@@ -513,23 +523,29 @@ def main(argv: list[str] | None = None) -> int:
     home_html = ""
 
     # --- robots.txt, fetched FIRST and respected (specs/crawler.md §3) -----
-    # Recorded, never gated — but fetched and parsed before a single template
-    # is touched, so `notes` (and the delay every subsequent fetch uses) are
-    # ready before the probe loop starts. Reporting which templates robots
-    # blocks AFTER already fetching them would be backwards.
-    status, robots_body_raw, _final = _fetch(origin + "/robots.txt")
+    # Recorded AND gated — fetched and parsed before a single template is
+    # touched, so `notes`, `disallowed` (below), and the delay every
+    # subsequent fetch uses are ready before the probe loop starts. Reporting
+    # which templates robots blocks AFTER already fetching them would be
+    # backwards.
+    status, robots_body_raw, robots_final_url = _fetch(origin + "/robots.txt")
     notes: list[str] = []
     robots_body = robots_body_raw if status == 200 and robots_body_raw else None
+    disallowed: set[str] = set()
     if robots_body:
         robots = Robots.parse(robots_body)
-        blocked = [t for t, p in entry["templates"].items() if not robots.allows(origin + p)]
-        notes.append(f"robots.txt blocks: {blocked or 'nothing probed'}")
+        disallowed = {t for t, p in entry["templates"].items() if not robots.allows(origin + p)}
+        notes.append(f"robots.txt blocks: {sorted(disallowed) or 'nothing probed'}")
         delay_match = _CRAWL_DELAY.search(robots_body)
         if delay_match:
             notes.append(f"robots.txt declares Crawl-delay: {delay_match.group(1)}"
                          f" — conduct requires honouring it (design D6)")
     else:
-        notes.append(f"robots.txt: HTTP {status}")
+        # `status == 0` is `_fetch`'s sentinel for a below-HTTP failure, with
+        # the readable reason smuggled through the final_url slot instead of
+        # a URL — same convention `assemble_head_gates` already reads.
+        detail = f"HTTP {status}" if status else robots_final_url
+        notes.append(f"robots.txt: {detail}")
 
     # This is the ONLY spot allowed to fall back to the 1.5s floor silently:
     # everywhere else in this function, that floor is `delay`, already
@@ -547,7 +563,21 @@ def main(argv: list[str] | None = None) -> int:
     # template — i.e. between robots.txt and that first fetch too. There is
     # no exemption for "the first one": robots.txt already used its own slot
     # before this loop started.
+    #
+    # A template robots.txt disallows is NOT fetched — brief §5 calls conduct
+    # non-negotiable for stores this project does not own, and design D2
+    # rejected the alternative store (Nalgene) for exactly this condition on
+    # a revenue template. So the same condition here is a FAILING gate, not a
+    # skip: the `disallowed` check above is what makes D2's disqualifier a
+    # real gate, and what makes the "respected" claim in this section's
+    # header true rather than aspirational.
     for template, path in entry["templates"].items():
+        if template in disallowed:
+            gates.append(Gate(
+                f"robots_allows:{template}", False,
+                "robots.txt disallows this template — not fetched (design D2)",
+            ))
+            continue
         time.sleep(delay)
         url = origin + path
         status, html, final_url = _fetch(url)
@@ -565,6 +595,20 @@ def main(argv: list[str] | None = None) -> int:
         for template in _REVENUE_TEMPLATES:
             path = entry["templates"].get(template)
             if not path:
+                # A missing revenue template is a gap in ENTRIES, not
+                # something to pass over quietly — the verdict below must not
+                # be able to say "fit to capture" while a whole template's
+                # perf was never even attempted.
+                gates.append(Gate(
+                    f"lcp:{template}", False,
+                    f"no {template!r} path in ENTRIES['{args.entry}']['templates'] "
+                    f"— performance cannot be screened for it",
+                ))
+                continue
+            if template in disallowed:
+                # Already recorded as a failing `robots_allows:{template}`
+                # gate in the head probe above; conduct forbids fetching it
+                # again here for a Lighthouse run.
                 continue
             run = measure.sample_url(origin + path, runs=args.runs,
                                      password=None, debug_port=args.debug_port,
@@ -585,11 +629,18 @@ def main(argv: list[str] | None = None) -> int:
     for note in notes:
         print(f"  {note}")
 
+    if args.skip_perf:
+        print("\nPERF NOT SCREENED — lcp/cls gates were not evaluated")
+
     failed = [g for g in gates if not g.passed]
     if failed:
         print(f"\nRE-SELECTION TRIGGER — {len(failed)} hard gate(s) failed: "
               f"{', '.join(g.name for g in failed)}")
         return 2
+    if args.skip_perf:
+        print(f"\nall {len(gates)} head gates passed — perf NOT screened, "
+              f"entry {args.entry} is NOT cleared to capture")
+        return 0
     print(f"\nall {len(gates)} hard gates passed — entry {args.entry} is fit to capture")
     return 0
 

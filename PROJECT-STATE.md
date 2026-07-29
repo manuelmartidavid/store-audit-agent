@@ -792,6 +792,21 @@ history rather than describe it.
   catch a typo in `expect.gates` before a run.
 - `README.md`'s archive instruction cites the label header as the pin source;
   `context.yaml` is authoritative and entry 05 has no such header.
+- `evals/golden/_schema/context.yaml` is stale: all four golden entries
+  (01, 02, 04, 05) carry keys the schema does not declare —
+  `manifest_sha256`, `targets`, `score`, `band`, `status`, `gates`.
+  Pre-existing before the final review wave on step 10 (2026-07-29); entries
+  01 and 04 propagate it to two more files, and the schema is the first file
+  a future labeler reads.
+- Entry 05 — the entry whose whole point is `status: INACCESSIBLE` — is the
+  only golden entry that declares no `status` key at all.
+- The screen's `robots.txt blocks:` note reads `nothing probed` for Shopify
+  stores structurally, not by luck: `crawler/robots.py` wraps Python's
+  `robotparser`, which is first-match-in-file-order, and Shopify's
+  robots.txt leads with `Allow: /`, so its `Disallow: /cart/` evaluates to
+  allowed. Caps how much the new `robots_allows:{template}` gate
+  (`planting/screen_candidate.py`, final review wave 2026-07-29) can detect
+  on a Shopify entry.
 
 ## Decision 30 — "store unreachable" leaves rubric §1 (rubric v0.5, 2026-07-28)
 
@@ -1004,10 +1019,18 @@ is the intended behaviour and the signal to re-label.
       recoverable copy for both.
     - **`planting/screen_candidate.py` was built in this same step** — the
       re-runnable form of the criteria above: `python -m planting.screen_candidate
-      --entry 01|04`. Live results: **entry 01 passes 9 of 9 hard gates, exit
-      0** (LCP home 2.14-2.83s, collection 2.34-2.37s, pdp 2.34-2.69s, CLS
-      0.000 on all three); **entry 04 passes 9 of 9 hard gates on the
-      head-probe screen (`--skip-perf`), exit 0**. Entry 04's performance is
+      --entry 01|04`.
+      **Corrected 2026-07-29 (final review fix wave):** the line originally here
+      conflated two different runs — a `--skip-perf` run (9 head gates, no LCP
+      or CLS at all) and the full run (a different, larger gate count) — into
+      one sentence claiming "9 of 9 hard gates ... LCP ... CLS" for entry 01,
+      which the full screen never produced. Restated from a run actually taken
+      on 2026-07-29: **entry 01, full screen (`python -m
+      planting.screen_candidate --entry 01 --runs 1`), passes all 15 hard
+      gates, exit 0** — LCP home 2.28s, collection 1.84s, pdp 3.65s; CLS 0.000
+      on all three (single run per template, so each figure is one
+      measurement, not a range). **Entry 04's figure stays head-probe-only**:
+      `--skip-perf` passes 9 of 9 head gates, exit 0. Entry 04's performance is
       therefore **unmeasured, not merely unfavourable** — an earlier attempt
       produced LCP 19-23s, but four independent fetches of that host each took
       ~65s regardless of page weight, a DNS/IPv6 timeout signature rather than

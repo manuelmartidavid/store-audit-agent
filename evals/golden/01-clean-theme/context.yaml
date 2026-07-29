@@ -44,7 +44,7 @@ eval:
 
   fixtures:
     # NOT YET CAPTURED. Filled in by the 0.3.0 capture wave (PROJECT-STATE
-    # step 12). The screen below is a pre-check, not a capture.
+    # step 14). The screen below is a pre-check, not a capture.
     captured_at: null
     source: "https://theme-dawn-demo.myshopify.com/"
     crawler_version: null
