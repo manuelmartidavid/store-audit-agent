@@ -157,6 +157,12 @@ class Session:
         Invariant: only ever raises. Our floor is conduct we owe every store
         (brief §5); a store asking for less than it does not get less.
         """
+        # Truthiness, not `is not None`, is fine here even though manifest.py
+        # was corrected away from it in this same wave: a declared `0` and a
+        # missing declaration both fail `> self.min_interval_s` against our
+        # >=1s floor, so the two cases are indistinguishable to this
+        # comparison — unlike the manifest's null-vs-zero rendering, which
+        # they are not indistinguishable to.
         if delay_s and float(delay_s) > self.min_interval_s:
             self.min_interval_s = float(delay_s)
         return self.min_interval_s

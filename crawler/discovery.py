@@ -13,6 +13,8 @@ import secrets
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse
 
+# Nav links are checked first, so a footer mega-menu repeating the same links
+# can't change which one wins.
 NAV_SELECTOR = (
     "header a[href], nav a[href], [role='navigation'] a[href], "
     ".header a[href], #shopify-section-header a[href]"

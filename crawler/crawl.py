@@ -22,6 +22,7 @@ from .discovery import (
     ALL_LINKS_SELECTOR,
     CART_LINK_SELECTOR,
     NAV_SELECTOR,
+    Profile,
     pick_cart,
     pick_collection,
     pick_product,
@@ -341,7 +342,7 @@ def _crawl_templates(
 
 
 def _product_sitewide(
-    session: Session, origin: str, already: str, robots: Robots, profile, *, log
+    session: Session, origin: str, already: str, robots: Robots, profile: Profile, *, log
 ) -> str | None:
     """Last-resort product search: one extra fetch of the profile's catalog page."""
     fallback = urljoin(origin + "/", profile.sitewide_product_page)
