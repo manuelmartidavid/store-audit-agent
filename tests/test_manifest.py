@@ -32,6 +32,8 @@ def test_the_manifest_carries_every_field_the_spec_names(tmp_path):
         "axe_core_version: 4.12.1",
         "chrome_version: 140.0.0.0",
         "throttling: mobile-4g-slow",
+        "fetch_interval_s:",
+        "crawl_delay_declared:",
     ):
         assert key in body
 
