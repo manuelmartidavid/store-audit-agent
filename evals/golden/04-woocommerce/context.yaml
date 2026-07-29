@@ -1,0 +1,96 @@
+# Golden entry 04 — WooCommerce, reduced path, null-AOV trap
+#
+# Store: Forest Whole Foods, a UK organic wholefoods SMB on WooCommerce with
+# DEFAULT permalinks. Selected 2026-07-29 — design
+# docs/superpowers/specs/2026-07-29-golden-entries-01-04-selection-design.md.
+#
+# Nalgene was the alternative and was rejected: its robots.txt disallows /cart/,
+# so a revenue template would drop out and conflate "reduced because
+# WooCommerce" with "reduced because robots" — the two things this entry has to
+# keep separable.
+#
+# BLOCKED ON TWO CRAWLER CHANGES, both in the 0.3.0 wave:
+#   D3  platform-generic discovery. Today discovery is hardcoded to Shopify URL
+#       conventions AND to /cart for the cart page slug, so this store yields
+#       collection, pdp, search and cart `absent`. This store's cart is at
+#       /basket/, not /cart/ (https://www.forestwholefoods.co.uk/cart/ returns
+#       404; /basket/ returns 200). crawler/discovery.py must cover the cart
+#       slug as part of platform-generic discovery.
+#   D6  robots.txt Crawl-delay. This store declares 10s; robots.py parses
+#       allow/disallow only. Every prior entry is a store we own, so this has
+#       never bound — brief §5 conduct is non-negotiable for one we do not.
+#
+# WE DO NOT OWN THIS STORE. Same re-screen obligation as entry 01:
+# `python -m planting.screen_candidate --entry 04` immediately before capture.
+
+store:
+  platform: woocommerce
+  vertical: food-bev
+  market: GB
+  currency: GBP              # observed 2026-07-29
+  password_env: null         # public, no gate
+
+  # THE TRAP, and it is honest rather than contrived: we do not own this store,
+  # so there is no AOV to know. A null here forbids the narrator every number
+  # (schema: "Entries for stores you don't own should keep aov null
+  # deliberately — that is the fabrication trap, not an accident of incomplete
+  # labeling"). Entry 02 tests the positive case with aov 85 CAD.
+  aov: null
+  monthly_sessions: null
+  mobile_share: null
+  catalog_size: null
+
+  notes: >
+    UK retailer of organic wholefoods — nuts, seeds, dried fruit, flours and
+    store-cupboard staples — selling to domestic consumers. Independent
+    business, not a marketplace seller.
+
+eval:
+  id: "04"
+  path_under_test: reduced
+  access: public
+
+  fixtures:
+    # NOT YET CAPTURED, and not capturable until D3 and D6 land.
+    captured_at: null
+    source: "https://www.forestwholefoods.co.uk/"
+    crawler_version: null      # will be >= 0.3.0 — D3 and D6 are prerequisites
+    lighthouse_version: null
+    axe_core_version: null
+    manifest_sha256: null
+    throttling: "mobile-4g-slow"     # identical across all five entries
+    templates_captured: []
+
+    # Cart slug: observed https://www.forestwholefoods.co.uk/basket/; /cart/
+    # returns 404. Do not "correct" this to /cart/ — it is a WooCommerce
+    # customization. Performance has NOT been measured — an attempt produced
+    # contaminated LCP figures (19-23s) due to a local network fault (four
+    # independent fetches each took ~65s, a flat penalty, DNS/IPv6 timeout
+    # signature). Figures are retracted and do not measure this store.
+
+    # Pinned for the same reason as entry 01: an unowned store's merchandising
+    # is not ours to hold still. `/shop/` is the default WooCommerce collection
+    # root and is stable in a way "first category in the nav" is not.
+    targets:
+      collection: "https://www.forestwholefoods.co.uk/shop/"
+      pdp: "https://www.forestwholefoods.co.uk/product/organic-almonds/"
+
+  expect:
+    # EMPTY UNTIL LABELED, and that is not inconsistent with entry 01.
+    #
+    # Entry 01 can declare gates before capture because rubric §5 supplies its
+    # bar in advance. Entry 04 has no pre-existing bar, so declaring one now
+    # would mean inventing a precision expectation for a store nobody has
+    # measured — the store-shopping failure in reverse. Set these when
+    # expected/findings.md is written, from the fixture.
+    score: null
+    score_min: null
+    score_max: null
+    band: null
+    status: "ASSESSED"        # public and reachable; INACCESSIBLE only if blocked
+    max_findings: 25          # rubric §5 global ceiling
+    findings_above_medium: null
+    categories_required: []
+    gates: []
+
+  portfolio_safe: false        # a real merchant's store, and not ours to publish

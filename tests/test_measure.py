@@ -99,3 +99,32 @@ def test_lcp_selector_falls_back_to_snippet():
 def test_lcp_selector_absent_returns_none():
     assert measure._lcp_selector({}) is None
     assert measure._lcp_selector(_audits({})) is None
+
+
+# --- sample_url seam --------------------------------------------------------
+#
+# The browser path cannot run here (no store, no Chrome). What IS pinned is the
+# seam itself: that the reusable entry point exists with the shape
+# screen_candidate.py codes against, and that SampleRun reports an all-failed
+# run honestly rather than as an empty success.
+
+def test_sample_run_reports_no_samples_as_not_ok():
+    run = measure.SampleRun(samples=[], failed=3, gate_leak=False, blocked=None)
+    assert run.samples == []
+    assert run.failed == 3
+    assert run.blocked is None
+
+
+def test_sample_run_carries_the_gate_block_reason():
+    run = measure.SampleRun(samples=[], failed=0, gate_leak=False, blocked="password_required")
+    assert run.blocked == "password_required"
+
+
+def test_sample_url_is_callable_with_the_documented_keywords():
+    import inspect
+    sig = inspect.signature(measure.sample_url)
+    assert list(sig.parameters) == [
+        "url", "runs", "password", "debug_port", "node_root", "echo",
+    ]
+    for name in ("runs", "password", "debug_port", "node_root", "echo"):
+        assert sig.parameters[name].kind is inspect.Parameter.KEYWORD_ONLY

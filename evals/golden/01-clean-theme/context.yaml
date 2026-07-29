@@ -1,0 +1,98 @@
+# Golden entry 01 — clean theme demo (the false-positive test)
+#
+# Store: Shopify's Dawn reference-theme demo. Selected 2026-07-29 as the sole
+# survivor of a nine-candidate screen — design
+# docs/superpowers/specs/2026-07-29-golden-entries-01-04-selection-design.md.
+# Four candidates were noindex sitewide (a correct `critical`) and four more
+# exceeded LCP 4.0s on mobile-4g-slow (a correct `high`).
+#
+# WE DO NOT OWN THIS STORE. Shopify can reconfigure it between now and capture.
+# Re-run `python -m planting.screen_candidate --entry 01` immediately before
+# capturing; a failing gate is a re-selection trigger, not a defect to label
+# around. crawler/archive.py runs at capture — for an unowned store the archive
+# is the only recoverable copy.
+
+store:
+  platform: shopify
+  vertical: apparel          # inferred from the Mlouye sample catalog (bags,
+                             # footwear). Not stated by the store.
+  market: CA                 # Shopify.country = CA, observed 2026-07-29
+  currency: CAD              # observed 2026-07-29
+  password_env: null         # public, no gate
+
+  # Null because we do not own the store, not as a contrivance. There is no AOV
+  # to know. Entry 02 is the entry that tests correct quantification WITH a
+  # declared number; entry 04 carries the labeled fabrication trap.
+  aov: null
+  monthly_sessions: null
+  mobile_share: null
+
+  # Not set. The screen saw "13 results found for a", which is a lower bound on
+  # a search, not a catalog count. A wrong band in the prompt is worse than an
+  # absent one.
+  catalog_size: null
+
+  notes: >
+    Reference storefront for Shopify's Dawn theme, merchandised with a sample
+    catalog of designer handbags and footwear. Not a trading business: the
+    product pages state that it is a demonstration store.
+
+eval:
+  id: "01"
+  path_under_test: full_shopify
+  access: public
+
+  fixtures:
+    # NOT YET CAPTURED. Filled in by the 0.3.0 capture wave (PROJECT-STATE
+    # step 14). The screen below is a pre-check, not a capture.
+    captured_at: null
+    source: "https://theme-dawn-demo.myshopify.com/"
+    crawler_version: null
+    lighthouse_version: null
+    axe_core_version: null
+    manifest_sha256: null
+    throttling: "mobile-4g-slow"     # identical across all five entries
+    templates_captured: []
+
+    # Pinned because we do not own the store: its merchandising can change, and
+    # "first product in the collection" raced the cache on entry 02 badly enough
+    # to need decision 15. Same reasoning, stronger case.
+    targets:
+      collection: "https://theme-dawn-demo.myshopify.com/collections/bags"
+      pdp: "https://theme-dawn-demo.myshopify.com/products/small-convertible-flex-bag-cappuccino"
+
+  expect:
+    # Rubric §5's false-positive pass condition, declared BEFORE capture so this
+    # entry's grader exists before its answers do (step 8's rule; entry 02's
+    # gates were left empty precisely because its answers already existed).
+    score: null                 # no labels yet — set when findings.md is written
+    score_min: 90               # rubric §5
+    score_max: 100
+    band: "Healthy"             # 85+ per rubric §4
+    status: "ASSESSED"
+    findings_above_medium: 0    # rubric §5
+    categories_required: []     # a clean store owes no category a finding
+
+    # SET BUT DELIBERATELY NOT GATED — design D4.
+    #
+    # The 2026-07-29 screen already found real defects on this store: no meta
+    # description on home/collection/cart/search, home's <title> being the raw
+    # store handle `theme-dawn-demo`, and a PDP LCP in the `medium` band. A
+    # CORRECT audit plausibly emits 3-5 findings.
+    #
+    # Of §5's three conditions, `score >= 90` and `none above medium` are
+    # false-positive bars — they fail when the agent invents severity. `<= 3` is
+    # a volume bar, and a store with four real medium defects fails it by being
+    # audited correctly. Gating it would make this entry report a precision
+    # failure that is actually a store fact.
+    #
+    # So it is measured and printed on every run, and the gap between 3 and the
+    # actual is the evidence for whether §5's ceiling needs recalibrating.
+    # Do not move this into `gates` without that argument.
+    max_findings: 3
+
+    gates: [score_range, findings_above_medium]
+
+  # Shopify's own public marketing asset, but the schema permits `true` only
+  # with written permission from the owner, and we have none.
+  portfolio_safe: false

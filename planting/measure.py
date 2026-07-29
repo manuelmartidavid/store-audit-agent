@@ -76,6 +76,23 @@ class Sample:
     images: list | None = None       # top image transfers: (url, wire KB, decoded KB, mime)
 
 
+@dataclass
+class SampleRun:
+    """The outcome of sampling one URL N times.
+
+    Separated from `main()` so a caller can have the numbers without also
+    inheriting the CLI's exit-code semantics. `screen_candidate.py` needs
+    "did LCP stay under 4.0s" — the opposite assertion direction from
+    `--expect-cls-min`, which exists to confirm a planted defect EXCEEDS a
+    threshold. One measurement path, two verdict layers.
+    """
+
+    samples: list["Sample"]
+    failed: int
+    gate_leak: bool
+    blocked: str | None = None
+
+
 def _origin(url: str) -> str:
     p = urlparse(url)
     return f"{p.scheme}://{p.netloc}"
@@ -242,6 +259,115 @@ def _check_band(values: list[float], band: tuple[float | None, float | None], la
     return True
 
 
+def sample_url(url: str, *, runs: int = 1, password: str | None = None,
+               debug_port: int = 9223, node_root: Path | None = None,
+               echo: bool = True) -> SampleRun:
+    """Measure one URL `runs` times, one cold browser per run.
+
+    `echo` prints the instrument banner and per-run block exactly as the CLI
+    always has; a caller wanting only the numbers passes False. Everything
+    about HOW the measurement is taken — one browser per run, re-mirroring the
+    gate cookie, refusing to measure a /password landing — is unchanged and
+    stays the single implementation.
+    """
+    node_root = node_root or Path(__file__).resolve().parents[1]
+    origin = _origin(url)
+    samples: list[Sample] = []
+    failed = 0
+    gate_leak = False
+    announced = False
+
+    for i in range(runs):
+        # ONE BROWSER PER RUN. The sidecar audits with disableStorageReset so the
+        # mirrored gate cookie survives (spec section 7) - and a browser kept
+        # across runs therefore keeps its HTTP cache too. Run 1 pays for the
+        # assets, every run after it reads them back warm, and the result looks
+        # like variance while being nothing of the sort: 13.38s then 1.50s then
+        # 1.50s is one measurement and two cache hits. You cannot aim an image
+        # at a 3.0-3.8s window from that.
+        #
+        # A new browser is a new profile and therefore a cold cache. The two
+        # cheaper fixes do not work here: Network.clearBrowserCache cannot reach
+        # the default context where Lighthouse opens its tabs (contexts have
+        # separate caches, and Playwright exposes no page there), and letting
+        # Lighthouse reset storage would clear the gate cookie along with the
+        # cache and drop every run onto /password. The cost is one gate
+        # navigation per run.
+        with Session(origin, debug_port=debug_port) as session:
+            gate = session.open_gate(password)
+            if gate.gate == "blocked":
+                if echo:
+                    print(f"blocked at the gate: {gate.kind} - nothing measured", file=sys.stderr)
+                return SampleRun(samples=[], failed=failed, gate_leak=False, blocked=gate.kind)
+
+            if echo and not announced:
+                print(f"instrument: lighthouse {lighthouse.version(node_root) or '?'}"
+                      f" | {session.browser_version or 'chromium ?'}"
+                      f" | sidecar crawler/node/lighthouse_runner.mjs"
+                      f" | gate {gate.gate} | runs {runs} | cold cache per run")
+                print(f"target: {url}\n")
+                announced = True
+
+            # Re-mirror every run. Lighthouse resets origin storage before a
+            # navigation run, which can clear the storefront_digest cookie the
+            # crawl context established - and then the run silently audits
+            # /password instead of the store (MNC-004). Idempotent, and free on
+            # a public store, which mirrors zero cookies.
+            mirrored = session.mirror_session_to_default()
+            if gate.gate == "password_supplied" and not mirrored:
+                if echo:
+                    print(f"run {i+1}: no cookies mirrored to the default context -"
+                          f" the gate cookie is gone, refusing to measure", file=sys.stderr)
+                gate_leak = True
+                break
+
+            result = lighthouse.run(node_root, debug_port, [("probe", url)])
+            if result.status.get("probe") != "ok" or not result.lhrs:
+                err = (result.errors or {}).get("probe") or (result.errors or {}).get("*", "unknown")
+                if echo:
+                    print(f"run {i+1}: lighthouse failed - {err}", file=sys.stderr)
+                failed += 1
+                continue
+
+            sample = _extract(result.lhrs[0])
+
+            if _is_gate_url(sample.final_url):
+                if echo:
+                    print(f"run {i+1}: landed on the storefront password page -"
+                          f" these numbers describe the gate, not the store (MNC-004)", file=sys.stderr)
+                gate_leak = True
+                break
+
+            samples.append(sample)
+            if echo:
+                _echo_run(i + 1, runs, sample)
+
+    return SampleRun(samples=samples, failed=failed, gate_leak=gate_leak, blocked=None)
+
+
+def _echo_run(index: int, total: int, sample: Sample) -> None:
+    """The per-run block, lifted verbatim out of the old loop."""
+    print(f"run {index}/{total}")
+    print(f"  perf  {sample.perf}")
+    if sample.lcp is not None:
+        print(f"  LCP   {sample.lcp/1000:.2f}s -> {_side(sample.lcp, 'lcp')}")
+    else:
+        print("  LCP   n/a")
+    if sample.cls is not None:
+        print(f"  CLS   {sample.cls:.3f} -> {_side(sample.cls, 'cls')}")
+    else:
+        print("  CLS   n/a")
+    if sample.selector:
+        print(f"  LCP element: {sample.selector}")
+    if sample.phases:
+        parts = " · ".join(f"{k} {v/1000:.2f}s" for k, v in sample.phases.items())
+        print(f"  LCP phases: {parts}")
+    for url, wire, decoded, mime in sample.images or []:
+        tail = url.rsplit("/", 1)[-1].split("?")[0][:48]
+        note = f" (decoded {decoded/1024:.0f} KB)" if decoded and abs(decoded - wire) > 10240 else ""
+        print(f"  img {wire/1024:7.0f} KB wire  {mime:<12} {tail}{note}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("url", help="Exact page URL to measure")
@@ -267,93 +393,13 @@ def main(argv: list[str] | None = None) -> int:
     load_dotenv(args.env_file)
     password = None if args.no_password else os.environ.get(args.password_env)
 
-    origin = _origin(args.url)
-    samples: list[Sample] = []
-    failed = 0
-    gate_leak = False
-
-    announced = False
-
-    for i in range(args.runs):
-        # ONE BROWSER PER RUN. The sidecar audits with disableStorageReset so the
-        # mirrored gate cookie survives (spec section 7) - and a browser kept
-        # across runs therefore keeps its HTTP cache too. Run 1 pays for the
-        # assets, every run after it reads them back warm, and the result looks
-        # like variance while being nothing of the sort: 13.38s then 1.50s then
-        # 1.50s is one measurement and two cache hits. You cannot aim an image
-        # at a 3.0-3.8s window from that.
-        #
-        # A new browser is a new profile and therefore a cold cache. The two
-        # cheaper fixes do not work here: Network.clearBrowserCache cannot reach
-        # the default context where Lighthouse opens its tabs (contexts have
-        # separate caches, and Playwright exposes no page there), and letting
-        # Lighthouse reset storage would clear the gate cookie along with the
-        # cache and drop every run onto /password. The cost is one gate
-        # navigation per run.
-        with Session(origin, debug_port=args.debug_port) as session:
-            gate = session.open_gate(password)
-            if gate.gate == "blocked":
-                print(f"blocked at the gate: {gate.kind} - nothing measured", file=sys.stderr)
-                return 1
-
-            if not announced:
-                print(f"instrument: lighthouse {lighthouse.version(args.node_root) or '?'}"
-                      f" | {session.browser_version or 'chromium ?'}"
-                      f" | sidecar crawler/node/lighthouse_runner.mjs"
-                      f" | gate {gate.gate} | runs {args.runs} | cold cache per run")
-                print(f"target: {args.url}\n")
-                announced = True
-
-            # Re-mirror every run. Lighthouse resets origin storage before a
-            # navigation run, which can clear the storefront_digest cookie the
-            # crawl context established - and then the run silently audits
-            # /password instead of the store (MNC-004). Idempotent, and free on
-            # a public store, which mirrors zero cookies.
-            mirrored = session.mirror_session_to_default()
-            if gate.gate == "password_supplied" and not mirrored:
-                print(f"run {i+1}: no cookies mirrored to the default context -"
-                      f" the gate cookie is gone, refusing to measure", file=sys.stderr)
-                gate_leak = True
-                break
-
-            result = lighthouse.run(args.node_root, args.debug_port, [("probe", args.url)])
-            if result.status.get("probe") != "ok" or not result.lhrs:
-                err = (result.errors or {}).get("probe") or (result.errors or {}).get("*", "unknown")
-                print(f"run {i+1}: lighthouse failed - {err}", file=sys.stderr)
-                failed += 1
-                continue
-
-            sample = _extract(result.lhrs[0])
-
-            if _is_gate_url(sample.final_url):
-                print(f"run {i+1}: landed on the storefront password page -"
-                      f" these numbers describe the gate, not the store (MNC-004)", file=sys.stderr)
-                gate_leak = True
-                break
-
-            samples.append(sample)
-            print(f"run {i+1}/{args.runs}")
-            print(f"  perf  {sample.perf}")
-            if sample.lcp is not None:
-                print(f"  LCP   {sample.lcp/1000:.2f}s -> {_side(sample.lcp, 'lcp')}")
-            else:
-                print("  LCP   n/a")
-            if sample.cls is not None:
-                print(f"  CLS   {sample.cls:.3f} -> {_side(sample.cls, 'cls')}")
-            else:
-                print("  CLS   n/a")
-            if sample.selector:
-                print(f"  LCP element: {sample.selector}")
-            if sample.phases:
-                parts = " · ".join(f"{k} {v/1000:.2f}s" for k, v in sample.phases.items())
-                print(f"  LCP phases: {parts}")
-            for url, wire, decoded, mime in sample.images or []:
-                tail = url.rsplit("/", 1)[-1].split("?")[0][:48]
-                note = f" (decoded {decoded/1024:.0f} KB)" if decoded and abs(decoded - wire) > 10240 else ""
-                print(f"  img {wire/1024:7.0f} KB wire  {mime:<12} {tail}{note}")
-
-    if gate_leak:
+    run = sample_url(args.url, runs=args.runs, password=password,
+                     debug_port=args.debug_port, node_root=args.node_root, echo=True)
+    if run.blocked:
         return 1
+    if run.gate_leak:
+        return 1
+    samples, failed = run.samples, run.failed
     if not samples:
         print("every run failed - nothing measured", file=sys.stderr)
         return 1

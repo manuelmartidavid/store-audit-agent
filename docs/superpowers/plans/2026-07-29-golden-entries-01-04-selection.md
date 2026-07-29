@@ -474,7 +474,12 @@ failure · 2 = a hard gate failed (re-selection trigger).
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass
+from pathlib import Path
+
+# planting/ is not a package; reach crawler/ the way measure.py does.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # --- head parsing -----------------------------------------------------------
 
@@ -665,8 +670,8 @@ def test_permalink_gate_is_not_applicable_to_shopify():
 # --- perf_gates -------------------------------------------------------------
 
 def _run(*pairs):
-    samples = [measure_Sample(lcp=lcp, cls=cls) for lcp, cls in pairs]
-    return sc.SampleRunLike(samples=samples, failed=0, gate_leak=False, blocked=None)
+    samples = [_StubSample(lcp=lcp, cls=cls) for lcp, cls in pairs]
+    return measure.SampleRun(samples=samples, failed=0, gate_leak=False, blocked=None)
 
 
 def test_perf_gates_pass_below_the_thresholds():
@@ -698,17 +703,25 @@ def test_perf_gates_fail_on_cls_above_the_threshold():
 def test_perf_gates_fail_when_nothing_was_measured():
     # An empty sample list is an operational failure, not a silent pass — the
     # exact shape eval_triage's vacuous-gate bug took.
-    gates = sc.perf_gates("home", sc.SampleRunLike(samples=[], failed=3,
-                                                   gate_leak=False, blocked=None))
+    gates = sc.perf_gates("home", measure.SampleRun(samples=[], failed=3,
+                                                    gate_leak=False, blocked=None))
     assert all(g.passed is False for g in gates)
 ```
 
-Add this helper near the top of the test file, under the imports:
+Add this helper and import near the top of the test file, under the existing imports:
 
 ```python
-# measure.Sample carries fields the perf gates never read. Building one here
-# keeps these tests independent of that dataclass's full shape.
-class measure_Sample:  # noqa: N801 - a stand-in, named for what it stands in for
+import measure  # noqa: E402  (same sys.path bootstrap as screen_candidate)
+
+
+class _StubSample:
+    """measure.Sample carries fields the perf gates never read.
+
+    A stub keeps these tests independent of that dataclass's full shape, while
+    the SampleRun wrapper around it stays the real type — so a field rename in
+    SampleRun breaks these tests, which is the point.
+    """
+
     def __init__(self, lcp: float | None, cls: float | None):
         self.lcp = lcp
         self.cls = cls
@@ -723,27 +736,26 @@ Expected: FAIL — `AttributeError: module 'screen_candidate' has no attribute '
 
 Append to `planting/screen_candidate.py`:
 
+First add to the module's existing top-level import block (not mid-file):
+
+```python
+from urllib.parse import urlparse
+
+import measure
+```
+
+`measure` imports cleanly without a browser — `crawler/session.py` keeps
+Playwright behind lazy imports, which is why `tests/test_measure.py` can import
+it at module level today. That makes `measure.LCP_HIGH_MS` and `measure.CLS_HIGH`
+the single definition of both thresholds; this module must not restate them.
+
+Then append:
+
 ```python
 # --- permalinks -------------------------------------------------------------
 
-from typing import Protocol  # noqa: E402  (kept beside the code that needs it)
-from urllib.parse import urlparse  # noqa: E402
-
 _HREF = re.compile(r'href\s*=\s*["\']([^"\']+)["\']', re.I)
 _WOO_COLLECTION = re.compile(r"^/(shop|product-category/[^/]+)/?$", re.I)
-
-
-class SampleRunLike(Protocol):
-    """The slice of `measure.SampleRun` the perf gates read.
-
-    Declared structurally so this module does not import the browser stack to
-    make a verdict about numbers. `measure.SampleRun` satisfies it.
-    """
-
-    samples: list
-    failed: int
-    gate_leak: bool
-    blocked: str | None
 
 
 def permalink_gate(html: str, host: str, platform: str) -> Gate:
@@ -786,15 +798,7 @@ def permalink_gate(html: str, host: str, platform: str) -> Gate:
 
 # --- performance ------------------------------------------------------------
 
-#: Imported lazily inside the function so the pure layer stays importable on a
-#: bare interpreter, the way crawler/__init__.py keeps Playwright behind lazy
-#: imports.
-def _thresholds() -> tuple[float, float]:
-    import measure
-    return measure.LCP_HIGH_MS, measure.CLS_HIGH
-
-
-def perf_gates(template: str, run: SampleRunLike) -> list[Gate]:
+def perf_gates(template: str, run: "measure.SampleRun") -> list[Gate]:
     """LCP and CLS must stay off the `high` side on EVERY run.
 
     Every run, not the median: a median under the line with one run over it is
@@ -805,7 +809,7 @@ def perf_gates(template: str, run: SampleRunLike) -> list[Gate]:
     An empty sample list fails both gates. A gate that passes having evaluated
     nothing is the vacuous-pass shape step 8 found twice in this repo.
     """
-    lcp_high, cls_high = _thresholds()
+    lcp_high, cls_high = measure.LCP_HIGH_MS, measure.CLS_HIGH
     lcps = [s.lcp for s in run.samples if getattr(s, "lcp", None) is not None]
     clss = [s.cls for s in run.samples if getattr(s, "cls", None) is not None]
 
@@ -871,7 +875,20 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 - [ ] **Step 1: Add the entry table and CLI**
 
-Append to `planting/screen_candidate.py`:
+First add to the module's existing top-level import block:
+
+```python
+import argparse
+import gzip
+import time
+import urllib.error
+import urllib.request
+
+from crawler.config import ROBOTS_UA
+from crawler.robots import Robots
+```
+
+Then append:
 
 ```python
 # --- the selected entries ---------------------------------------------------
@@ -912,12 +929,6 @@ _PERF_TEMPLATES = ("home", "collection", "pdp")
 
 def _fetch(url: str, timeout: int = 30) -> tuple[int, str]:
     """One polite GET. Identifying UA, matching specs/crawler.md §3 conduct."""
-    import gzip
-    import urllib.error
-    import urllib.request
-
-    from crawler.config import ROBOTS_UA
-
     req = urllib.request.Request(
         url, headers={"User-Agent": ROBOTS_UA, "Accept-Encoding": "gzip",
                       "Accept": "text/html"})
@@ -932,9 +943,6 @@ def _fetch(url: str, timeout: int = 30) -> tuple[int, str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    import argparse
-    import time
-
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--entry", choices=sorted(ENTRIES), required=True)
     parser.add_argument("--runs", type=int, default=2,
@@ -977,7 +985,6 @@ def main(argv: list[str] | None = None) -> int:
     status, body = _fetch(origin + "/robots.txt")
     notes: list[str] = []
     if status == 200 and body:
-        from crawler.robots import Robots
         robots = Robots.parse(body)
         blocked = [t for t, p in entry["templates"].items() if not robots.allows(origin + p)]
         notes.append(f"robots.txt blocks: {blocked or 'nothing probed'}")
@@ -990,7 +997,6 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- performance --------------------------------------------------------
     if not args.skip_perf:
-        import measure
         for template in _PERF_TEMPLATES:
             path = entry["templates"].get(template)
             if not path:
@@ -1024,11 +1030,11 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    import sys
     raise SystemExit(main())
 ```
 
-Add `import sys` to the module's top-level imports (it is used in `main`).
+`sys` and `re` are already imported at the top of the module from Task 2, and
+`urlparse` from Task 3. Do not re-import them.
 
 - [ ] **Step 2: Run the head-only screen for both entries**
 
@@ -1641,7 +1647,9 @@ Deliverables 4 and 5 of the spec are explicitly out of scope for this plan, per 
 
 **Gap found and closed:** the spec's build order did not include a golden-entry walker test. Task 7 adds it — the schema's cross-entry `throttling` rule was enforced nowhere, and it is the one check that gets cheaper the more entries exist.
 
-**Type consistency check:** `SampleRun` (Task 1) is consumed structurally by `perf_gates` via the `SampleRunLike` Protocol (Task 3) — field names `samples`, `failed`, `gate_leak`, `blocked` match in both. `Gate` and `HeadFacts` (Task 2) are used unchanged in Tasks 3 and 4. `measure.sample_url`'s keyword-only parameters in Task 1's test match the call in Task 4's `main()` (`runs`, `password`, `debug_port`, `echo`). `ENTRIES` keys `"01"`/`"04"` match the `--entry` choices and the directory prefixes in Tasks 5 and 6.
+**Type consistency check:** `SampleRun` (Task 1) is consumed directly by `perf_gates` (Task 3), which imports `measure` and reads `.samples` plus `measure.LCP_HIGH_MS`/`measure.CLS_HIGH` — so both thresholds keep exactly one definition and a `SampleRun` field rename breaks Task 3's tests, which is intended. `Gate` and `HeadFacts` (Task 2) are used unchanged in Tasks 3 and 4.
+
+**Pre-flight fix applied before execution:** Task 3 originally declared a `SampleRunLike` Protocol and instantiated it in tests. `Protocol` subclasses cannot be instantiated (`TypeError: Protocols cannot be instantiated`, verified), so every one of those tests would have failed. Replaced with a direct `measure.SampleRun` plus a `_StubSample` for the sample objects. The same pass moved Tasks 3 and 4's mid-file and in-function imports to the top-level block. `measure.sample_url`'s keyword-only parameters in Task 1's test match the call in Task 4's `main()` (`runs`, `password`, `debug_port`, `echo`). `ENTRIES` keys `"01"`/`"04"` match the `--entry` choices and the directory prefixes in Tasks 5 and 6.
 
 **Known soft spot, stated rather than hidden:** Task 1 moves browser code no unit test reaches. Step 5 of that task is a hand-run parity check against the live store, which is the same split `tests/test_measure.py` already documents for that path. If that is not acceptable, the alternative is a mock-Session test, which would pin the mock rather than the behaviour.
 
