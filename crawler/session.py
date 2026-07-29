@@ -151,6 +151,16 @@ class Session:
             time.sleep(self.min_interval_s - elapsed)
         self._last_fetch = time.monotonic()
 
+    def honour_crawl_delay(self, delay_s: float | None) -> float:
+        """Raise the fetch interval to a declared `Crawl-delay`. Returns the effective one.
+
+        Invariant: only ever raises. Our floor is conduct we owe every store
+        (brief §5); a store asking for less than it does not get less.
+        """
+        if delay_s and float(delay_s) > self.min_interval_s:
+            self.min_interval_s = float(delay_s)
+        return self.min_interval_s
+
     def goto(self, url: str, *, retries: int = MAX_TRANSIENT_RETRIES) -> Visit:
         """Navigate to `url`, retrying 429 and 5xx responses with backoff.
 

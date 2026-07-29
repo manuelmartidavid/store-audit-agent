@@ -78,3 +78,17 @@ def test_the_manifest_parses_as_yaml():
     parsed = yaml.safe_load(_manifest().to_yaml())
     assert parsed["schema"] == "manifest/v0.1"
     assert parsed["templates"]["pdp"] == {"crawl": "captured", "lighthouse": "ok", "axe": "ok"}
+
+
+def test_the_manifest_records_the_delay_declared_and_the_interval_honoured():
+    """A slow capture must be explicable from the fixture alone (design D6)."""
+    body = _manifest(crawl_delay_declared=10, fetch_interval_s=10).to_yaml()
+    assert "crawl_delay_declared: 10" in body
+    assert "fetch_interval_s: 10" in body
+
+
+def test_a_store_declaring_no_delay_records_null_not_a_number():
+    yaml = __import__("importlib").import_module("yaml")
+    parsed = yaml.safe_load(_manifest().to_yaml())
+    assert parsed["crawl_delay_declared"] is None
+    assert parsed["fetch_interval_s"] == 1

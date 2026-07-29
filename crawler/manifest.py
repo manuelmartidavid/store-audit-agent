@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import SCHEMA_MANIFEST, __version__
-from .config import TEMPLATES, THROTTLING_PROFILE
+from .config import MIN_FETCH_INTERVAL_S, TEMPLATES, THROTTLING_PROFILE
 
 _PENDING = "PENDING"
 
@@ -30,6 +30,8 @@ class Manifest:
     axe_core_version: str | None = None
     chrome_version: str | None = None
     throttling: str = THROTTLING_PROFILE
+    fetch_interval_s: float = MIN_FETCH_INTERVAL_S
+    crawl_delay_declared: float | None = None
 
     def to_yaml(self) -> str:
         """Render the manifest as YAML text."""
@@ -43,6 +45,9 @@ class Manifest:
             f"axe_core_version: {self.axe_core_version or _PENDING}",
             f"chrome_version: {self.chrome_version or _PENDING}",
             f"throttling: {self.throttling}",
+            f"fetch_interval_s: {self.fetch_interval_s:g}",
+            f"crawl_delay_declared: "
+            f"{format(self.crawl_delay_declared, 'g') if self.crawl_delay_declared else 'null'}",
             "templates:",
         ]
         for template in TEMPLATES:

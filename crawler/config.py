@@ -38,6 +38,11 @@ TEMPLATES = ("home", "collection", "pdp", "cart", "search", "404")
 # must show up as a version bump rather than silent fixture drift.
 THROTTLING_PROFILE = "mobile-4g-slow"
 
+#: Roughly what one capture costs in navigations: robots + gate + six templates
+#: + discovery fallbacks. Used only to project how long a declared Crawl-delay
+#: will make a capture take, so a slow run reads as arithmetic rather than a hang.
+EXPECTED_FETCHES_PER_CAPTURE = 14
+
 # --- distillation (spec §5) -------------------------------------------------
 MAX_SIBLING_RUN = 5
 TEXT_KEEP_MIN_CHARS = 20

@@ -75,6 +75,11 @@ Rules:
   as `blocked_by_robots` — a fact for the report, not a gap to route around.
 - Politeness: ≥1s between fetches, one concurrent request, identifying
   user-agent. Non-negotiable for stores we don't own (brief §5 conduct).
+- **A declared `robots.txt` `Crawl-delay` is honoured**, at
+  `max(min_interval_s, crawl_delay)` — the floor is ours, the ceiling is the
+  store's. Both the declared value and the effective interval are recorded in
+  `manifest.yaml`, so a slow capture is explicable from the fixture alone. At
+  the 10s Forest Whole Foods declares, one capture spends ~2.5 minutes waiting.
 - **The URL table is selected by the fingerprint**, from the home page's own
   signals, so discovery and the written fixture cannot disagree about the
   platform. A platform the fingerprint does not recognise (`custom`, `unknown`)
@@ -248,6 +253,8 @@ lighthouse_version: PENDING
 axe_core_version: PENDING
 chrome_version: PENDING
 throttling: mobile-4g-slow
+fetch_interval_s: 10
+crawl_delay_declared: 10        # null when the store declares none
 templates:
   pdp: { crawl: captured, lighthouse: ok, axe: ok }
   # …

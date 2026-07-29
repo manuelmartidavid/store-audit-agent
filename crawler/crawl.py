@@ -17,7 +17,7 @@ from urllib.parse import urljoin, urlparse
 
 from . import SCHEMA_CRAWL, __version__
 from .axe import Axe
-from .config import TEMPLATES, THROTTLING_PROFILE
+from .config import EXPECTED_FETCHES_PER_CAPTURE, TEMPLATES, THROTTLING_PROFILE
 from .discovery import (
     ALL_LINKS_SELECTOR,
     CART_LINK_SELECTOR,
@@ -116,6 +116,11 @@ def crawl(options: Options, *, log=print) -> Result:
     session.start()
     try:
         robots = _fetch_robots(session, origin, log=log)
+        interval = session.honour_crawl_delay(robots.crawl_delay_s)
+        if robots.crawl_delay_s:
+            projected = interval * EXPECTED_FETCHES_PER_CAPTURE
+            log(f"· robots.txt: Crawl-delay {robots.crawl_delay_s:g}s → {interval:g}s between "
+                f"fetches (~{projected / 60:.0f} min of waiting across this capture)")
 
         gate_result = session.open_gate(password)
         gate = gate_result.gate
@@ -162,6 +167,8 @@ def crawl(options: Options, *, log=print) -> Result:
                     log(f"  ! lighthouse {template}: {message}")
         fetches = session.fetch_count
         chrome_version = session.browser_version
+        interval = session.min_interval_s
+        declared = robots.crawl_delay_s
     finally:
         session.close()
 
@@ -188,6 +195,8 @@ def crawl(options: Options, *, log=print) -> Result:
         axe_core_version=(axe.version if axe else None),
         chrome_version=chrome_version,
         throttling=THROTTLING_PROFILE,
+        fetch_interval_s=interval,
+        crawl_delay_declared=declared,
         templates={
             t: {
                 "crawl": templates[t]["status"],

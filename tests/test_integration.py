@@ -403,3 +403,17 @@ def test_lighthouse_attaches_to_the_shared_browser(tmp_path, monkeypatch):
     yaml = pytest.importorskip("yaml")
     manifest = yaml.safe_load((tmp_path / "manifest.yaml").read_text(encoding="utf-8"))
     assert manifest["lighthouse_version"] != "PENDING"
+
+
+# --- crawl-delay (design D6) --------------------------------------------------
+
+def test_a_declared_crawl_delay_is_honoured_and_recorded(tmp_path):
+    """Design D6. 2s is enough to prove the wiring; this adds ~14s to the suite,
+    which is the honest cost of testing a delay rather than mocking one."""
+    with StoreServer(robots="User-agent: *\nCrawl-delay: 2\nAllow: /\n") as server:
+        result = _run(tmp_path, server)
+
+    body = (tmp_path / "manifest.yaml").read_text(encoding="utf-8")
+    assert "crawl_delay_declared: 2" in body
+    assert "fetch_interval_s: 2" in body
+    assert result.crawl["status"] == "complete"
