@@ -88,8 +88,16 @@ CART_LINK_SELECTOR = (
     "a[href$='/cart'], a[href$='/cart/'], a[href$='/basket'], a[href$='/basket/']"
 )
 
-# The same selector matches WooCommerce's add-to-cart button, whose class is
-# literally `add_to_cart_button`. Adding to a cart is not the cart.
+# CART_LINK_SELECTOR filters by class, and a class alone cannot tell an
+# add-to-cart button from the cart page — WooCommerce names the button class
+# literally `add_to_cart_button`. That covers the button's typical
+# `?add-to-cart=` href, `/cart/add` and `/checkout`, but not every shape the
+# class produces: WooCommerce's loop button for variable, grouped and external
+# products carries the same class yet links straight to the product's own
+# permalink, with no add-to-cart href at all. `pick_cart` rejects that shape
+# separately, against `profile.product_re` — a cart is never a product page.
+# The two checks are complementary, not redundant: each catches a shape the
+# other misses.
 _NOT_THE_CART_RE = re.compile(r"add[-_]to[-_]cart|/cart/add|/checkout", re.I)
 
 
@@ -135,19 +143,28 @@ def pick_product(hrefs: list[str], origin: str, profile: Profile = SHOPIFY) -> s
     return None
 
 
-def pick_cart(hrefs: list[str], origin: str) -> str | None:
+def pick_cart(hrefs: list[str], origin: str, profile: Profile = SHOPIFY) -> str | None:
     """First same-origin link that points at the store's own cart page.
 
     Invariant: reject add-to-cart hrefs before canonicalising. `?add-to-cart=99`
     lives in the query, which `_canonical` strips — so a check made afterwards
     would see `/shop/` and call it the cart.
+
+    Invariant: reject `profile.product_re` too. `_NOT_THE_CART_RE` only knows
+    the add-to-cart href shapes; WooCommerce's loop button for variable,
+    grouped and external products carries the cart-matching class but links to
+    the product permalink instead, which only a product-path check can catch.
+    A cart is never a product page, on any platform.
     """
     for href in hrefs:
         if not same_origin(href, origin):
             continue
         if _NOT_THE_CART_RE.search(href):
             continue
-        if _path(href).strip("/") == "":
+        path = _path(href)
+        if path.strip("/") == "":
+            continue
+        if profile.product_re.match(path):
             continue
         return _canonical(href)
     return None

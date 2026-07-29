@@ -314,7 +314,7 @@ def _crawl_templates(
     if cart_url:
         log(f"· cart: pinned {cart_url}")
     elif profile.discover_cart:
-        cart_url = pick_cart(cart_links, origin)
+        cart_url = pick_cart(cart_links, origin, profile)
         if cart_url:
             log(f"· cart: discovered {cart_url}")
     capture("cart", cart_url or static["cart"])

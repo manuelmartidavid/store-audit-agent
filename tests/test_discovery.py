@@ -181,9 +181,13 @@ def test_cart_discovery_ignores_off_origin_links():
 
 
 def test_the_selector_is_the_filter_so_the_picker_takes_what_it_is_handed():
-    """`pick_cart` does not re-derive cart-ness. CART_LINK_SELECTOR decides which
-    links it ever sees; the picker only rejects the three shapes that selector is
-    known to over-match. Passing it an arbitrary link is not a real call."""
+    """CART_LINK_SELECTOR decides which links `pick_cart` ever sees; the picker
+    rejects the href shapes that selector is known to over-match (an
+    add-to-cart flag, `/cart/add`, `/checkout`) and, per `profile`, any href
+    that is itself a product page — the loop button WooCommerce renders for
+    variable, grouped and external products carries the cart-matching class
+    but links to the product permalink. `/about/` matches neither rejection on
+    either profile, so it still passes straight through."""
     assert pick_cart([f"{ORIGIN}/about/"], ORIGIN) == f"{ORIGIN}/about/"
 
 
@@ -193,3 +197,16 @@ def test_no_links_at_all_returns_none_so_the_caller_falls_back_to_the_profile():
 
 def test_the_cart_selector_names_both_a_class_hook_and_a_slug_suffix():
     assert "cart" in CART_LINK_SELECTOR and "basket" in CART_LINK_SELECTOR
+
+
+def test_a_variable_product_loop_button_is_never_mistaken_for_the_cart():
+    """WooCommerce's loop button for variable, grouped and external products
+    carries class `add_to_cart_button` (so CART_LINK_SELECTOR matches it) but
+    links to the product permalink rather than an add-to-cart href — the one
+    shape `_NOT_THE_CART_RE` cannot catch, and the reason `pick_cart` takes a
+    profile."""
+    hrefs = [f"{ORIGIN}/product/organic-almonds/", f"{ORIGIN}/basket/"]
+    assert pick_cart(hrefs, ORIGIN, WOOCOMMERCE) == f"{ORIGIN}/basket/"
+
+    hrefs = [f"{ORIGIN}/products/rookie-card", f"{ORIGIN}/cart"]
+    assert pick_cart(hrefs, ORIGIN, SHOPIFY) == f"{ORIGIN}/cart"
