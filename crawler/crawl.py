@@ -107,6 +107,7 @@ def crawl(options: Options, *, log=print) -> Result:
     observed = False
     block: dict[str, Any] | None = None
     gate = "none"
+    discovery_platform: str | None = None
 
     session = Session(
         origin,
@@ -136,7 +137,7 @@ def crawl(options: Options, *, log=print) -> Result:
         else:
             log(f"· gate: {gate}")
             observed = True
-            _crawl_templates(
+            discovery_platform = _crawl_templates(
                 session,
                 origin,
                 robots,
@@ -184,6 +185,14 @@ def crawl(options: Options, *, log=print) -> Result:
     # Invariant: a store we never got into reports platform "unknown", even
     # when the page that blocked us was obviously Shopify (MNC-003).
     crawl_json["fingerprint"] = build_fingerprint(signals, observed=observed) if observed else empty_fingerprint()
+    merged_platform = crawl_json["fingerprint"]["platform"]
+    if discovery_platform is not None and merged_platform != discovery_platform:
+        # A fact, not an interpretation: discovery picked its URL table off
+        # home-only signals, and later-template evidence changed the verdict
+        # (fingerprint.py's detect_platform invariant).
+        log(f"· platform: discovery used {discovery_platform!r} but the merged "
+            f"fixture recorded {merged_platform!r} — a later template's evidence "
+            f"changed the verdict")
     crawl_json["templates"] = {t: templates[t] for t in TEMPLATES}
 
     manifest = Manifest(
@@ -247,8 +256,14 @@ def _crawl_templates(
     verify_idempotence: bool,
     pinned: dict,
     log,
-) -> None:
-    """Find and capture each of the six templates in order."""
+) -> str:
+    """Find and capture each of the six templates in order.
+
+    Returns the platform `detect_platform` reported off the home page's own
+    signals — the verdict that picked the URL table — so `crawl()` can log if
+    the verdict from the fully merged signals disagrees (fingerprint.py's
+    `detect_platform` invariant).
+    """
 
     def capture(template: str, url: str) -> None:
         templates[template] = _capture(
@@ -321,6 +336,8 @@ def _crawl_templates(
 
     capture("search", static["search"])
     capture("404", urljoin(origin + "/", random_404_path(rng)))
+
+    return platform
 
 
 def _product_sitewide(

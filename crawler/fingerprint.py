@@ -189,8 +189,14 @@ def detect_platform(signals: Signals) -> tuple[str, list[str]]:
     Split out of `build` so discovery can pick a URL table off the home page's
     signals before the rest of the fingerprint exists.
 
-    Invariant: one verdict, one code path. If discovery and the written fixture
-    could disagree about the platform, a capture would be self-contradictory.
+    Invariant: one implementation, two call sites, over different signal sets.
+    `crawl.py` calls this once on home-page-only signals to choose the URL
+    table, and once more at the end on signals merged across all six
+    templates to write the fixture. Shopify evidence wins outright over
+    Woo's (below), so a single Shopify asset loading on a later template can
+    flip a home-only "woocommerce" verdict to "shopify" once the merged
+    fixture is written — the two calls can disagree, and `crawl.py` logs it
+    when they do.
     """
     evidence: list[str] = []
     platform = "unknown"

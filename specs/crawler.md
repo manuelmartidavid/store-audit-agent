@@ -81,10 +81,15 @@ Rules:
   `manifest.yaml`, so a slow capture is explicable from the fixture alone. At
   the 10s Forest Whole Foods declares, one capture spends ~2.5 minutes waiting.
 - **The URL table is selected by the fingerprint**, from the home page's own
-  signals, so discovery and the written fixture cannot disagree about the
-  platform. A platform the fingerprint does not recognise (`custom`, `unknown`)
-  uses the Shopify table — that is what every capture before 0.3.0 did, so an
-  unrecognised store cannot regress relative to a frozen fixture.
+  signals — the same `detect_platform` the fixture uses, but over a smaller
+  signal set. **This can disagree with the written fixture:** Shopify evidence
+  wins outright over WooCommerce's, so a store discovered as `woocommerce` off
+  the home page alone flips to `shopify` in the merged fixture the moment any
+  later template loads a Shopify asset (a Buy Button embed, an app widget). The
+  crawl logs it when the two verdicts diverge; the discovery decision itself is
+  not revisited. A platform the fingerprint does not recognise (`custom`,
+  `unknown`) uses the Shopify table — that is what every capture before 0.3.0
+  did, so an unrecognised store cannot regress relative to a frozen fixture.
 - **The cart slug is read off the store, not assumed.** WooCommerce lets a store
   rename its cart page; entry 04 serves its cart at `/basket/` and 404s on
   `/cart/`. Discovery reads the home page's own cart link (a class hook or a
