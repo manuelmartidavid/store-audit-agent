@@ -78,6 +78,20 @@ PROFILES: dict[str, Profile] = {p.name: p for p in (SHOPIFY, WOOCOMMERCE)}
 #: Kept for callers that want Shopify's selector by name.
 PRODUCT_LINK_SELECTOR = SHOPIFY.product_link_selector
 
+# A store's own cart link is the only thing that knows its cart slug. The
+# selector is deliberately two-armed — a class hook (themes name the widget
+# "cart" even when the slug is /basket/) and a slug suffix — because either
+# alone misses a real store.
+CART_LINK_SELECTOR = (
+    "a.cart-contents[href], a[class*='cart'][href], a[class*='basket'][href], "
+    "[class*='mini-cart'] a[href], [class*='cart'] > a[href], "
+    "a[href$='/cart'], a[href$='/cart/'], a[href$='/basket'], a[href$='/basket/']"
+)
+
+# The same selector matches WooCommerce's add-to-cart button, whose class is
+# literally `add_to_cart_button`. Adding to a cart is not the cart.
+_NOT_THE_CART_RE = re.compile(r"add[-_]to[-_]cart|/cart/add|/checkout", re.I)
+
 
 def profile_for(platform: str | None) -> Profile:
     """The discovery profile for a fingerprinted platform.
@@ -118,6 +132,24 @@ def pick_product(hrefs: list[str], origin: str, profile: Profile = SHOPIFY) -> s
             continue
         if profile.product_re.match(_path(href)):
             return _canonical(href)
+    return None
+
+
+def pick_cart(hrefs: list[str], origin: str) -> str | None:
+    """First same-origin link that points at the store's own cart page.
+
+    Invariant: reject add-to-cart hrefs before canonicalising. `?add-to-cart=99`
+    lives in the query, which `_canonical` strips — so a check made afterwards
+    would see `/shop/` and call it the cart.
+    """
+    for href in hrefs:
+        if not same_origin(href, origin):
+            continue
+        if _NOT_THE_CART_RE.search(href):
+            continue
+        if _path(href).strip("/") == "":
+            continue
+        return _canonical(href)
     return None
 
 
