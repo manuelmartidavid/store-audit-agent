@@ -270,6 +270,63 @@ def test_assemble_head_gates_reports_a_readable_detail_on_a_network_failure():
     assert reachable.detail != "HTTP 0"
 
 
+# --- platform_gate -----------------------------------------------------------
+#
+# `crawler.fingerprint.build` was wrongly claimed (final review wave 1) to need
+# a live Session — real HTTP headers, browser cookies, `page.evaluate` output —
+# to run at all. Verified false by execution: `Signals` defaults every field to
+# empty, and the Shopify/WooCommerce marker blocks `build` actually uses read
+# only `signals.urls`, `signals.meta["generator"]` and `signals.body_classes`,
+# all three derivable from raw HTML. These pin `platform_gate`, which builds
+# exactly that reduced `Signals` from a home-page HTML string.
+
+SHOPIFY_HOME_HTML = """<!doctype html><html><head></head><body>
+<script src="https://cdn.shopify.com/s/files/1/0001/theme.js"></script>
+<link rel="stylesheet" href="/cdn/shop/t/1/assets/base.css">
+</body></html>"""
+
+WOO_HOME_HTML = """<!doctype html><html>
+<head><meta name="generator" content="WooCommerce 8.1"></head>
+<body class="woocommerce woocommerce-page">
+<script src="/wp-content/plugins/woocommerce/assets/js/frontend/woocommerce.min.js"></script>
+</body></html>"""
+
+NO_MARKERS_HOME_HTML = "<!doctype html><html><head></head><body></body></html>"
+
+
+def test_platform_gate_passes_when_declared_shopify_matches_shopify_shaped_html():
+    gate = sc.platform_gate(SHOPIFY_HOME_HTML, "shopify")
+    assert gate.passed is True
+    assert gate.name == "platform"
+
+
+def test_platform_gate_passes_when_declared_woocommerce_matches_woo_shaped_html():
+    gate = sc.platform_gate(WOO_HOME_HTML, "woocommerce")
+    assert gate.passed is True
+
+
+def test_platform_gate_fails_and_names_both_platforms_on_a_mismatch():
+    # declared shopify, but the HTML is unambiguously WooCommerce-shaped.
+    gate = sc.platform_gate(WOO_HOME_HTML, "shopify")
+    assert gate.passed is False
+    assert "shopify" in gate.detail.lower()
+    assert "woocommerce" in gate.detail.lower()
+
+
+def test_platform_gate_fails_with_a_distinct_detail_when_detection_is_inconclusive():
+    # No platform markers anywhere -> crawler.fingerprint.build returns
+    # "unknown". Treated as FAIL (a screen that shrugs is a vacuous pass), but
+    # with wording that says detection failed, not that it found a mismatch.
+    gate = sc.platform_gate(NO_MARKERS_HOME_HTML, "shopify")
+    assert gate.passed is False
+    assert "inconclusive" in gate.detail.lower()
+
+
+def test_platform_gate_evidence_list_is_present_in_the_detail():
+    gate = sc.platform_gate(SHOPIFY_HOME_HTML, "shopify")
+    assert "cdn.shopify.com" in gate.detail.lower()
+
+
 # --- permalink_gate ---------------------------------------------------------
 
 WOO_DEFAULT = """<body>
@@ -328,6 +385,18 @@ def test_permalink_gate_refuses_a_nested_category_path():
     html = '<a href="/product-category/food/bakery/">Bakery</a>'
     gate = sc.permalink_gate(html, "ex.test", "woocommerce")
     assert gate.passed is False
+
+
+def test_permalink_gate_reports_home_not_fetched_instead_of_a_permalink_diagnosis():
+    # Regression: when home_html is "" (home was robots-disallowed or its
+    # fetch failed), the old code fell into the same "no /shop or
+    # /product-category/{slug} link on home" branch a real permalink defect
+    # takes — describing a problem that was never observed. Must still FAIL
+    # (an unassessed gate must not pass), but say what actually happened.
+    gate = sc.permalink_gate("", "ex.test", "woocommerce")
+    assert gate.passed is False
+    assert "not fetched" in gate.detail.lower()
+    assert "discovery" not in gate.detail.lower()
 
 
 def test_permalink_gate_excludes_a_cross_host_link():

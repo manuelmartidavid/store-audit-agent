@@ -16,21 +16,31 @@ around.
 
 HARD GATES — any failure disqualifies the candidate:
 
-    reachable    HTTP 200, and no storefront password form
-    indexable    no `meta robots: noindex` on any revenue template  -> a critical
-    lcp          LCP <= 4.0s on home/collection/pdp                 -> a high
-    cls          CLS <= 0.25 on home/collection/pdp                 -> a high
-    permalinks   WooCommerce only: default /shop|/product-category|/product
+    reachable      HTTP 200, and no storefront password form
+    indexable      no `meta robots: noindex` on any revenue template -> a critical
+    platform       crawler.fingerprint's platform verdict, from raw home HTML,
+                   agrees with the declared platform (`unknown` counts as FAIL)
+    robots_allows  robots.txt allows fetching every template this screen probes
+    lcp            LCP <= 4.0s on home/collection/pdp                -> a high
+    cls            CLS <= 0.25 on home/collection/pdp                -> a high
+    permalinks     WooCommerce only: default /shop|/product-category|/product
 
-There is deliberately NO platform gate. `crawler.fingerprint.build` needs real
-HTTP response headers, live browser cookies, and `page.evaluate` results
-(`window.Shopify`, via crawler/js/signals.js) — none of which this screen's
-plain `urllib` head-probe fetch produces, so a live `crawler.Session` would be
-required to check it here.
+`platform` builds a `crawler.fingerprint.Signals` straight from the home
+page's raw HTML (asset URLs, the `generator` meta tag, `<body>` class list) —
+that is ALL the branch that actually decides `platform: "shopify"` or
+`"woocommerce"` reads (fingerprint.py's Shopify and WooCommerce marker
+blocks). A live `crawler.Session` adds more EVIDENCE to the fingerprint —
+real HTTP response headers, browser cookies, `page.evaluate` results for
+`window.Shopify` via crawler/js/signals.js — but does not change the verdict
+itself for these two entries, so this screen's plain `urllib` head-probe
+already carries what `platform` needs.
 
 RECORDED, never disqualifying:
 
-    robots       which templates robots.txt allows, and any Crawl-delay
+    robots       any declared Crawl-delay (sets fetch spacing, never gates),
+                 plus a `robots.txt blocks: [...]` note that restates —
+                 without re-deciding — the same disallow list `robots_allows`
+                 above already gates on
     hygiene      title and meta-description presence per template
 
 The hygiene block is deliberately NOT a gate. The defects it finds are real and
@@ -44,8 +54,11 @@ LCP exactly 4000 ms and CLS exactly 0.25 both PASS. Gates compare strictly.
 
 This writes nothing. It builds no fixture and no labels.
 
-Exit codes match measure.py: 0 = every hard gate passed · 1 = operational
-failure · 2 = a hard gate failed (re-selection trigger).
+Exit codes: 0 = every hard gate passed, and every hard gate was evaluated ·
+1 = operational failure · 2 = a hard gate failed (re-selection trigger,
+outranks 3 even under --skip-perf) · 3 = screen incomplete — no hard gate
+failed, but lcp/cls were never evaluated (--skip-perf), so 0 would misreport
+what this run actually checked.
 """
 
 from __future__ import annotations
@@ -75,6 +88,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import measure
 from crawler.config import ROBOTS_UA
+from crawler.fingerprint import Signals, build
 from crawler.robots import Robots
 
 # --- head parsing -----------------------------------------------------------
@@ -285,6 +299,103 @@ def assemble_head_gates(
     return gates, hygiene_line
 
 
+# --- platform ----------------------------------------------------------------
+
+_ASSET_TAG = re.compile(r"<(?:script|link|img)\b[^>]*>", re.I)
+_BODY_TAG = re.compile(r"<body\b[^>]*>", re.I)
+
+
+def _asset_urls(html: str) -> list[str]:
+    """Every `<script src>`, `<link href>` and `<img src>` URL in the document.
+
+    These three tag shapes are exactly what `crawler.fingerprint`'s platform
+    markers key on — a `cdn.shopify.com` script, a `/wp-content/plugins/
+    woocommerce` stylesheet, a `woocommerce-blocks` bundle — and all of them
+    are present in raw HTML; none require a rendered DOM or JS execution.
+    """
+    urls: list[str] = []
+    for tag in _ASSET_TAG.finditer(html):
+        attrs = _attrs(tag.group(0))
+        url = attrs.get("src") or attrs.get("href")
+        if url:
+            urls.append(url)
+    return urls
+
+
+def _generator_meta(html: str) -> str | None:
+    """The `<meta name="generator" content="...">` value, head-scoped.
+
+    Same head-only discipline as `parse_head`'s description/robots reads —
+    WooCommerce's generator meta lives in `<head>`, and scoping there avoids
+    a body element with the same `name` attribute overriding it.
+    """
+    for tag in _META.finditer(_head_scope(html)):
+        attrs = _attrs(tag.group(0))
+        if (attrs.get("name") or "").lower() == "generator":
+            return attrs.get("content") or None
+    return None
+
+
+def _body_classes(html: str) -> list[str]:
+    """The `<body class="...">` token list, or `[]` if there is no body tag."""
+    match = _BODY_TAG.search(html)
+    if not match:
+        return []
+    attrs = _attrs(match.group(0))
+    return (attrs.get("class") or "").split()
+
+
+def platform_gate(home_html: str, declared: str) -> Gate:
+    """Does `crawler.fingerprint`'s platform verdict agree with the declared one?
+
+    Builds a `Signals` straight from home's raw HTML — asset URLs, the
+    `generator` meta tag, `<body>` classes — and runs it through the real
+    `crawler.fingerprint.build`. That is not a stub of the real check: the
+    Shopify and WooCommerce marker blocks in `build` (fingerprint.py) read
+    ONLY `signals.urls`, `signals.meta["generator"]` and
+    `signals.body_classes`, all three available without a live `Session`
+    (see this module's docstring for the full argument). A previous version
+    of this docstring claimed `build` needed browser cookies, response
+    headers and `page.evaluate` output to run at all — false; `Signals`
+    defaults every field to empty, and `build` runs on whatever subset is
+    given.
+
+    `unknown` is treated as a FAIL, not a pass, and gets its own detail
+    distinct from an ordinary mismatch: a store whose platform cannot be
+    determined from HTML alone was not verified to be what it was declared
+    to be, and letting that read as a pass would be exactly the vacuous-pass
+    shape this module exists to refuse elsewhere (`perf_gates`, `permalink_gate`
+    on empty `home_html` below).
+    """
+    signals = Signals(
+        urls=_asset_urls(home_html),
+        meta={"generator": g} if (g := _generator_meta(home_html)) else {},
+        body_classes=_body_classes(home_html),
+    )
+    result = build(signals)
+    detected, evidence = result["platform"], result["evidence"]
+
+    if detected == "unknown":
+        return Gate(
+            name="platform",
+            passed=False,
+            detail=(f"declared={declared!r} but detection was inconclusive — no "
+                     f"platform markers found in home's HTML; evidence={evidence}"),
+        )
+    if detected != declared:
+        return Gate(
+            name="platform",
+            passed=False,
+            detail=(f"declared={declared!r} but detected={detected!r}; "
+                     f"evidence={evidence}"),
+        )
+    return Gate(
+        name="platform",
+        passed=True,
+        detail=f"declared={declared!r} matches detected platform; evidence={evidence}",
+    )
+
+
 # --- permalinks -------------------------------------------------------------
 
 _HREF = re.compile(r'href\s*=\s*["\']([^"\']+)["\']', re.I)
@@ -315,6 +426,18 @@ def permalink_gate(html: str, host: str, platform: str) -> Gate:
     if platform != "woocommerce":
         return Gate(name="permalinks", passed=True,
                     detail=f"n/a — platform is {platform}")
+
+    if not html:
+        # `home_html` is `""` when home was robots-disallowed or its fetch
+        # failed (see main()) — there is no permalink to have found or not
+        # found. FAIL either way (an unassessed gate must not pass), but say
+        # what actually happened instead of the discovery-collection
+        # diagnosis below, which describes a problem nobody observed.
+        return Gate(
+            name="permalinks",
+            passed=False,
+            detail="home was not fetched — permalinks could not be assessed",
+        )
 
     paths = []
     for href in _HREF.findall(html):
@@ -588,6 +711,7 @@ def main(argv: list[str] | None = None) -> int:
         if hygiene_line:
             hygiene.append(hygiene_line)
 
+    gates.append(platform_gate(home_html, platform))
     gates.append(permalink_gate(home_html, urlparse(origin).netloc, platform))
 
     # --- performance --------------------------------------------------------
@@ -640,7 +764,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.skip_perf:
         print(f"\nall {len(gates)} head gates passed — perf NOT screened, "
               f"entry {args.entry} is NOT cleared to capture")
-        return 0
+        return 3
     print(f"\nall {len(gates)} hard gates passed — entry {args.entry} is fit to capture")
     return 0
 
