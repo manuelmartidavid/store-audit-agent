@@ -49,6 +49,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 # planting/ is not a package; reach crawler/ the way measure.py does.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -58,7 +59,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 _TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.I | re.S)
 _META = re.compile(r"<meta\b[^>]*>", re.I)
 _ATTR = re.compile(r'([\w:-]+)\s*=\s*"([^"]*)"' r"|([\w:-]+)\s*=\s*'([^']*)'")
-_PASSWORD_INPUT = re.compile(r'<input[^>]+type\s*=\s*["\']password["\']', re.I)
+_HEAD_OPEN = re.compile(r"<head\b[^>]*>", re.I)
+_HEAD_CLOSE = re.compile(r"</head\s*>", re.I)
+_FORM_TAG = re.compile(r"<form\b[^>]*>", re.I)
 
 #: `none` is shorthand for `noindex, nofollow`. Easy to miss, same consequence.
 _NOINDEX_TOKENS = {"noindex", "none"}
@@ -72,6 +75,12 @@ class HeadFacts:
     title: str | None
     description: str | None
     robots: str | None
+    #: True only when the document contains a <form> whose action targets
+    #: /password — Shopify's storefront gate emits action="/password" on a
+    #: <form class="storefront-password-form">. A bare password <input> (e.g.
+    #: a header customer-login drawer, present on almost every theme page) is
+    #: NOT enough to set this; that would false-positive-disqualify a
+    #: perfectly reachable store.
     password_form: bool
 
 
@@ -92,6 +101,34 @@ def _attrs(tag: str) -> dict[str, str]:
     return out
 
 
+def _head_scope(html: str) -> str:
+    """Return the substring between `<head` and `</head>`.
+
+    Falls back to the whole document when there is no `</head>` to bound it
+    (e.g. a fixture with no head section at all) — better to over-read a
+    headless document than to raise on it.
+    """
+    close = _HEAD_CLOSE.search(html)
+    if not close:
+        return html
+    open_ = _HEAD_OPEN.search(html)
+    start = open_.start() if open_ else 0
+    return html[start:close.end()]
+
+
+def _is_password_gate_action(action: str) -> bool:
+    """True when a <form action=...> targets Shopify's storefront gate.
+
+    Shopify redirects a password-protected storefront to /password and emits
+    <form method="post" action="/password" class="storefront-password-form">
+    there. Matches both the bare path and an absolute URL whose path ends in
+    /password.
+    """
+    if not action:
+        return False
+    return urlsplit(action.strip()).path.endswith("/password")
+
+
 def parse_head(html: str, http_status: int) -> HeadFacts:
     """Read the head facts a screen decision depends on.
 
@@ -100,12 +137,23 @@ def parse_head(html: str, http_status: int) -> HeadFacts:
     pre-capture probe buys nothing. An empty `content=""` is reported as absent:
     broadcast-theme-main serves exactly that, and treating it as present would
     report hygiene the store does not have.
+
+    `<title>` and `<meta>` are read from the head ONLY — some themes render a
+    second `<title>` inside an inline SVG in the body, and reading the whole
+    document would let a body `<meta name="robots" content="index, follow">`
+    silently override a real `noindex` set in the head (a false negative on
+    the one gate that eliminated 4 of 9 candidate stores during selection).
+
+    `password_form` is checked over the WHOLE document, not just the head,
+    since the storefront gate is a <form> in the body.
     """
-    title_match = _TITLE.search(html)
+    head = _head_scope(html)
+
+    title_match = _TITLE.search(head)
     title = re.sub(r"\s+", " ", title_match.group(1)).strip() if title_match else None
 
     description = robots = None
-    for tag in _META.finditer(html):
+    for tag in _META.finditer(head):
         attrs = _attrs(tag.group(0))
         name = (attrs.get("name") or "").lower()
         content = (attrs.get("content") or "").strip()
@@ -114,12 +162,19 @@ def parse_head(html: str, http_status: int) -> HeadFacts:
         elif name == "robots":
             robots = content or None
 
+    password_form = False
+    for tag in _FORM_TAG.finditer(html):
+        attrs = _attrs(tag.group(0))
+        if _is_password_gate_action(attrs.get("action") or ""):
+            password_form = True
+            break
+
     return HeadFacts(
         http_status=http_status,
         title=title or None,
         description=description,
         robots=robots,
-        password_form=bool(_PASSWORD_INPUT.search(html)),
+        password_form=password_form,
     )
 
 
