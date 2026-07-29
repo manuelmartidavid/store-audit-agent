@@ -80,6 +80,11 @@ Rules:
   store's. Both the declared value and the effective interval are recorded in
   `manifest.yaml`, so a slow capture is explicable from the fixture alone. At
   the 10s Forest Whole Foods declares, one capture spends ~2.5 minutes waiting.
+- **A large declared delay is honoured in full, however long that takes.** A
+  store declaring `Crawl-delay: 600` makes one capture spend ~2.3 hours
+  waiting. The projection log line states the cost before the capture starts;
+  there is no cap, because a cap would under-honour what the store asked.
+  Declining a store is the operator's call, not the crawler's.
 - **The URL table is selected by the fingerprint**, from the home page's own
   signals — the same `detect_platform` the fixture uses, but over a smaller
   signal set. **This can disagree with the written fixture:** Shopify evidence
