@@ -1,12 +1,8 @@
-"""Call a model and record what produced the answer. Backend-neutral.
+"""Calls a model and records what produced the answer.
 
-Extracted from triage/run_triager.py so `run_narrator.py` cannot grow a second
-spelling of the provenance record. `run_triager.py` keeps its name and CLI: four
-run records and the reproduction block in prompts/README.md cite it by path.
-
-Nothing here knows what a triage finding is, or what a narrative is. It renders
-nothing and validates nothing — it calls a model, extracts one JSON object, and
-writes down enough to run it again.
+Works for both the triager and the narrator: it calls a model, pulls out one
+JSON object, and writes down enough to run it again. It knows nothing about what
+a finding or a narrative is.
 """
 
 from __future__ import annotations
@@ -25,23 +21,21 @@ EFFORT = "high"
 THINKING = "adaptive"
 MAX_TOKENS = 32000
 
-# The rendered triager prompt carries the entire task. The CLI backend's
-# system prompt exists only to tell the model it is being evaluated — it must
-# add no task guidance of its own, or a measurement taken through this path
-# would be testing the harness's prompt, not the triager's.
+# Invariant: this system prompt must never add task guidance. The rendered
+# prompt carries the whole task; anything extra here would mean the run
+# measures this prompt instead of the one under test.
 CLI_SYSTEM_PROMPT = (
     "You are being evaluated. Follow the user message exactly. Do not add "
     "instructions, context, or behavior beyond what it specifies."
 )
 
-# Non-greedy: the contract is one JSON object and no prose, so tolerate a
-# single fence and nothing more. A greedy `.*` here would splice a reply that
-# accidentally contains a second fenced block into one invalid document —
-# spanning from the first `{` to the *last* `}` before the final fence.
+# Invariant: keep this non-greedy. A greedy `.*` would splice a reply
+# containing two fenced blocks into one invalid document.
 _FENCE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.S)
 
 
 def _sha256(path: Path) -> str:
+    """The sha256 of a file's bytes."""
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
@@ -49,16 +43,10 @@ def run_meta(*, model: str, effort: str, rendered_path: Path, pack_path: Path,
              prompt_version: str, started_at: str, max_tokens: int | None = None,
              via: str = "anthropic-sdk", system_prompt: str | None = None,
              cli_version: str | None = None) -> dict[str, Any]:
-    """Everything needed to run this again — and to tell, from the file alone,
-    which backend produced it.
+    """Everything needed to reproduce a run, including which backend made it.
 
-    The two backends are not interchangeable and their records say so. The
-    `anthropic-sdk` path pins `max_tokens`/`thinking`/`sampling` because those
-    are real, controllable knobs on that path. The `claude-code-cli` path
-    doesn't get those fields — recording them would imply a control that
-    doesn't exist there — and instead carries `comparability`, an explicit,
-    recorded statement (not a comment) of what a CLI run can and cannot be
-    compared against.
+    The SDK path records max_tokens, thinking, and sampling because those are
+    real knobs there. The CLI path records a comparability note instead.
     """
     core: dict[str, Any] = {
         "model": model,
@@ -84,11 +72,11 @@ def run_meta(*, model: str, effort: str, rendered_path: Path, pack_path: Path,
         )
         return core
 
-    # anthropic-sdk (the default, unchanged, path)
+    # anthropic-sdk, the default path
     try:
         import anthropic
         sdk_version = getattr(anthropic, "__version__", "unknown")
-    except ImportError:  # the metadata builder stays importable without the SDK
+    except ImportError:  # stay importable without the SDK installed
         sdk_version = "not installed"
     core.update({
         "thinking": THINKING,
@@ -100,7 +88,7 @@ def run_meta(*, model: str, effort: str, rendered_path: Path, pack_path: Path,
 
 
 def extract_json(text: str) -> dict[str, Any]:
-    """The contract says one JSON object and no prose. Tolerate a fence, only."""
+    """Pull the one JSON object out of a model's reply, allowing a code fence."""
     candidate = text.strip()
     fenced = _FENCE.search(candidate)
     if fenced:
@@ -114,7 +102,7 @@ def extract_json(text: str) -> dict[str, Any]:
 
 
 def call_model(prompt: str, *, model: str, effort: str, max_tokens: int) -> tuple[str, dict]:
-    """One streamed request. Returns (text, usage)."""
+    """One streamed request through the Anthropic SDK. Returns (text, usage)."""
     import anthropic
 
     client = anthropic.Anthropic()
@@ -142,28 +130,23 @@ def call_model(prompt: str, *, model: str, effort: str, max_tokens: int) -> tupl
 
 
 def _stderr_tail(stderr: str, chars: int = 2000) -> str:
+    """The last few thousand characters of a subprocess's stderr."""
     return (stderr or "")[-chars:]
 
 
-# `runner=subprocess.run` as a default *parameter* value gets resolved once,
-# at function-definition time, and baked into the function object — so
-# `monkeypatch.setattr(run_triager.subprocess, "run", fake)` never reaches a
-# call made through that default; it already captured the original object.
-# `_RUNNER` is looked up by name inside each function body instead, which
-# Python resolves fresh on every call — so patching this module attribute
-# (`run_triager._RUNNER`) actually intercepts the next call. This indirection
-# is the only thing standing between a forgotten test double and a real
-# subprocess spawn that spends the subscription.
+# Invariant: keep calling subprocess through this module attribute, not a
+# default argument. A default is bound once at import, so tests that patch it
+# never take effect and a forgotten test double spawns a real, billable
+# subprocess.
 _RUNNER = subprocess.run
 
-# Env vars that route or bill a child `claude` process somewhere other than
-# the operator's own Claude subscription — the entire reason this backend
-# exists. Every child this module spawns must have all of these stripped:
+# Env vars that would bill or reroute a child `claude` process away from the
+# operator's own subscription. All of them are stripped from every child:
 #   ANTHROPIC_API_KEY       - bills the Console API directly.
-#   ANTHROPIC_AUTH_TOKEN    - an alternate credential for the same Console billing.
-#   ANTHROPIC_BASE_URL      - repoints the CLI at a different (possibly billed) endpoint.
-#   CLAUDE_CODE_USE_BEDROCK - routes the request, and its billing, through AWS Bedrock.
-#   CLAUDE_CODE_USE_VERTEX  - routes the request, and its billing, through GCP Vertex.
+#   ANTHROPIC_AUTH_TOKEN    - another credential for the same Console billing.
+#   ANTHROPIC_BASE_URL      - points the CLI at a different endpoint.
+#   CLAUDE_CODE_USE_BEDROCK - routes the request, and its billing, through AWS.
+#   CLAUDE_CODE_USE_VERTEX  - routes the request, and its billing, through GCP.
 _BILLING_ROUTING_ENV_VARS = frozenset({
     "ANTHROPIC_API_KEY",
     "ANTHROPIC_AUTH_TOKEN",
@@ -174,24 +157,20 @@ _BILLING_ROUTING_ENV_VARS = frozenset({
 
 
 def _child_env() -> dict[str, str]:
-    """`os.environ` with every billing/routing var stripped, for any child
-    this module spawns under --via claude-cli.
+    """A copy of the environment with every billing and routing var removed.
 
-    One of those vars may be present even though the user never set it
-    directly — `dotenv.load()` in main() can put ANTHROPIC_API_KEY there from
-    `.env`. Built as a fresh dict rather than a mutation of `os.environ` so
-    the parent process's own environment is untouched.
+    A fresh dict, so this never touches the parent process's own environment.
     """
     return {key: value for key, value in os.environ.items()
             if key not in _BILLING_ROUTING_ENV_VARS}
 
 
 def _require_cli_on_path() -> None:
-    """Guard every child this module spawns under --via claude-cli.
+    """Exit with a clear message if the `claude` CLI isn't installed.
 
-    Must run before *any* subprocess reaches a shell — including
-    cli_version()'s own `claude --version` — or an absent CLI surfaces as a
-    raw `FileNotFoundError` traceback instead of this actionable exit.
+    Invariant: call this before any subprocess runs, including `claude
+    --version`,  or a missing CLI shows up as a raw FileNotFoundError
+    traceback.
     """
     if shutil.which("claude") is None:
         raise SystemExit(
@@ -200,7 +179,7 @@ def _require_cli_on_path() -> None:
 
 
 def cli_version(runner=None) -> str:
-    """`claude --version`, captured for the run record — not asserted, run."""
+    """The output of `claude --version`, for the run record."""
     runner = runner if runner is not None else _RUNNER
     proc = runner(["claude", "--version"], capture_output=True, text=True,
                    encoding="utf-8", env=_child_env())
@@ -209,13 +188,9 @@ def cli_version(runner=None) -> str:
 
 def call_model_via_cli(prompt: str, *, model: str, effort: str, system_prompt: str,
                         runner=None) -> tuple[str, dict]:
-    """One `claude -p` invocation via the Claude Code CLI. Returns (text, usage).
+    """One `claude -p` call through the Claude Code CLI. Returns (text, usage).
 
-    Exists to test the pipeline without spending Console credits — it runs on
-    the operator's personal Claude subscription instead of the `anthropic`
-    SDK's Console-billed API key. Every failure mode below is one that would
-    otherwise either silently bill the Console API or hand back a run that
-    looks clean but isn't a single completion.
+    Runs on the operator's own Claude subscription instead of a billed API key.
     """
     runner = runner if runner is not None else _RUNNER
     _require_cli_on_path()
@@ -229,18 +204,11 @@ def call_model_via_cli(prompt: str, *, model: str, effort: str, system_prompt: s
         "--strict-mcp-config",
         "--output-format", "json",
     ]
-    # The prompt goes on stdin, never argv — Windows caps a command line near
-    # 32k characters, and the rendered triager prompt is ~582k *characters*
-    # (measured on runs/v1.0.rendered.md). Characters are the unit the cap is
-    # denominated in; this comment used to argue the point in tokens, which is
-    # the wrong unit for it as well as the wrong number.
-    #
-    # encoding="utf-8" is not cosmetic: without it, text=True falls back to
-    # locale.getpreferredencoding(), which is cp1252 on this machine. Every
-    # rendered triager prompt contains U+2264 ('≤'), unencodable in cp1252 —
-    # stdin would raise UnicodeEncodeError before the CLI is ever reached.
-    # The same fallback would also mangle UTF-8 stdout on decode, silently
-    # corrupting a measured artifact rather than raising at all.
+    # Invariant: the prompt goes on stdin, never argv. Windows caps a command
+    # line near 32k characters and a rendered prompt runs to ~582k.
+    # Invariant: keep encoding="utf-8". Without it Python falls back to the
+    # system codepage, which can't encode characters like '≤' — stdin raises
+    # before the CLI is reached, and stdout comes back mangled.
     proc = runner(argv, input=prompt, capture_output=True, text=True,
                    encoding="utf-8", env=_child_env())
 
@@ -274,14 +242,9 @@ def call_model_via_cli(prompt: str, *, model: str, effort: str, system_prompt: s
             "answer — this is not a clean single completion and cannot be recorded "
             "as one.")
 
-    # The resolved model id must be read back out of what actually ran, not
-    # merely echo the one requested — that is the entire point of this
-    # field: catching a silent model substitution. modelUsage absent, empty,
-    # or holding more than one key all mean the same thing: there is no
-    # single unambiguous read-back available. Falling back to the requested
-    # model in any of those cases would fabricate a read-back that never
-    # happened, and silently picking an arbitrary key on a tie would be just
-    # as unaccountable. Fail instead of recording a plausible-looking guess.
+    # Invariant: read the model id back out of what actually ran; never fall
+    # back to the requested one. This field exists to catch a silent model
+    # substitution, and a guess here would defeat it.
     model_usage = data.get("modelUsage") or {}
     if len(model_usage) != 1:
         raise SystemExit(
@@ -292,14 +255,10 @@ def call_model_via_cli(prompt: str, *, model: str, effort: str, system_prompt: s
             f"happened. stderr tail:\n{_stderr_tail(proc.stderr)}")
     resolved_model = next(iter(model_usage))
 
-    # The full usage block, kept wholesale — cache_creation sub-objects,
-    # server_tool_use, service_tier, and anything a future CLI version adds
-    # are evidence too, and this module's whole posture is that the record
-    # keeps what actually happened rather than a hand-picked projection of it.
+    # The whole usage block is kept, including anything a future CLI adds.
     raw_usage = data.get("usage") or {}
     usage = {
-        # Flattened for convenience (main()'s summary print reads these) —
-        # "raw" below is the actual, un-trimmed record.
+        # Flattened for the summary print; "raw" below is the full record.
         "input_tokens": raw_usage.get("input_tokens"),
         "output_tokens": raw_usage.get("output_tokens"),
         "raw": raw_usage,

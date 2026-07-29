@@ -1,10 +1,7 @@
-"""Store Audit Agent crawler.
+"""Store Audit Agent crawler — collects the evidence base for one store.
 
-Produces the deterministic evidence base for one store, per specs/crawler.md v0.1.
-
-The package is importable without Playwright installed: everything that touches a
-browser lives behind lazy imports so the pure layers (distillation, pointers,
-fingerprint scoring) stay unit-testable on a bare interpreter.
+Importable without Playwright: browser code sits behind lazy imports so the
+pure parts stay testable on their own.
 """
 
 __version__ = "0.2.0"

@@ -1,15 +1,10 @@
 """Archive a captured fixture directory, and verify it by manifest hash.
 
-Decision 19 keeps `fixtures/` out of git: the commitment is the manifest hash
-recorded in `expected/findings.md` and `context.yaml`, not the capture bytes.
-That is a sound commitment and a poor backup — the hash commits to bytes held on
-one machine, produced from a live store that has since drifted. The store cannot
-be rewound, so a lost fixture is a lost golden entry.
+`fixtures/` is not in git, so a lost capture is a lost golden entry — this packs
+one into a single file you can store somewhere durable.
 
-This writes the directory to one file you can put somewhere durable, and
-verifies it against the pin the labels already carry. The tarball's own sha256
-is deliberately NOT the check: gzip embeds an mtime, so it is not stable across
-runs. `manifest.yaml`'s sha256 is, and it is the value decision 12 already pins.
+Invariant: check the archive against `manifest.yaml`'s sha256, never the
+tarball's own — gzip embeds an mtime, so the tarball hash changes between runs.
 
 Usage:
     python -m crawler.archive fixtures/02-sabotaged -o archives/02-sabotaged.tar.gz
@@ -57,10 +52,12 @@ def manifest_sha256_in(archive_path: Path) -> str | None:
 
 
 def verify(archive_path: Path, expected: str) -> bool:
+    """True if the archive's manifest hash matches `expected`."""
     return manifest_sha256_in(archive_path) == expected
 
 
 def main(argv: list[str] | None = None) -> int:
+    """CLI entry point: write an archive, or check an existing one."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("fixture_dir", nargs="?", type=Path)
     parser.add_argument("-o", "--out", type=Path)

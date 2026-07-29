@@ -3,16 +3,15 @@
     python -m planting.screen_candidate --entry 01
     python -m planting.screen_candidate --entry 04 --runs 3
 
-Entries 01 and 04 are stores we do NOT own (design 2026-07-29, D5). Shopify can
-reconfigure the Dawn demo, and Forest Whole Foods can change its theme, between
-selection and capture day — and the failure mode is silent. A `noindex`
-appearing on entry 01 turns the project's only false-positive test into a store
-that correctly emits a `critical`, and nothing downstream would report that as
-a selection problem rather than an agent problem.
+Entries 01 and 04 are stores we don't own, and they can change between
+selection and capture day without warning. A `noindex` appearing on entry 01
+would turn the project's only false-positive test into a store that correctly
+emits a `critical`, and nothing downstream would call that a selection problem
+rather than an agent problem.
 
-So the selection criteria live here as code and are re-run immediately before
-capture. A failing hard gate is a RE-SELECTION TRIGGER, not a defect to label
-around.
+Invariant: a failing hard gate is a re-selection trigger, not a defect to label
+around. That's why the criteria live here as code and get re-run right before
+each capture.
 
 HARD GATES — any failure disqualifies the candidate:
 
@@ -25,34 +24,27 @@ HARD GATES — any failure disqualifies the candidate:
     cls            CLS <= 0.25 on home/collection/pdp                -> a high
     permalinks     WooCommerce only: default /shop|/product-category|/product
 
-`platform` builds a `crawler.fingerprint.Signals` straight from the home
-page's raw HTML (asset URLs, the `generator` meta tag, `<body>` class list) —
-that is ALL the branch that actually decides `platform: "shopify"` or
-`"woocommerce"` reads (fingerprint.py's Shopify and WooCommerce marker
-blocks). A live `crawler.Session` adds more EVIDENCE to the fingerprint —
-real HTTP response headers, browser cookies, `page.evaluate` results for
-`window.Shopify` via crawler/js/signals.js — but does not change the verdict
-itself for these two entries, so this screen's plain `urllib` head-probe
-already carries what `platform` needs.
+`platform` builds a `crawler.fingerprint.Signals` from the home page's raw HTML
+— asset URLs, the `generator` meta tag, the `<body>` class list — which is
+everything the branch deciding "shopify" or "woocommerce" actually reads. A
+live `crawler.Session` would add more evidence but wouldn't change the verdict
+for these entries, so a plain `urllib` probe is enough.
 
 RECORDED, never disqualifying:
 
-    robots       any declared Crawl-delay (sets fetch spacing, never gates),
-                 plus a `robots.txt blocks: [...]` note that restates —
-                 without re-deciding — the same disallow list `robots_allows`
-                 above already gates on
+    robots       any declared Crawl-delay (spaces fetches, never gates), plus a
+                 note restating the disallow list `robots_allows` gates on
     hygiene      title and meta-description presence per template
 
-The hygiene block is deliberately NOT a gate. The defects it finds are real and
-belong in the entry's labels — the person writing `expected/findings.md` needs
-to know what the store already had before the agent said anything. Screening
-them out would mean hunting for a store that flatters the agent, which is the
-store-shopping failure this project has warned about twice.
+Invariant: hygiene stays a note, not a gate. Its defects are real and belong in
+the entry's labels — whoever writes `expected/findings.md` needs to know what
+the store already had. Screening them out means hunting for a store that
+flatters the agent.
 
-Boundary discipline follows rubric §1: boundary values take the LOWER level, so
-LCP exactly 4000 ms and CLS exactly 0.25 both PASS. Gates compare strictly.
+Boundary values take the lower level (rubric §1), so LCP of exactly 4000 ms and
+CLS of exactly 0.25 both PASS. Gates compare strictly.
 
-This writes nothing. It builds no fixture and no labels.
+Writes nothing — no fixture, no labels.
 
 Exit codes: 0 = every hard gate passed, and every hard gate was evaluated ·
 1 = operational failure · 2 = a hard gate failed (re-selection trigger,
@@ -75,14 +67,11 @@ from html import unescape as _html_unescape
 from pathlib import Path
 from urllib.parse import urlparse, urlsplit
 
-# planting/ is not a package; reach crawler/ the way measure.py does. Both
-# entries are needed: parents[1] (project root) for `crawler.*`, and this
-# file's own directory for the bare `import measure` below — the docstring
-# above documents `python -m planting.screen_candidate` as the entrypoint,
-# and under `-m` the script's own directory is NOT auto-added to sys.path
-# (only cwd is), unlike `python planting/screen_candidate.py`. Without this
-# second insert, `import measure` only resolves under the invocation the
-# module does not document.
+# planting/ is not a package, so reach crawler/ the way measure.py does. Both
+# inserts are needed: the project root for `crawler.*`, and this file's own
+# directory for the bare `import measure` below — under `python -m` the
+# script's directory is not added to sys.path, only cwd, so without the second
+# insert `import measure` fails on the documented entrypoint.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -112,11 +101,10 @@ class HeadFacts:
     title: str | None
     description: str | None
     robots: str | None
-    #: True only when the document contains a <form> whose action targets
-    #: /password — Shopify's storefront gate emits action="/password" on a
-    #: <form class="storefront-password-form">. A bare password <input> (e.g.
-    #: a header customer-login drawer, present on almost every theme page) is
-    #: NOT enough to set this; that would false-positive-disqualify a
+    #: True only when a <form> targets /password, which is what Shopify's
+    #: storefront gate emits.
+    #: Invariant: a bare password <input> must not set this. Almost every theme
+    #: has one in its customer-login drawer, and counting it would disqualify a
     #: perfectly reachable store.
     password_form: bool
 
@@ -169,20 +157,19 @@ def _is_password_gate_action(action: str) -> bool:
 def parse_head(html: str, http_status: int) -> HeadFacts:
     """Read the head facts a screen decision depends on.
 
-    Regex rather than a parser because this reads four known fields out of a
-    document we do not otherwise trust, and adding a parser dependency to a
-    pre-capture probe buys nothing. An empty `content=""` is reported as absent:
-    broadcast-theme-main serves exactly that, and treating it as present would
-    report hygiene the store does not have.
+    Regex rather than a parser: this reads four known fields, and a parser
+    dependency in a pre-capture probe buys nothing. An empty `content=""`
+    counts as absent — some themes serve exactly that, and calling it present
+    would report hygiene the store doesn't have.
 
-    `<title>` and `<meta>` are read from the head ONLY — some themes render a
-    second `<title>` inside an inline SVG in the body, and reading the whole
-    document would let a body `<meta name="robots" content="index, follow">`
-    silently override a real `noindex` set in the head (a false negative on
-    the one gate that eliminated 4 of 9 candidate stores during selection).
+    Invariant: read `<title>` and `<meta>` from the head only. Some themes
+    render a second `<title>` inside an inline SVG, and scanning the whole
+    document would let a body-level `robots: index, follow` override a real
+    `noindex` in the head — a false negative on the gate that eliminated most
+    candidates.
 
-    `password_form` is checked over the WHOLE document, not just the head,
-    since the storefront gate is a <form> in the body.
+    `password_form` is checked across the whole document, since the storefront
+    gate is a <form> in the body.
     """
     head = _head_scope(html)
 
@@ -226,16 +213,12 @@ def is_noindex(robots: str | None) -> bool:
 def indexable_gate(template: str, facts: HeadFacts) -> Gate:
     """A `noindex` on a revenue template is a correct `critical` (rubric §1).
 
-    Four of the nine theme demos screened on 2026-07-29 failed here. It is not
-    bad luck: demo stores are deliberately deindexed so they do not compete
-    with real merchant stores in search.
+    Most theme demos fail here, and not by bad luck — demo stores are
+    deliberately deindexed so they don't compete with real merchants in search.
 
-    This function does NOT scope itself to revenue templates — it will happily
-    build an indexable gate for `cart` or `search` if asked to. The scoping
-    happens at the call site, `assemble_head_gates`, which only invokes this
-    for templates in `_REVENUE_TEMPLATES`. A future direct caller must apply
-    that same scoping itself, or risk the exact false re-selection trigger
-    `assemble_head_gates`'s docstring records for `/?s=a`.
+    Invariant: this does not scope itself to revenue templates; the caller
+    does. `assemble_head_gates` only invokes it for `_REVENUE_TEMPLATES`, and
+    any other caller must do the same or trip a false re-selection trigger.
     """
     if is_noindex(facts.robots):
         return Gate(
@@ -253,17 +236,13 @@ def assemble_head_gates(
 ) -> tuple[list[Gate], str | None]:
     """Turn one template's raw head-probe fetch into gates plus a hygiene line.
 
-    Pure and network-free so the indexable-gate SCOPING is directly testable:
-    `indexable_gate` is only appended for templates in `_REVENUE_TEMPLATES`.
-    A `noindex` on cart or search (e.g. forestwholefoods.co.uk's `/?s=a`,
-    which correctly serves `noindex, follow`) is normal SEO hygiene, not a
-    defect — gating on it is a false re-selection trigger, not a real one.
-    `reachable` still runs on EVERY template, including cart and search;
-    only `indexable` (and, separately, perf) narrow to revenue templates.
+    Network-free so the indexable-gate scoping is directly testable. A
+    `noindex` on cart or search is normal SEO hygiene, not a defect, so gating
+    on it would be a false re-selection trigger. `reachable` still runs on
+    every template; only `indexable` and perf narrow to revenue templates.
 
-    Returns `([Gate(...)], None)` when the fetch itself failed (non-200 or
-    empty body) — there are no head facts to build hygiene or indexable from
-    in that case, only the fact that the template was unreachable.
+    Returns `([Gate(...)], None)` when the fetch itself failed — there are no
+    head facts to build hygiene or indexable from, only the unreachability.
     """
     if status != 200 or not html:
         # status == 0 is `_fetch`'s sentinel for a network failure (DNS,
@@ -274,10 +253,10 @@ def assemble_head_gates(
         return [Gate(f"reachable:{template}", False, detail)], None
 
     facts = parse_head(html, status)
-    # A gate can show up two ways: a <form action="/password"> served
-    # in-page, OR a redirect that already landed on /password before any
-    # form is even parsed (measure._is_gate_url — reused rather than
-    # respelled here, see MNC-004 in measure.py). Either one disqualifies.
+    # A gate shows up two ways: a <form action="/password"> in the page, or a
+    # redirect that already landed on /password before any form is parsed.
+    # Either disqualifies. `measure._is_gate_url` is reused rather than
+    # respelled here.
     redirected_to_gate = measure._is_gate_url(final_url)
     gated = facts.password_form or redirected_to_gate
     detail = f"HTTP {status}"
@@ -308,10 +287,8 @@ _BODY_TAG = re.compile(r"<body\b[^>]*>", re.I)
 def _asset_urls(html: str) -> list[str]:
     """Every `<script src>`, `<link href>` and `<img src>` URL in the document.
 
-    These three tag shapes are exactly what `crawler.fingerprint`'s platform
-    markers key on — a `cdn.shopify.com` script, a `/wp-content/plugins/
-    woocommerce` stylesheet, a `woocommerce-blocks` bundle — and all of them
-    are present in raw HTML; none require a rendered DOM or JS execution.
+    These three tag shapes are what `crawler.fingerprint`'s platform markers
+    key on, and all of them appear in raw HTML — no rendered DOM or JS needed.
     """
     urls: list[str] = []
     for tag in _ASSET_TAG.finditer(html):
@@ -325,9 +302,9 @@ def _asset_urls(html: str) -> list[str]:
 def _generator_meta(html: str) -> str | None:
     """The `<meta name="generator" content="...">` value, head-scoped.
 
-    Same head-only discipline as `parse_head`'s description/robots reads —
-    WooCommerce's generator meta lives in `<head>`, and scoping there avoids
-    a body element with the same `name` attribute overriding it.
+    Head-scoped for the same reason as `parse_head`: WooCommerce's generator
+    meta lives in `<head>`, and scoping there stops a body element with the
+    same `name` from overriding it.
     """
     for tag in _META.finditer(_head_scope(html)):
         attrs = _attrs(tag.group(0))
@@ -348,24 +325,16 @@ def _body_classes(html: str) -> list[str]:
 def platform_gate(home_html: str, declared: str) -> Gate:
     """Does `crawler.fingerprint`'s platform verdict agree with the declared one?
 
-    Builds a `Signals` straight from home's raw HTML — asset URLs, the
-    `generator` meta tag, `<body>` classes — and runs it through the real
-    `crawler.fingerprint.build`. That is not a stub of the real check: the
-    Shopify and WooCommerce marker blocks in `build` (fingerprint.py) read
-    ONLY `signals.urls`, `signals.meta["generator"]` and
-    `signals.body_classes`, all three available without a live `Session`
-    (see this module's docstring for the full argument). A previous version
-    of this docstring claimed `build` needed browser cookies, response
-    headers and `page.evaluate` output to run at all — false; `Signals`
-    defaults every field to empty, and `build` runs on whatever subset is
-    given.
+    Builds a `Signals` from home's raw HTML and runs it through the real
+    `crawler.fingerprint.build`, not a stub of it. The Shopify and WooCommerce
+    marker blocks read only `signals.urls`, `signals.meta["generator"]` and
+    `signals.body_classes`, all available without a live `Session` — `Signals`
+    defaults every other field to empty and `build` runs on what it's given.
 
-    `unknown` is treated as a FAIL, not a pass, and gets its own detail
-    distinct from an ordinary mismatch: a store whose platform cannot be
-    determined from HTML alone was not verified to be what it was declared
-    to be, and letting that read as a pass would be exactly the vacuous-pass
-    shape this module exists to refuse elsewhere (`perf_gates`, `permalink_gate`
-    on empty `home_html` below).
+    Invariant: `unknown` fails, with its own detail separate from a mismatch. A
+    store whose platform can't be determined was never verified to be what it
+    was declared as, and letting that read as a pass is the vacuous pass this
+    module refuses elsewhere.
     """
     signals = Signals(
         urls=_asset_urls(home_html),
@@ -405,34 +374,29 @@ _WOO_COLLECTION = re.compile(r"^/(shop|product-category/[^/]+)/?$", re.I)
 def permalink_gate(html: str, host: str, platform: str) -> Gate:
     """WooCommerce entries must use DEFAULT permalinks, or discovery cannot find them.
 
-    The 0.3.0 discovery table (design D3) keys on `/shop`,
-    `/product-category/{slug}` and `/product/{slug}`. A store on customised
-    permalinks (`/store/{cat}/{product}`) is a hard disqualifier for this entry
-    — not a defect in the store, and not something to route around with a pin,
-    because entry 04 exists to exercise the non-Shopify discovery path.
+    Discovery keys on `/shop`, `/product-category/{slug}` and
+    `/product/{slug}`. A store on customised permalinks is a hard disqualifier
+    — not a store defect, and not something to route around with a pin, since
+    this entry exists to exercise the non-Shopify discovery path.
 
-    Only ONE default collection URL is required. `offermanwoodshop.com` exposes
-    `/product-category/` and no `/shop/`, and discovery needs either. Product
-    links are NOT required on home: discovery reaches the PDP from the
-    collection page (specs/crawler.md §3).
+    Only one default collection URL is needed; discovery takes either `/shop`
+    or `/product-category/`. Product links aren't required on home, because
+    discovery reaches the PDP from the collection page.
 
-    `_WOO_COLLECTION` matches exactly one category segment
-    (`/product-category/{slug}`), not a nested one
-    (`/product-category/{parent}/{child}/`) — deliberately: the discovery table
-    this gate exists to protect (design D3, above) only knows the one-segment
-    shape. A store whose only collection link is nested would fail discovery
-    the same way it fails here, so this is not a gap to widen.
+    Invariant: `_WOO_COLLECTION` matches one category segment, not a nested
+    one. That's deliberate — discovery only knows the one-segment shape, so a
+    store whose only collection link is nested would fail there too. Not a gap
+    to widen.
     """
     if platform != "woocommerce":
         return Gate(name="permalinks", passed=True,
                     detail=f"n/a — platform is {platform}")
 
     if not html:
-        # `home_html` is `""` when home was robots-disallowed or its fetch
-        # failed (see main()) — there is no permalink to have found or not
-        # found. FAIL either way (an unassessed gate must not pass), but say
-        # what actually happened instead of the discovery-collection
-        # diagnosis below, which describes a problem nobody observed.
+        # `home_html` is "" when home was robots-disallowed or its fetch
+        # failed, so there is no permalink to have found. Still a FAIL — an
+        # unassessed gate must not pass — but say what happened rather than
+        # giving the diagnosis below, which describes a problem nobody saw.
         return Gate(
             name="permalinks",
             passed=False,
@@ -464,21 +428,17 @@ def permalink_gate(html: str, host: str, platform: str) -> Gate:
 def perf_gates(template: str, run: "measure.SampleRun") -> list[Gate]:
     """LCP and CLS must stay off the `high` side on EVERY run.
 
-    Every run, not the median: a median under the line with one run over it is
-    exactly what measure.py already refuses to call a pass ("the aim has not
-    landed - this is noise, not a defect"). Screening inherits that discipline
-    because a fixture is captured once, and it can be captured on the bad run.
+    Invariant: every run, not the median. A fixture is captured once and can be
+    captured on the bad run, so a median under the line with one run over it
+    isn't a pass — the same discipline measure.py already applies.
 
-    An empty sample list fails both gates. A gate that passes having evaluated
-    nothing is the vacuous-pass shape step 8 found twice in this repo.
+    Invariant: an empty sample list fails both gates. A gate that passes having
+    evaluated nothing is the vacuous pass this repo has found twice.
 
-    Reads `s.lcp`/`s.cls` directly rather than through `getattr(s, ..., None)`:
-    `run.samples` is typed as `list[measure.Sample]`, and `Sample` always
-    carries both fields (defaulting to `None` when Lighthouse has no reading,
-    which is what the `is not None` filter below is for). A bare `getattr`
-    default would instead swallow a genuine shape mismatch — e.g. a caller
-    passing an object with no `.lcp` at all — as "nothing measured", which is
-    the same silent-pass-shaped failure this function exists to refuse.
+    Reads `s.lcp`/`s.cls` directly rather than via `getattr(..., None)`, which
+    would swallow a real shape mismatch as "nothing measured" — the same silent
+    pass this function exists to refuse. `Sample` always carries both fields,
+    set to None when Lighthouse has no reading.
     """
     lcp_high, cls_high = measure.LCP_HIGH_MS, measure.CLS_HIGH
     lcps = [s.lcp for s in run.samples if s.lcp is not None]
@@ -511,9 +471,9 @@ def perf_gates(template: str, run: "measure.SampleRun") -> list[Gate]:
 
 # --- the selected entries ---------------------------------------------------
 
-#: The stores selected on 2026-07-29 (design D1, D2). Keyed by eval id so the
-#: screen can be re-run as `--entry 01` without anyone retyping a URL, and so
-#: the URLs live in exactly one place alongside the gates that chose them.
+#: The selected stores, keyed by eval id so the screen re-runs as `--entry 01`
+#: without anyone retyping a URL, and so the URLs live in one place beside the
+#: gates that chose them.
 ENTRIES: dict[str, dict] = {
     "01": {
         "origin": "https://theme-dawn-demo.myshopify.com",
@@ -533,55 +493,41 @@ ENTRIES: dict[str, dict] = {
             "home": "/",
             "collection": "/shop/",
             "pdp": "/product/organic-almonds/",
-            # WooCommerce lets a store rename the cart page slug; this is a
-            # UK store and uses the British term. Verified directly: /cart/
-            # 404s here, /basket/ serves 200. Do not "correct" this back to
-            # /cart/ — that guess is what was wrong the first time.
+            # Invariant: don't "correct" this to /cart/. WooCommerce lets a
+            # store rename the cart slug, and this UK store uses the British
+            # term — /cart/ 404s here, /basket/ serves 200. That guess was
+            # wrong once already.
             "cart": "/basket/",
             "search": "/?s=a",
         },
     },
 }
 
-#: The templates rubric §1 calls "revenue" templates — the ones a shopper must
-#: pass through to buy something. Governs TWO gates: perf (LCP/CLS) and
-#: indexable. cart and search are deliberately excluded from both:
-#:   - perf: cart sits behind an empty-cart redirect on many stores, and its
-#:     LCP says more about that redirect than about the theme.
-#:   - indexable: a `noindex` on cart or search is normal SEO hygiene
-#:     (WooCommerce/Yoast set it by default so these pages don't compete with
-#:     revenue templates in search) — NOT a defect. Gating on it produces a
-#:     false re-selection trigger, exactly what happened to entry 04's
-#:     `/?s=a` on 2026-07-29. reachable is still checked on every template,
-#:     including cart and search — only indexable and perf narrow to revenue.
+#: The templates a shopper must pass through to buy something (rubric §1).
+#: Governs the perf and indexable gates. cart and search are left out of both:
+#:   - perf: cart often sits behind an empty-cart redirect, so its LCP
+#:     describes that redirect more than the theme.
+#:   - indexable: a `noindex` there is normal SEO hygiene, not a defect, and
+#:     gating on it produces a false re-selection trigger.
+#: reachable is still checked on every template; only these two narrow.
 _REVENUE_TEMPLATES = ("home", "collection", "pdp")
 
 
 def _fetch(url: str, timeout: int = 30) -> tuple[int, str, str]:
     """One polite GET. Identifying UA, matching specs/crawler.md §3 conduct.
 
-    Returns `(status, html, final_url)`. `final_url` is `resp.url` — the URL
-    after any redirects urllib followed — because a gated Shopify storefront
-    does not serve its password form at the requested URL, it 302s to
-    `/password` and serves the form THERE
-    (`torontosportscard.myshopify.com/` -> `.../password`). A caller reading
-    only the body of the originally-requested URL would never see that
-    redirect happened.
+    Returns `(status, html, final_url)`. `final_url` is the URL after any
+    redirects, because a gated Shopify storefront 302s to `/password` and
+    serves the form there — a caller reading only the requested URL's body
+    would never see the redirect happened.
 
-    A network failure below the HTTP layer — DNS failure, connection timeout,
-    a TLS error — raises `URLError` (or a bare `OSError` for some of those,
-    e.g. a `socket.timeout`), not `HTTPError`; there is no HTTP response to
-    read a status from. This path is LIVE, not theoretical: this project has
-    a machine with a broken route to one of the two entry stores. Left
-    uncaught it aborts the whole run as a bare traceback before any gate
-    report prints — the same shape `build_brief.py::main()` was fixed for in
-    d8e5bfb. So it is caught here too and turned into the sentinel
-    `status == 0`, with `final_url` repurposed to carry a human-readable
-    reason instead of a URL. `assemble_head_gates` treats any non-200 status
-    as a `reachable` failure already; it special-cases `0` only to source the
-    detail text from `final_url` instead of formatting `"HTTP 0"`, which
-    would name nothing. The failure is never swallowed — `reachable` still
-    FAILS, with the real reason attached.
+    Invariant: keep catching network failures below the HTTP layer. DNS,
+    connection timeouts and TLS errors raise URLError or OSError rather than
+    HTTPError, so there's no status to read, and uncaught they abort the whole
+    run as a traceback before any gate report prints. They become the sentinel
+    `status == 0`, with `final_url` carrying a readable reason instead of a
+    URL. Never swallowed — `reachable` still fails, with the real reason
+    attached.
     """
     req = urllib.request.Request(
         url, headers={"User-Agent": ROBOTS_UA, "Accept-Encoding": "gzip",
@@ -607,15 +553,11 @@ _CRAWL_DELAY = re.compile(r"(?im)^\s*crawl-delay\s*:\s*([\d.]+)")
 def effective_delay(robots_body: str | None) -> float:
     """The delay, in seconds, to hold between every polite fetch.
 
-    `max(default floor, robots.txt's declared Crawl-delay)` — the HIGHER of
-    the two always wins, never the lower. specs/crawler.md §3 says robots.txt
-    is "fetched first and respected"; the project's brief §5 calls politeness
-    non-negotiable for stores this project does not own, with no carve-out
-    for the project's own tooling. So a declared Crawl-delay below our own
-    1.5s floor does not shrink the gap, and an absent, unfetchable
-    (`robots_body is None`), or malformed directive (e.g. `Crawl-delay: abc` —
-    `_CRAWL_DELAY` simply fails to match it) falls back to the floor rather
-    than raising or silently defaulting to 0.
+    Invariant: the higher of our floor and robots.txt's Crawl-delay always
+    wins, never the lower. Politeness is non-negotiable for stores this project
+    doesn't own, with no carve-out for its own tooling — so a declared delay
+    below the 1.5s floor doesn't shrink the gap, and an absent, unfetchable or
+    malformed directive falls back to the floor rather than to 0.
     """
     if robots_body:
         match = _CRAWL_DELAY.search(robots_body)
@@ -628,6 +570,7 @@ def effective_delay(robots_body: str | None) -> float:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """CLI entry point: screen one candidate entry and report its gates."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--entry", choices=sorted(ENTRIES), required=True)
     parser.add_argument("--runs", type=int, default=2,
@@ -646,10 +589,9 @@ def main(argv: list[str] | None = None) -> int:
     home_html = ""
 
     # --- robots.txt, fetched FIRST and respected (specs/crawler.md §3) -----
-    # Recorded AND gated — fetched and parsed before a single template is
-    # touched, so `notes`, `disallowed` (below), and the delay every
-    # subsequent fetch uses are ready before the probe loop starts. Reporting
-    # which templates robots blocks AFTER already fetching them would be
+    # Recorded and gated. Parsed before any template is touched, so the notes,
+    # the disallow set and the delay are all ready before the probe loop
+    # starts — reporting what robots blocks after fetching it would be
     # backwards.
     status, robots_body_raw, robots_final_url = _fetch(origin + "/robots.txt")
     notes: list[str] = []
@@ -670,30 +612,23 @@ def main(argv: list[str] | None = None) -> int:
         detail = f"HTTP {status}" if status else robots_final_url
         notes.append(f"robots.txt: {detail}")
 
-    # This is the ONLY spot allowed to fall back to the 1.5s floor silently:
-    # everywhere else in this function, that floor is `delay`, already
-    # raised to match a real Crawl-delay if one was declared. Printed too, so
-    # the run's own output evidences the conduct rather than merely asserting
-    # it (the module used to print the Crawl-delay note while spacing its own
-    # requests 1.5s apart regardless — asserting an obligation in the same
-    # breath it failed to meet it).
+    # The only place allowed to fall back to the floor silently — everywhere
+    # else uses `delay`, already raised to any declared Crawl-delay. Printed
+    # so the run's output evidences the conduct instead of asserting it: this
+    # once printed the Crawl-delay note while still spacing requests 1.5s
+    # apart regardless.
     delay = effective_delay(robots_body)
     reason = "robots.txt Crawl-delay" if delay > _DEFAULT_DELAY else "default"
     notes.append(f"politeness: {delay:.1f}s between fetches ({reason})")
 
     # --- head probe, one polite GET per template ----------------------------
-    # `delay` is held before EVERY fetch here, including before the first
-    # template — i.e. between robots.txt and that first fetch too. There is
-    # no exemption for "the first one": robots.txt already used its own slot
-    # before this loop started.
+    # `delay` is held before every fetch, the first template included —
+    # robots.txt already used its own slot before the loop started.
     #
-    # A template robots.txt disallows is NOT fetched — brief §5 calls conduct
-    # non-negotiable for stores this project does not own, and design D2
-    # rejected the alternative store (Nalgene) for exactly this condition on
-    # a revenue template. So the same condition here is a FAILING gate, not a
-    # skip: the `disallowed` check above is what makes D2's disqualifier a
-    # real gate, and what makes the "respected" claim in this section's
-    # header true rather than aspirational.
+    # Invariant: a template robots.txt disallows is never fetched, and that's a
+    # failing gate rather than a skip. Conduct is non-negotiable for stores
+    # this project doesn't own, and a candidate was already rejected for
+    # exactly this on a revenue template.
     for template, path in entry["templates"].items():
         if template in disallowed:
             gates.append(Gate(
@@ -719,10 +654,9 @@ def main(argv: list[str] | None = None) -> int:
         for template in _REVENUE_TEMPLATES:
             path = entry["templates"].get(template)
             if not path:
-                # A missing revenue template is a gap in ENTRIES, not
-                # something to pass over quietly — the verdict below must not
-                # be able to say "fit to capture" while a whole template's
-                # perf was never even attempted.
+                # A missing revenue template is a gap in ENTRIES, not something
+                # to pass over quietly — the verdict must not read "fit to
+                # capture" while a whole template's perf was never attempted.
                 gates.append(Gate(
                     f"lcp:{template}", False,
                     f"no {template!r} path in ENTRIES['{args.entry}']['templates'] "
@@ -730,9 +664,8 @@ def main(argv: list[str] | None = None) -> int:
                 ))
                 continue
             if template in disallowed:
-                # Already recorded as a failing `robots_allows:{template}`
-                # gate in the head probe above; conduct forbids fetching it
-                # again here for a Lighthouse run.
+                # Already failed as `robots_allows:{template}` in the head
+                # probe, and conduct forbids fetching it again for Lighthouse.
                 continue
             run = measure.sample_url(origin + path, runs=args.runs,
                                      password=None, debug_port=args.debug_port,

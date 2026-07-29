@@ -1,18 +1,17 @@
-// Raw DOM serializer. Deliberately policy-free: it decides nothing about what is
-// worth keeping, it only produces a faithful, JSON-safe mirror of the document
-// plus the counts of the four things it refuses to carry (script bodies, style
-// blocks, svg internals, comments). Every keep/drop rule in spec §5 is applied
-// in Python against this output, which is what makes distillation unit-testable
-// without a browser and byte-reproducible from a single capture.
+// Copies the live DOM into a JSON-safe tree, plus counts of the four things it
+// never carries: script bodies, style blocks, svg internals, and comments.
 //
 // Returns: { raw: <node>, dropped: {script_bodies, style_blocks, svg_internals,
 //            comment_nodes} }
 //
-// node ::= { tag, attrs, text?, full_text?, dims?, children: [node] }
-//   text      — own text nodes only, whitespace-collapsed (verbatim for JSON-LD)
-//   full_text — descendant text, bounded; emitted only where an accessible name
-//               can live in a child element (button > span > "Add to cart")
-//   dims      — img rendered vs intrinsic, when obtainable
+// node = { tag, attrs, text?, full_text?, dims?, children: [node] }
+//   text      — the element's own text, whitespace collapsed
+//   full_text — text from children, for elements whose label can live in a child
+//   dims      — an image's rendered and intrinsic size, when available
+//
+// Invariant: keep this policy-free. All the keep/drop decisions belong in
+// Python (crawler/distill.py), which is what makes them testable without a
+// browser.
 
 (MAX_DATA_URI, MAX_TEXT) => {
   const dropped = {
@@ -22,14 +21,13 @@
     comment_nodes: 0,
   };
 
-  // Comments are counted document-wide rather than during the walk: they live
-  // outside the element tree we recurse over (head, between siblings, inside
-  // <template>) and undercounting here would misreport absence as omission.
+  // Comments are counted across the whole document, not during the walk — many
+  // of them sit outside the element tree we recurse over.
   try {
     const cw = document.createTreeWalker(document, NodeFilter.SHOW_COMMENT, null);
     while (cw.nextNode()) dropped.comment_nodes++;
   } catch (e) {
-    /* counted as zero rather than failing the capture */
+    /* count zero rather than fail the capture */
   }
 
   const collapse = (s) => (s || "").replace(/\s+/g, " ").trim();
@@ -40,6 +38,7 @@
     "h1", "h2", "h3", "h4", "h5", "h6",
   ]);
 
+  // The element's own text, ignoring anything inside child elements.
   function ownText(el) {
     let out = "";
     for (const n of el.childNodes) {
@@ -48,14 +47,15 @@
     return collapse(out);
   }
 
+  // Every attribute, with oversized values trimmed.
   function attrsOf(el) {
     const out = {};
     const attrs = el.attributes;
     for (let i = 0; i < attrs.length; i++) {
       const name = attrs[i].name;
       let value = attrs[i].value == null ? "" : attrs[i].value;
-      // Data-URI payloads over 1KB are dropped in place (spec §5). The prefix is
-      // retained so the fact that it *was* an inline payload stays legible.
+      // Big data: URIs are dropped but keep their prefix, so it's still clear
+      // there was an inline payload here.
       if (value.length > MAX_DATA_URI && /^\s*data:/i.test(value)) {
         const comma = value.indexOf(",");
         const head = comma === -1 ? "data:" : value.slice(0, comma + 1);
@@ -68,6 +68,7 @@
     return out;
   }
 
+  // An image's rendered and intrinsic size, or null if neither is available.
   function dimsOf(el) {
     try {
       const rect = el.getBoundingClientRect();
@@ -80,20 +81,21 @@
     }
   }
 
+  // Turn one element and everything under it into a node.
   function walk(el, insideSvg) {
     const tag = (el.tagName || "").toLowerCase();
     const node = { tag: tag, attrs: attrsOf(el), children: [] };
 
     if (tag === "style") {
       dropped.style_blocks++;
-      return node; // body never carried
+      return node; // the CSS body is never carried
     }
 
     if (tag === "script") {
       const type = (el.getAttribute("type") || "").toLowerCase();
       const body = el.textContent || "";
       if (body.trim()) dropped.script_bodies++;
-      // JSON-LD is structured data, not a script body — kept verbatim (spec §5).
+      // JSON-LD is structured data rather than code, so it's kept verbatim.
       if (type === "application/ld+json" && body.trim()) {
         node.text = clamp(body.trim());
       }
@@ -114,9 +116,8 @@
     }
 
     if (tag === "svg") {
-      // The svg element itself is kept (Python decides); its internals are only
-      // counted. Recursing purely to count keeps the number honest for nested
-      // <symbol>/<use> trees.
+      // Keep the svg element, count its internals. The walk is only for the
+      // count, so nested <symbol>/<use> trees are included.
       let n = 0;
       const stack = Array.prototype.slice.call(el.children);
       while (stack.length) {

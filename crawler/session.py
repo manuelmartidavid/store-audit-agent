@@ -1,14 +1,10 @@
-"""Browser session — spec §2.
+"""Drives the browser for one store: navigation, the password gate, and capture (spec §2).
 
-One browser context per store, shared across all template visits and all
-Lighthouse runs. Lighthouse cannot carry a session cookie through the CLI, so
-Chromium is launched with a remote-debugging port and the Node sidecar attaches
-to *this* browser (see :mod:`crawler.lighthouse`).
+Chromium is launched with a remote-debugging port so the Lighthouse sidecar can
+attach to the same browser.
 
-The storefront password never appears in any output file, log line, or error
-message. Nothing in this module formats it into a string, and
-:func:`crawler.secrets.assert_absent` verifies that claim against the written
-bytes before the run is allowed to succeed.
+Invariant: never format the storefront password into a string here. It must not
+reach any output file, log line, or error message.
 """
 
 from __future__ import annotations
@@ -36,6 +32,7 @@ _JS_DIR = Path(__file__).parent / "js"
 
 
 def _js(name: str) -> str:
+    """Read one of the browser-side scripts from js/."""
     return (_JS_DIR / name).read_text(encoding="utf-8")
 
 
@@ -51,12 +48,15 @@ class Visit:
 
     @property
     def ok(self) -> bool:
+        """True if the navigation completed with a response."""
         return self.error is None and self.http_status is not None
 
 
 @dataclass
 class GateResult:
-    gate: str                       # none | password_supplied | blocked
+    """What happened when we tried to get past the storefront gate."""
+
+    gate: str                     # none | password_supplied | blocked
     kind: str | None = None         # password_page | bot_challenge | http_error | dns
     evidence: str | None = None
     final_url: str | None = None
@@ -98,7 +98,8 @@ class Session:
         self.close()
 
     def start(self) -> None:
-        from playwright.sync_api import sync_playwright  # lazy: keeps the pure layers importable
+        """Launch the browser and open the crawl's page."""
+        from playwright.sync_api import sync_playwright  # lazy, so pure code imports without it
 
         self._playwright = sync_playwright().start()
         args = ["--disable-dev-shm-usage"]
@@ -106,15 +107,11 @@ class Session:
             args.append(f"--remote-debugging-port={self.debug_port}")
         self._browser = self._playwright.chromium.launch(headless=self.headless, args=args)
         self.browser_version = self._browser.version
-        # The crawl runs in its own isolated context. Lighthouse attaches over
-        # CDP and opens its tabs in the browser's *default* context, which is a
-        # separate cookie jar — so the gate cookie set here does not reach it by
-        # itself. We keep the crawl isolated (Lighthouse's repeated attach is
-        # reliable only against the default context when nothing else is driving
-        # it) and mirror the session into the default context before Lighthouse
-        # runs, via mirror_session_to_default(). That is the §7 shared session,
-        # implemented without letting Playwright and Lighthouse fight over one
-        # context (a persistent context deadlocks Lighthouse's second run).
+        # The crawl gets its own isolated context; Lighthouse uses the browser's
+        # default one, with a separate cookie jar.
+        # Invariant: keep these two contexts apart — a shared persistent
+        # context deadlocks Lighthouse's second run. Cookies are copied over by
+        # mirror_session_to_default() instead.
         self._context = self._browser.new_context(
             user_agent=USER_AGENT,
             viewport={"width": 1366, "height": 900},
@@ -124,6 +121,7 @@ class Session:
         self._page = self._context.new_page()
 
     def close(self) -> None:
+        """Shut the browser down, ignoring anything that fails on the way out."""
         for closer in (self._context, self._browser):
             try:
                 if closer:
@@ -139,6 +137,7 @@ class Session:
 
     @property
     def page(self):
+        """The active page. Raises if the session hasn't been started."""
         if self._page is None:
             raise RuntimeError("Session.start() has not been called")
         return self._page
@@ -146,18 +145,16 @@ class Session:
     # --- conduct -----------------------------------------------------------
 
     def _throttle(self) -> None:
-        """≥1s between fetches, one concurrent request (spec §3)."""
+        """Wait so there's at least a second between fetches (spec §3)."""
         elapsed = time.monotonic() - self._last_fetch
         if self._last_fetch and elapsed < self.min_interval_s:
             time.sleep(self.min_interval_s - elapsed)
         self._last_fetch = time.monotonic()
 
     def goto(self, url: str, *, retries: int = MAX_TRANSIENT_RETRIES) -> Visit:
-        """Navigate to `url`, retrying transient throttling (429/5xx) with backoff.
+        """Navigate to `url`, retrying 429 and 5xx responses with backoff.
 
-        A 4xx is returned as-is on the first try — that is a real "absent", not a
-        hiccup. Each attempt goes through the politeness throttle, so a retry is
-        never faster than one fetch per second.
+        A 4xx comes back on the first try — the page really is missing.
         """
         visit = self._goto_once(url)
         attempt = 0
@@ -171,14 +168,15 @@ class Session:
         return visit
 
     def _goto_once(self, url: str) -> Visit:
+        """One navigation attempt, recorded as a Visit."""
         self._throttle()
         self.fetch_count += 1
         try:
             response = self.page.goto(url, wait_until="domcontentloaded")
-        except Exception as exc:  # navigation failure is data, not a crash
+        except Exception as exc:  # a failed navigation is data, not a crash
             return Visit(url=url, requested=url, http_status=None, error=_clean(exc))
 
-        # Best-effort settle: lazy-loaded content is evidence, a hung network is not.
+        # Give lazy-loaded content a moment, but don't wait on a hung network.
         try:
             self.page.wait_for_load_state("networkidle", timeout=SETTLE_TIMEOUT_MS)
         except Exception:
@@ -195,7 +193,7 @@ class Session:
         return Visit(url=self.page.url, requested=url, http_status=status, headers=headers)
 
     def fetch_text(self, url: str) -> tuple[int | None, str]:
-        """Fetch a non-HTML resource (robots.txt) through the same context."""
+        """Fetch a non-HTML file such as robots.txt through the same context."""
         self._throttle()
         try:
             response = self._context.request.get(url, timeout=self.nav_timeout_ms)
@@ -206,6 +204,7 @@ class Session:
     # --- the gate (spec §2) ------------------------------------------------
 
     def is_password_page(self) -> bool:
+        """True if the current page is the storefront password gate."""
         path = urlparse(self.page.url).path.rstrip("/")
         if path.endswith("/password") or path == "/password":
             return True
@@ -215,12 +214,7 @@ class Session:
             return False
 
     def open_gate(self, password: str | None) -> GateResult:
-        """Navigate to origin and clear the storefront gate if there is one.
-
-        Storefront password entry is a site-wide gate, not authenticated testing
-        (ruling recorded in sabotage-spec). No account, cart, or checkout state
-        is involved.
-        """
+        """Open the origin and get past the storefront password page if there is one."""
         visit = self.goto(self.origin + "/")
         if visit.error:
             kind = "dns" if "ERR_NAME_NOT_RESOLVED" in (visit.error or "") else "http_error"
@@ -252,7 +246,7 @@ class Session:
 
         if self._submit_password(password):
             return GateResult(gate="password_supplied", final_url=self.page.url)
-        # Rejected. The evidence records the shape of the gate, never the attempt.
+        # Rejected. Evidence describes the gate, never the password we tried.
         return GateResult(
             gate="blocked",
             kind="password_page",
@@ -261,6 +255,7 @@ class Session:
         )
 
     def _gate_evidence(self, visit: Visit) -> str:
+        """A short description of how we know this is a password gate."""
         parts = []
         if visit.requested.rstrip("/") != visit.url.rstrip("/"):
             parts.append(f"redirect {visit.requested} → {urlparse(visit.url).path}")
@@ -272,6 +267,7 @@ class Session:
         return "; ".join(parts) or "storefront password page served at origin"
 
     def _looks_like_challenge(self) -> bool:
+        """True if the page looks like a bot check rather than the store."""
         try:
             body = (self.page.content() or "").lower()
         except Exception:
@@ -279,13 +275,7 @@ class Session:
         return any(m in body for m in ("cf-challenge", "just a moment", "captcha", "cf-browser-verification"))
 
     def _submit_password(self, password: str) -> bool:
-        """Post the gate form and confirm we are through. Never logs the value.
-
-        The gate POST redirects to the storefront itself, so confirmation is a
-        matter of looking at where we landed — re-navigating to origin to check
-        would be a second request to someone else's server for information we
-        already have.
-        """
+        """Submit the gate form and check where we landed. Never logs the password."""
         try:
             field_ = self.page.locator(
                 "form[action*='/password'] input[type='password'], input[name='password']"
@@ -298,7 +288,7 @@ class Session:
         except Exception:
             return False
 
-        # Confirm by observation, not by assuming the POST worked.
+        # Check where we ended up rather than assuming the POST worked.
         if self.is_password_page():
             return False
         try:
@@ -306,16 +296,17 @@ class Session:
                 return True
         except Exception:
             pass
-        return True  # off-Shopify gates need not set that cookie; we are through
+        return True  # non-Shopify gates don't set that cookie, and we're through
 
     # --- capture -----------------------------------------------------------
 
     def walk_dom(self) -> tuple[dict[str, Any], dict[str, int]]:
-        """Serialize the current document into the raw tree + dropped counts."""
+        """Turn the current page into a raw tree plus counts of what was dropped."""
         result = self.page.evaluate(_js("dom_walk.js"), [MAX_DATA_URI_BYTES, MAX_TEXT_CHARS])
         return result["raw"], result["dropped"]
 
     def collect_signals(self, visit: Visit) -> Signals:
+        """Gather the fingerprinting signals from the current page."""
         try:
             raw = self.page.evaluate(_js("signals.js"))
         except Exception:
@@ -339,12 +330,9 @@ class Session:
     def mirror_session_to_default(self) -> int:
         """Copy the crawl's cookies into the browser's default context.
 
-        Lighthouse audits in the default context; the gate cookie lives in the
-        crawl's isolated context. Seeding it across via a browser-level CDP
-        ``Storage.setCookies`` (no browserContextId → default context) is what
-        lets Lighthouse see the store behind the gate rather than /password
-        (spec §7). Returns the number of cookies mirrored. Best-effort: a public
-        store has none and that is fine.
+        This is what lets Lighthouse see the store behind the gate instead of
+        the password page. Returns how many cookies were copied; a public store
+        has none, which is fine.
         """
         try:
             cookies = self._context.cookies()
@@ -385,7 +373,7 @@ class Session:
         return len(params)
 
     def query_links(self, selector: str) -> list[str]:
-        """Absolute hrefs for a selector, in document order."""
+        """Absolute hrefs matching a selector, in document order."""
         try:
             hrefs = self.page.eval_on_selector_all(
                 selector,
@@ -397,5 +385,5 @@ class Session:
 
 
 def _clean(exc: Exception) -> str:
-    """One-line error text. Never carries a value we were given."""
+    """A one-line error message, capped in length."""
     return str(exc).strip().splitlines()[0][:300] if str(exc).strip() else exc.__class__.__name__

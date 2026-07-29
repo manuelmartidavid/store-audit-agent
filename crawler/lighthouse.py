@@ -1,9 +1,8 @@
-"""Lighthouse driver — spec §7.
+"""Runs Lighthouse audits through the Node sidecar (spec §7).
 
-Thin wrapper around the Node sidecar. Everything interesting is in
-``node/lighthouse_runner.mjs``; what lives here is locating Node, pinning
-versions for the manifest, and turning a sidecar crash into recorded partial
-evidence rather than a failed run.
+The actual audit work is in ``node/lighthouse_runner.mjs``. This module finds
+Node, reads the version for the manifest, and records a sidecar crash as failed
+templates instead of failing the whole run.
 """
 
 from __future__ import annotations
@@ -29,6 +28,7 @@ class LighthouseResult:
 
 
 def version(root: Path) -> str | None:
+    """The installed Lighthouse version, or None if it can't be read."""
     package = root / "node_modules/lighthouse/package.json"
     if not package.is_file():
         return None
@@ -39,6 +39,7 @@ def version(root: Path) -> str | None:
 
 
 def available(root: Path) -> bool:
+    """True if both Node and Lighthouse are installed."""
     return bool(shutil.which("node")) and (root / "node_modules/lighthouse").is_dir()
 
 
@@ -51,14 +52,10 @@ def run(
 ) -> LighthouseResult:
     """Audit each (template, url) against the browser listening on `port`.
 
-    The crawl runs in its own isolated Playwright context, but Lighthouse opens
-    its tabs in the browser's *default* context — a separate cookie jar. The gate
-    session reaches Lighthouse only because the caller mirrors the crawl's
-    cookies into that default context first, via
-    :meth:`crawler.session.Session.mirror_session_to_default`. (A persistent
-    context that fused the two would share the jar directly but deadlocks
-    Lighthouse's second run, so it is deliberately not used — see session.py.)
-    This is the spec §7 shared authenticated session.
+    Invariant: Lighthouse opens tabs in the browser's default context, which
+    has its own cookie jar. The caller must mirror the crawl's cookies there
+    first with :meth:`crawler.session.Session.mirror_session_to_default`, or a
+    gated store will audit the password page.
     """
     if not targets:
         return LighthouseResult(lhrs=[], status={}, version=version(root))
@@ -88,8 +85,7 @@ def run(
             )
             raw = json.loads(out_path.read_text(encoding="utf-8"))
         except Exception as exc:
-            # The whole sidecar died. Every template is failed, and that is what
-            # the manifest will say — no interpolation, no partial credit.
+            # The sidecar died, so every template is failed. No partial credit.
             return LighthouseResult(
                 lhrs=[],
                 status={template: "failed" for template, _ in targets},
@@ -103,11 +99,8 @@ def run(
 def assemble(raw: list[dict[str, Any]], detected_version: str | None) -> LighthouseResult:
     """Turn the sidecar's per-template results into a LighthouseResult.
 
-    Pure and browser-free so the failure-classification path — the one that
-    quietly recorded four errored audits as ``ok`` — is unit-testable. Only
-    genuinely successful runs contribute an LHR; an ``ok: false`` entry (a load
-    error the sidecar surfaced) is a failed template, recorded in the manifest
-    and kept out of lighthouse.json rather than interpolated (spec §7).
+    Only successful audits contribute an LHR; anything else is marked failed and
+    kept out of lighthouse.json (spec §7).
     """
     lhrs: list[dict[str, Any]] = []
     status: dict[str, str] = {}
@@ -127,6 +120,7 @@ def assemble(raw: list[dict[str, Any]], detected_version: str | None) -> Lightho
 
 
 def _short(exc: Exception) -> str:
+    """A one-line, length-capped summary of an exception."""
     if isinstance(exc, subprocess.CalledProcessError):
         tail = (exc.stderr or b"").decode("utf-8", "replace").strip().splitlines()
         return (tail[-1] if tail else f"node exited {exc.returncode}")[:300]

@@ -1,11 +1,10 @@
-"""manifest.yaml — spec §8.
+"""Writes manifest.yaml, the provenance record for one capture (spec §8).
 
-Provenance. Every eval run records this manifest's hash alongside prompt and
-rubric versions; a green run without all three pinned is not a result.
+Written by hand rather than with a YAML library because the exact byte layout
+is part of what gets hashed.
 
-Emitted by hand rather than through a YAML library, for two reasons: the byte
-layout is part of what gets hashed, and adding a dependency to write eleven lines
-of provenance is a poor trade.
+Invariant: an eval run only counts if it pins this manifest's hash along with
+the prompt and rubric versions.
 """
 
 from __future__ import annotations
@@ -33,6 +32,7 @@ class Manifest:
     throttling: str = THROTTLING_PROFILE
 
     def to_yaml(self) -> str:
+        """Render the manifest as YAML text."""
         lines = [
             f"schema: {SCHEMA_MANIFEST}",
             f"captured_at: {self.captured_at}",
@@ -50,16 +50,14 @@ class Manifest:
             crawl = entry.get("crawl", "error")
             lighthouse = entry.get("lighthouse", "skipped")
             axe = entry.get("axe", "skipped")
-            # Quoted: bare `404:` is an integer key to every YAML parser, and a
-            # consumer doing manifest["templates"]["404"] would get a KeyError
-            # against a file that looks correct.
+            # Quoted because a bare `404:` parses as an integer key in YAML.
             lines.append(
                 f'  "{template}": {{ crawl: {crawl}, lighthouse: {lighthouse}, axe: {axe} }}'
             )
         return "\n".join(lines) + "\n"
 
     def write(self, path: Path) -> str:
-        """Write the manifest and return its sha256 — the thing eval runs pin."""
+        """Write the manifest to `path` and return its sha256."""
         body = self.to_yaml()
         path.write_text(body, encoding="utf-8", newline="\n")
         return hashlib.sha256(body.encode("utf-8")).hexdigest()

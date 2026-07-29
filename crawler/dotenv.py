@@ -1,16 +1,13 @@
-"""Minimal .env loader.
+"""Minimal .env loader that copies KEY=value lines into os.environ.
 
-The storefront password lives in a gitignored .env (sabotage-spec §gate), but the
-crawler reads os.environ — so something has to bridge the two. A real dependency
-(python-dotenv) is overkill for `KEY=value` lines, and the password must never be
-logged, so a tiny in-house parser that never echoes a value is the safer choice.
+Rules:
+- `KEY=value`, one per line. `export KEY=value` is allowed.
+- Blank lines and `#` comments are skipped. A `#` inside a value is kept.
+- Surrounding quotes are stripped; nothing inside is expanded.
+- A variable already set in the real environment wins over the file.
 
-Rules, deliberately boring:
-- `KEY=value`, one per line. `export KEY=value` is tolerated.
-- `#` comments and blank lines ignored. A `#` inside a value is kept.
-- Surrounding single/double quotes are stripped; nothing inside is expanded.
-- **A value already present in the real environment always wins** — an exported
-  var or a `--password-env` pointing at a live var is never clobbered by the file.
+Invariant: never log or echo a loaded value — this carries the storefront
+password.
 """
 
 from __future__ import annotations
@@ -22,8 +19,7 @@ from pathlib import Path
 def load(path: Path | str = ".env", *, override: bool = False) -> list[str]:
     """Load KEY=value pairs from `path` into os.environ.
 
-    Returns the names of the keys applied (never the values). Missing file is not
-    an error — a public store has no .env and that is fine.
+    Returns the key names applied, never the values. A missing file is fine.
     """
     file = Path(path)
     if not file.is_file():

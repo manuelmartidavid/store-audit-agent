@@ -5,36 +5,31 @@
     python planting/measure.py <url> --runs 5 --expect-cls-min 0.25
     python planting/measure.py <url> --no-password
 
-Runs Lighthouse against ONE url through the same machinery as a full capture —
-same Session (politeness, storefront gate, cookie mirroring), same Node sidecar,
-same throttling profile — and prints the three numbers the sabotage spec aims
-at: mobile LCP, CLS, and the performance score, with their rubric threshold
-sides. Exists so the P-01/P-02/P-03 aim-adjust loop costs one page load per
-iteration instead of a full six-template crawl.
+Runs Lighthouse against one url through the same machinery as a full capture —
+same Session, same Node sidecar, same throttling profile — and prints mobile
+LCP, CLS and the performance score with their rubric threshold sides. Exists so
+the aim-adjust loop costs one page load instead of a six-template crawl.
 
-Instrument parity with the crawler is structural, not asserted: both callers go
-through crawler.lighthouse.run(), which spawns node/lighthouse_runner.mjs with
-only (port, targets, out). There is no config parameter through which a probe
-and a capture could diverge. Change the .mjs and both move together.
+Both this and the crawler go through crawler.lighthouse.run(), which spawns the
+sidecar with only (port, targets, out), so there's no setting through which a
+probe and a capture could drift apart.
 
-Multi-run is the point, not a nicety. A single LCP reading wanders by more than
-the headroom P-02 has against the 4.0s boundary, so `--runs` reports median and
-full spread, and an --expect-* assertion passes only if EVERY run lands on the
-required side. A median on the right side with a spread that crosses the
-boundary is a defect that has not landed.
+Invariant: keep `--runs` multi-run. A single LCP reading wanders by more than
+the headroom against the 4.0s boundary, so an --expect-* assertion passes only
+when every run lands on the required side — a good median with a spread across
+the boundary is a defect that hasn't landed.
 
-Each run gets its own browser, and therefore a cold HTTP cache. Reusing one
-browser makes run 2 onward read the heavy asset back out of cache, which reads
-as an enormous spread and is not a measurement of anything. The gate is opened
-once per run as a result; that is the price of runs that mean the same thing.
+Invariant: each run needs its own browser, for a cold HTTP cache. Reuse one and
+run 2 onward reads the heavy asset back out of cache, which looks like an
+enormous spread and measures nothing. Re-opening the gate each run is the
+price.
 
-This is a planting aid, not a capture tool. It writes nothing to fixtures/;
-the frozen fixture from `python -m crawler` remains the only source of labels
-(sabotage-spec: "you do not get to declare metric values" — this script only
-tells you when to stop adjusting and re-capture).
+A planting aid, not a capture tool: it writes nothing to fixtures/, and the
+frozen fixture from `python -m crawler` stays the only source of labels. This
+only tells you when to stop adjusting and re-capture.
 
-Password comes from TSCC_STOREFRONT_PASSWORD (or --password-env NAME) via .env,
-same as the crawler. The value is never printed and nothing here writes files.
+The password comes from TSCC_STOREFRONT_PASSWORD (or --password-env NAME) via
+.env, same as the crawler, and is never printed.
 
 Exit codes: 0 = measured, expectations met (or none given) · 1 = operational
 failure (gate blocked, every run failed, gate leak) · 2 = measured cleanly but
@@ -80,11 +75,10 @@ class Sample:
 class SampleRun:
     """The outcome of sampling one URL N times.
 
-    Separated from `main()` so a caller can have the numbers without also
-    inheriting the CLI's exit-code semantics. `screen_candidate.py` needs
-    "did LCP stay under 4.0s" — the opposite assertion direction from
-    `--expect-cls-min`, which exists to confirm a planted defect EXCEEDS a
-    threshold. One measurement path, two verdict layers.
+    Kept apart from `main()` so a caller can get the numbers without the CLI's
+    exit codes. `screen_candidate.py` asks whether LCP stayed *under* a
+    threshold, the opposite direction from `--expect-cls-min`, which confirms a
+    planted defect exceeds one. One measurement path, two verdict layers.
     """
 
     samples: list["Sample"]
@@ -99,11 +93,11 @@ def _origin(url: str) -> str:
 
 
 def _is_gate_url(url: str) -> bool:
-    """True if a Lighthouse run actually landed on the storefront password page.
+    """True if a Lighthouse run landed on the storefront password page.
 
-    MNC-004: real Lighthouse numbers about a page that isn't the store are worse
-    than no numbers, because they look valid. If the mirrored gate cookie is
-    cleared between runs this is the only thing that catches it.
+    Invariant: keep this check. Real numbers about a page that isn't the store
+    are worse than no numbers because they look valid, and if the mirrored gate
+    cookie gets cleared between runs nothing else catches it.
     """
     path = urlparse(url or "").path.rstrip("/")
     return path.endswith("/password") or path == "/password"
@@ -126,10 +120,9 @@ def _side(value: float | None, kind: str) -> str:
 def _lcp_selector(audits: dict) -> str | None:
     """Pull the LCP element selector out of either LHR detail shape.
 
-    Newer Lighthouse nests a table inside a list (element table + phase table);
-    older versions put the node table at the top level. Try both rather than
-    silently printing nothing, because "is the LCP element the image I planted?"
-    is the question this script exists to answer.
+    Newer Lighthouse nests a table inside a list; older versions put the node
+    table at the top level. Both are tried rather than printing nothing, since
+    "is the LCP element the image I planted?" is the whole question here.
     """
     details = (audits.get("largest-contentful-paint-element") or {}).get("details") or {}
     for item in details.get("items") or []:
@@ -147,9 +140,8 @@ def _lcp_selector(audits: dict) -> str | None:
 def _lcp_phases(audits: dict) -> dict | None:
     """The LCP phase table (TTFB / load delay / load time / render delay).
 
-    Load time is the transfer of the LCP resource itself - the number the
-    image-weight bisection actually steers. Everything else is overhead the
-    asset cannot change.
+    Load time is the transfer of the LCP resource itself — the one number the
+    image-weight bisection steers. The rest is overhead the asset can't change.
     """
     details = (audits.get("largest-contentful-paint-element") or {}).get("details") or {}
     for item in details.get("items") or []:
@@ -169,7 +161,7 @@ def _image_transfers(audits: dict, top: int = 3) -> list:
     """Largest image responses: (url, wire bytes, decoded bytes, mime).
 
     Wire vs decoded is the CDN-transcode tell: a 1.9 MB PNG arriving as a
-    300 KB webp means the wire - not the upload - is what LCP is paying for.
+    300 KB webp means LCP is paying for the wire, not the upload.
     """
     details = (audits.get("network-requests") or {}).get("details") or {}
     rows = []
@@ -264,11 +256,10 @@ def sample_url(url: str, *, runs: int = 1, password: str | None = None,
                echo: bool = True) -> SampleRun:
     """Measure one URL `runs` times, one cold browser per run.
 
-    `echo` prints the instrument banner and per-run block exactly as the CLI
-    always has; a caller wanting only the numbers passes False. Everything
-    about HOW the measurement is taken — one browser per run, re-mirroring the
-    gate cookie, refusing to measure a /password landing — is unchanged and
-    stays the single implementation.
+    `echo` prints the instrument banner and per-run block as the CLI does; a
+    caller wanting only the numbers passes False. How the measurement is taken
+    — one browser per run, re-mirroring the gate cookie, refusing to measure a
+    /password landing — is the same either way.
     """
     node_root = node_root or Path(__file__).resolve().parents[1]
     origin = _origin(url)
@@ -278,21 +269,16 @@ def sample_url(url: str, *, runs: int = 1, password: str | None = None,
     announced = False
 
     for i in range(runs):
-        # ONE BROWSER PER RUN. The sidecar audits with disableStorageReset so the
-        # mirrored gate cookie survives (spec section 7) - and a browser kept
-        # across runs therefore keeps its HTTP cache too. Run 1 pays for the
-        # assets, every run after it reads them back warm, and the result looks
-        # like variance while being nothing of the sort: 13.38s then 1.50s then
-        # 1.50s is one measurement and two cache hits. You cannot aim an image
-        # at a 3.0-3.8s window from that.
+        # Invariant: one browser per run, always. The sidecar keeps storage so
+        # the gate cookie survives, which means a reused browser keeps its HTTP
+        # cache too - run 1 pays for the assets and the rest read them back
+        # warm. 13.38s then 1.50s then 1.50s is one measurement and two cache
+        # hits, and you can't aim an image at a window from that.
         #
-        # A new browser is a new profile and therefore a cold cache. The two
-        # cheaper fixes do not work here: Network.clearBrowserCache cannot reach
-        # the default context where Lighthouse opens its tabs (contexts have
-        # separate caches, and Playwright exposes no page there), and letting
-        # Lighthouse reset storage would clear the gate cookie along with the
-        # cache and drop every run onto /password. The cost is one gate
-        # navigation per run.
+        # A new browser means a new profile and a cold cache. Neither cheaper
+        # fix works: clearBrowserCache can't reach the default context where
+        # Lighthouse opens its tabs, and letting Lighthouse reset storage would
+        # take the gate cookie with it and drop every run onto /password.
         with Session(origin, debug_port=debug_port) as session:
             gate = session.open_gate(password)
             if gate.gate == "blocked":
@@ -308,11 +294,10 @@ def sample_url(url: str, *, runs: int = 1, password: str | None = None,
                 print(f"target: {url}\n")
                 announced = True
 
-            # Re-mirror every run. Lighthouse resets origin storage before a
-            # navigation run, which can clear the storefront_digest cookie the
-            # crawl context established - and then the run silently audits
-            # /password instead of the store (MNC-004). Idempotent, and free on
-            # a public store, which mirrors zero cookies.
+            # Re-mirror every run: Lighthouse resets origin storage before a
+            # navigation, which can clear the gate cookie and leave the run
+            # silently auditing /password. Idempotent, and free on a public
+            # store, which has no cookies to mirror.
             mirrored = session.mirror_session_to_default()
             if gate.gate == "password_supplied" and not mirrored:
                 if echo:

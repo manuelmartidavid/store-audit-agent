@@ -1,24 +1,19 @@
-"""Distillation — spec §5.
+"""Shrinks a raw DOM tree down to what the triager needs to read (spec §5).
 
-Raw DOM is ~500KB per store, mostly script bodies and SVG paths no finding will
-ever cite. The triager reasons over the output of this module, so distillation is
-part of the prompt architecture and its rules are conservative: **when in doubt,
-keep.**
+Plain functions over the tree from ``js/dom_walk.js`` — no browser, no I/O, no
+randomness, so the same input always distills to the same bytes.
 
-Pure functions over the raw tree produced by ``js/dom_walk.js``. No browser, no
-I/O, no clock, no randomness — the same raw tree distills to the same bytes every
-time, which is acceptance test §10.6 and the reason fixtures are worth freezing.
+Three steps, in order:
 
-Pipeline, in order:
+1. ``collapse_runs`` — a run of identical siblings keeps its first 5 and the
+   rest become a repeat marker. Runs first, because the keep filter would
+   otherwise remove the wrappers that form the run.
+2. ``keep`` — an element stays if it matches a keep rule or has 2+ surviving
+   children. Plain wrapper chains collapse into their content.
+3. ``build_node`` — filter attributes, pick the text, carry image dimensions.
 
-1. ``collapse_runs``  — sibling runs of identical tag+class collapse after 5,
-   applied to the *raw* tree. It has to happen before the keep filter: a
-   collection grid's product cards are ``li.grid__item`` wrappers, and if the
-   filter elides them first there is no run left to recognise.
-2. ``keep`` / elide   — an element survives if it matches a §5 keep rule or if it
-   is a branching container (≥2 surviving children). Linear wrapper chains
-   collapse into their content; structure that actually groups things stays.
-3. ``build_node``     — attribute filtering, text selection, dimension carry.
+Invariant: when in doubt, keep. The triager can only cite what survives this
+step.
 """
 
 from __future__ import annotations
@@ -45,12 +40,11 @@ MEDIA_TAGS = frozenset(
 )
 MICRODATA_ATTRS = frozenset({"itemscope", "itemtype", "itemprop", "itemid"})
 
-# Elements whose text is an accessible name or a label, not prose. Their text is
-# emitted regardless of length; everything else needs the §5 20-char threshold.
+# Elements whose text is a label or an accessible name. Their text is kept at any
+# length; everything else needs 20+ characters.
 NAME_CARRYING_TAGS = INTERACTIVE_TAGS | HEADING_TAGS | LANDMARK_TAGS | HEAD_TAGS
 
-# Attributes that make an arbitrary element interactive. This clause is what
-# catches C-01's div-button, so it errs wide.
+# Attributes that make any element interactive. Deliberately wide.
 _CLICK_EVENTS = frozenset(
     {"click", "keydown", "keyup", "keypress", "mousedown", "mouseup", "submit",
      "change", "input", "focus", "blur", "touchstart", "touchend", "pointerdown",
@@ -59,12 +53,10 @@ _CLICK_EVENTS = frozenset(
 _CLICK_ATTR_PREFIXES = ("@", "v-on:", "x-on:", "wire:", "hx-on", "ng-click", "data-action")
 _CLICK_ATTR_NAMES = frozenset({"tabindex", "role", "data-action", "data-click", "ng-click"})
 
-# A div-button is usually wired by external JS (getElementById + addEventListener),
-# so it carries NO inline handler — only a data-* hook and/or a button-ish class.
-# Golden entry 02's C-01 (`<div class="btn ... add-btn" data-add-to-cart>`) is
-# exactly this, and it was dropped until these two signals were added. A JS-wired
-# div-button is invisible to axe too, so if distillation misses it the antipattern
-# is undetectable by construction. This errs wide by design.
+# A div dressed as a button is usually wired up by external JS, so it has no
+# inline handler — just a data-* hook and/or a button-ish class.
+# Invariant: keep both signals wide. axe can't see a JS-wired div-button
+# either, so if distillation drops it nothing downstream can find it.
 _DATA_HOOK_KEYWORDS = (
     "add", "cart", "toggle", "action", "click", "submit", "open", "close",
     "dismiss", "trigger", "tab", "modal", "dropdown", "menu", "accordion",
@@ -75,22 +67,18 @@ _CONTROL_CLASS_SUBSTRINGS = ("btn", "button", "cta")
 
 
 def _has_control_class(attrs: dict) -> bool:
-    """True when an element is *styled* as a control (button-like class).
-
-    Catches a div/span dressed as a button even when it carries no interactive
-    attribute at all — the model then judges whether it is a real, operable
-    control or an inaccessible impostor (C-01)."""
+    """True when an element has a button-like class, even with no other signal."""
     classes = (attrs.get("class") or "").lower()
     return any(sub in classes for sub in _CONTROL_CLASS_SUBSTRINGS)
 
-# Reference-only carriers: src/href plus loading semantics, never bodies (§5).
+# For script and link we keep the reference and loading attributes, never bodies.
 _SCRIPT_ATTRS = ("id", "src", "type", "async", "defer", "nomodule", "crossorigin", "integrity")
 _LINK_ATTRS = (
     "id", "rel", "href", "type", "as", "media", "sizes", "hreflang", "crossorigin", "title",
 )
 
-# Runs of these never collapse: a head full of <meta> is not a repeated grid, and
-# collapsing it would destroy exactly the evidence C-02 and S-01 ride on.
+# These never collapse: a head full of <meta> is not a repeated grid, and
+# collapsing it would throw away evidence.
 _NEVER_COLLAPSE = frozenset({"html", "head", "body", "title", "meta", "link", "script", "style", "base"})
 
 
@@ -109,7 +97,7 @@ def is_click_attr(name: str) -> bool:
 
 
 def keep(raw: Raw) -> bool:
-    """Does this element match a §5 keep rule in its own right?"""
+    """True if this element is worth keeping on its own merits (spec §5)."""
     tag = raw.get("tag", "")
     attrs: dict[str, str] = raw.get("attrs") or {}
 
@@ -117,7 +105,7 @@ def keep(raw: Raw) -> bool:
         return True
     if tag in HEADING_TAGS or tag in INTERACTIVE_TAGS or tag in MEDIA_TAGS:
         return True
-    if tag == "svg":  # element kept with its role/aria attrs; internals counted
+    if tag == "svg":  # keep the element and its aria attrs, drop the internals
         return True
     if tag == "script":
         return bool(attrs.get("src")) or bool(raw.get("text"))
@@ -129,8 +117,8 @@ def keep(raw: Raw) -> bool:
         return True
     if _has_control_class(attrs):
         return True
-    # Prose. V-01/V-02/V-03 and the X-01 injection ride in on this clause; drop
-    # it and the model-only findings become undetectable by construction.
+    # Invariant: this prose rule is how page copy reaches the triager. Removing
+    # it makes every copy-based finding impossible to detect.
     if len(raw.get("text") or "") > TEXT_KEEP_MIN_CHARS:
         return True
     return False
@@ -139,18 +127,18 @@ def keep(raw: Raw) -> bool:
 # --- repeat collapse (spec §5) ---------------------------------------------
 
 def _run_key(raw: Raw) -> tuple[str, tuple[str, ...]]:
+    """The tag+class key that decides whether two siblings are the same shape."""
     attrs: dict[str, str] = raw.get("attrs") or {}
     classes = tuple(sorted((attrs.get("class") or "").split()))
     return raw.get("tag", ""), classes
 
 
 def collapse_runs(children: list[Raw]) -> list[Raw]:
-    """Collapse consecutive siblings of identical tag+class after 5 instances.
+    """Keep the first 5 of a run of identical siblings, then a repeat marker.
 
-    Emits ``{"repeat": {"count": N, "sample": <raw>}}`` where ``count`` is the
-    length of the whole run — the catalog-behaviour signal — and ``sample`` is
-    the first collapsed element, so the marker shows what the 45 unseen cards
-    look like rather than repeating one of the 5 already present.
+    Runs longer than 5 are collapsed. The marker carries the full run length
+    and the 6th element as a sample, so it shows what the hidden items look
+    like rather than repeating one already present.
     """
     out: list[Raw] = []
     i = 0
@@ -173,6 +161,7 @@ def collapse_runs(children: list[Raw]) -> list[Raw]:
 # --- node construction ------------------------------------------------------
 
 def _filter_attrs(tag: str, attrs: dict[str, str]) -> dict[str, str]:
+    """Keep the attributes worth emitting for this tag, sorted by name."""
     if tag == "script":
         picked = {k: attrs[k] for k in _SCRIPT_ATTRS if k in attrs}
     elif tag == "link":
@@ -183,16 +172,16 @@ def _filter_attrs(tag: str, attrs: dict[str, str]) -> dict[str, str]:
 
 
 def _text_for(raw: Raw) -> str | None:
+    """The text to emit for an element, or None if it has none worth keeping."""
     tag = raw.get("tag", "")
     own = raw.get("text") or ""
     attrs: dict[str, str] = raw.get("attrs") or {}
 
     if tag == "script":
-        return own or None  # JSON-LD verbatim, already clamped by the walker
+        return own or None  # JSON-LD verbatim, already length-capped by the walker
 
-    # An accessible name commonly lives in a child element: <button><span>Add to
-    # cart</span></button>. Own text is preferred; descendant text is the
-    # fallback, and only for elements where a name can legitimately live.
+    # A button's label often sits in a child: <button><span>Add to cart</span>.
+    # Prefer the element's own text, fall back to descendant text.
     interactive = (
         tag in NAME_CARRYING_TAGS
         or "role" in attrs
@@ -207,12 +196,13 @@ def _text_for(raw: Raw) -> str | None:
         return None
     if len(own) > TEXT_KEEP_MIN_CHARS or interactive:
         return own
-    # Short prose on an element kept for structural reasons: cheap, and dropping
-    # it loses price strings, badges and stock labels. Keep.
+    # Short text is cheap to keep, and dropping it loses prices, badges, and
+    # stock labels.
     return own
 
 
 def build_node(raw: Raw, children: list[Node]) -> Node:
+    """Build one distilled node from a raw element and its distilled children."""
     tag = raw.get("tag", "")
     node: Node = {"tag": tag, "attrs": _filter_attrs(tag, raw.get("attrs") or {})}
     text = _text_for(raw)
@@ -228,6 +218,7 @@ def build_node(raw: Raw, children: list[Node]) -> Node:
 # --- the walk ---------------------------------------------------------------
 
 def _distill_many(children: list[Raw]) -> list[Node]:
+    """Collapse repeated siblings, then distill each one."""
     out: list[Node] = []
     for child in collapse_runs(children):
         out.extend(_distill_one(child))
@@ -235,25 +226,22 @@ def _distill_many(children: list[Raw]) -> list[Node]:
 
 
 def _distill_one(raw: Raw) -> list[Node]:
+    """Distill one element into zero or more nodes."""
     marker = raw.get("__repeat__")
     if marker is not None:
         sample = _distill_one(marker["sample"])
         return [{"repeat": {"count": marker["count"], "sample": sample[0] if sample else None}}]
 
     children = _distill_many(raw.get("children") or [])
-    # Kept in its own right, or a branching container worth preserving. The
-    # second clause is what keeps product cards intact while linear wrapper
-    # chains (div > div > div > h1) collapse to the h1.
+    # Worth keeping on its own, or a container that groups things. The second
+    # part keeps product cards intact while div > div > h1 collapses to the h1.
     if keep(raw) or len(children) >= 2:
         return [build_node(raw, children)]
     return children
 
 
 def distill(raw_root: Raw) -> Node:
-    """Distill a raw document tree into the §5 node structure.
-
-    Deterministic: same input, same output, byte for byte.
-    """
+    """Distill a whole raw document tree. Same input always gives same output."""
     nodes = _distill_one(raw_root)
     if not nodes:
         return {"tag": raw_root.get("tag", "html"), "attrs": {}}

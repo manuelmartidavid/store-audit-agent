@@ -4,28 +4,24 @@
     python planting/make_hero_p01.py --target-mb 4         # heavier, slower LCP
     python planting/make_hero_p01.py --width 2400          # lighter than the floor
 
-P-01 aims home LCP past 4.0s (target >= 5s) by shipping an unoptimised
-full-resolution hero. The defect is *weight*, not appearance: the store must
-still look like a normal store, or a human reviewing the golden entry reads the
-page as broken rather than slow.
+P-01 pushes home LCP past 4.0s by shipping an unoptimised full-resolution hero.
+The defect is *weight*, not appearance — the store still has to look like a
+normal store, or a reviewer reads the page as broken rather than slow.
 
-Two constraints come from the baseline capture (fixtures/02, slide 1):
+The baseline capture fixes two things: declared dimensions 800x533 (aspect
+1.500938) and alt "Shop the finest trading cards", loading="eager".
 
-  declared dimensions 800x533  ->  aspect 1.500938
-  alt "Shop the finest trading cards", loading="eager"
+Invariant: keep the aspect ratio exact (4x -> 3200x2132). Changing it would
+inject layout shift on home, and CLS there is supposed to stay at baseline — a
+different defect owns that metric on the collection template.
 
-The output preserves that aspect EXACTLY (4x -> 3200x2132) so replacing the
-asset cannot move layout. P-03 owns CLS on the collection template; if this
-image changed the hero's aspect ratio it would inject shift on home too and
-contaminate a metric that is supposed to stay at baseline.
-
-Size is reached by bisecting sparse film grain against the encoded byte count —
-grain is what actually defeats PNG's DEFLATE, the same reason a real merchant's
+Size is reached by bisecting sparse film grain against the encoded byte count;
+grain is what defeats PNG's DEFLATE, the same reason a real merchant's
 photo-exported-as-PNG is huge. The floor at a given width comes from rendering
-the plate at reduced detail and upscaling; below that floor, drop --width.
+at reduced detail and upscaling — below that floor, drop --width.
 
-This script sizes the asset. It does not decide whether P-01 landed:
-run planting/measure.py after uploading, and let the recaptured fixture label.
+Sizes the asset only. Run planting/measure.py after uploading to find out
+whether P-01 landed, and let the recaptured fixture label it.
 """
 
 from __future__ import annotations
@@ -120,11 +116,11 @@ def _card(w: int, h: int, phase: float, angle: float) -> Image.Image:
 def build_artwork(w: int, h: int, detail: float) -> Image.Image:
     """Render at `detail` x the output size, then upscale to (w, h).
 
-    Merchants who ship 3000px heroes very often upscaled a smaller original, and
-    an upscaled plate carries far less high-frequency content — which is the only
-    lever that moves PNG size *downward* at fixed dimensions. Rendering natively
-    at 3200px floors the file around 5.5 MB (~27s of slow-4G transfer), which
-    overshoots P-01's aim so far the page reads as broken rather than slow.
+    Merchants shipping 3000px heroes usually upscaled a smaller original, and an
+    upscaled plate carries much less high-frequency content — the only lever
+    that moves PNG size *down* at fixed dimensions. Rendering natively at 3200px
+    floors the file near 5.5 MB, which overshoots so far the page reads as
+    broken rather than slow.
     """
     bw = max(320, int(w * detail))
     bh = round(bw * h / w)
@@ -181,11 +177,11 @@ GRAIN_SIGMA = 6.0
 def grain(base: np.ndarray, density: float, seed: int = 7) -> np.ndarray:
     """Perturb `density` of pixels, leaving the rest byte-identical.
 
-    Amplitude is the wrong knob: Gaussian noise over *every* pixel defeats PNG's
-    row filters all at once, so sigma 0.04 and sigma 0.3 both land near 5.5 MB
-    and the size curve is a step, not a ramp. Sparse grain keeps the untouched
-    pixels perfectly filterable, so encoded size tracks density smoothly and the
-    bisection can actually hit a target.
+    Invariant: vary density, not amplitude. Noise over *every* pixel defeats
+    PNG's row filters all at once, so any sigma lands near 5.5 MB and the size
+    curve is a step rather than a ramp. Sparse grain leaves the untouched
+    pixels filterable, so size tracks density smoothly and the bisection can
+    hit a target.
     """
     if density <= 0:
         return base.astype(np.uint8)

@@ -1,11 +1,6 @@
-"""crawl.json conformance — spec §4 and §6.
+"""Checks that a crawl.json has the shape everything downstream expects (spec §4, §6).
 
-The interface is frozen on acceptance, so it is worth being able to say
-mechanically whether a file honours it. The eval matcher, the triager harness and
-the report renderer all code against §4; this is the shared assertion that a
-fixture is actually shaped the way they assume.
-
-Returns a list of human-readable problems. Empty list means conformant.
+Every check returns a list of readable problems; an empty list means it's valid.
 """
 
 from __future__ import annotations
@@ -24,6 +19,7 @@ DROPPED_KEYS = {"script_bodies", "style_blocks", "svg_internals", "comment_nodes
 
 
 def validate_crawl(crawl: dict[str, Any]) -> list[str]:
+    """Check a whole crawl.json and return everything wrong with it."""
     problems: list[str] = []
     add = problems.append
 
@@ -49,8 +45,8 @@ def validate_crawl(crawl: dict[str, Any]) -> list[str]:
             add("status 'blocked' requires zero captured templates")
         problems += _validate_block(crawl.get("block"))
         fingerprint = crawl.get("fingerprint") or {}
-        # MNC-003 at the data layer: a store that was not observed has no
-        # fingerprint, however recognisable the page that blocked us was.
+        # A store we never got into has no fingerprint, no matter how
+        # recognisable the page that blocked us looked (MNC-003).
         if fingerprint.get("platform") != "unknown":
             add("a blocked crawl must report platform 'unknown'")
         if fingerprint.get("evidence") or fingerprint.get("theme") or fingerprint.get("apps"):
@@ -68,6 +64,7 @@ def validate_crawl(crawl: dict[str, Any]) -> list[str]:
 
 
 def _validate_fingerprint(fingerprint: Any) -> list[str]:
+    """Check the fingerprint block: platform, evidence, theme, and apps."""
     if not isinstance(fingerprint, dict):
         return ["fingerprint is required"]
     problems = []
@@ -89,6 +86,7 @@ def _validate_fingerprint(fingerprint: Any) -> list[str]:
 
 
 def _validate_block(block: Any) -> list[str]:
+    """Check the block object a blocked crawl must carry."""
     if not isinstance(block, dict):
         return ["a blocked crawl must carry a block object"]
     problems = []
@@ -102,6 +100,7 @@ def _validate_block(block: Any) -> list[str]:
 
 
 def _validate_templates(crawl: dict[str, Any]) -> list[str]:
+    """Check that all six template entries are present and well formed."""
     templates = crawl.get("templates")
     if not isinstance(templates, dict):
         return ["templates is required"]
@@ -139,6 +138,7 @@ def _validate_templates(crawl: dict[str, Any]) -> list[str]:
 
 
 def _validate_node(node: Any, path: str, depth: int = 0) -> list[str]:
+    """Check one distilled node and everything under it."""
     if node is None or depth > 200:
         return []
     if not isinstance(node, dict):

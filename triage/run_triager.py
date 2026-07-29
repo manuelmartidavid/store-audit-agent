@@ -1,58 +1,21 @@
-"""Run a rendered finding-triager prompt through the API and record the run.
+"""Runs a rendered finding-triager prompt and saves the output with its run details.
 
-Why this exists: the first 21 recorded runs were executed as agent sessions.
-Their JSON carries `schema` and `findings` and nothing else — no model, no
-parameters, no timestamp — so "3 of 3 clear every bar" cannot be re-run and
-N=3 with an unrecorded sampler is not a rate.
+The record wraps the model's output rather than merging into it, so the model's
+JSON stays byte-exact and the harness metadata sits beside it.
 
-The run record wraps the model's output rather than merging into it. The
-model's JSON is evidence and stays byte-exact; the harness's metadata sits
-beside it. `eval_triage.load_run_output` reads both this shape and the bare
-shape the 21 recorded runs use.
+Worth knowing about the model:
+  * claude-opus-5 rejects temperature / top_p / top_k, so there's no sampler to
+    pin. Effort and thinking are what vary, and both are recorded.
+  * Thinking is on by default and `max_tokens` covers thinking plus response
+    together, hence the generous default.
+  * A rendered entry-02 prompt is about 315k tokens against a 1M context window,
+    so it fits with room to spare.
+  * The request streams because the SDK refuses a non-streaming call it expects
+    to run past its 10-minute timeout.
 
-`run_meta` deliberately does not carry a pack version or a fixture manifest
-hash: `eval_triage.provenance()` already computes and verifies both of those
-(the pack version against the pack file's own claim, the fixture hash against
-the label's pin), and records how — `pack_pin: "matched"` vs `"asserted"`. A
-second, independently-sourced copy here, with nothing reconciling the two,
-would reopen the exact defect that provenance-verification work closed: a pin
-nobody checks is a comment. `pack_sha256` stays — it is a digest of the actual
-bytes fed to the model, which is new information, not a duplicate claim.
-
-Model notes, because they are load-bearing for reproducibility:
-  * `claude-opus-5` **rejects** temperature / top_p / top_k (HTTP 400). There is
-    no sampler knob to pin; what varies run to run is effort and thinking, and
-    both are recorded.
-  * Thinking is ON by default on this model, and `max_tokens` caps thinking plus
-    response together — hence the generous default.
-  * The rendered prompt for entry 02 is **315,094 tokens**. That is measured, not
-    estimated: it is the model's own count for the one recorded run
-    (`runs/v1.0-cli-run1.json`, `run_meta.usage.raw.cache_creation_input_tokens`).
-    This docstring used to say ~145k, which came from a 4-chars-per-token prose
-    rule that is 2.16x wrong for a dense-JSON pack. The estimator now carries a
-    ratio calibrated on that measurement — `triage/token_estimate.py`.
-  * **It fits, and the reason is the model, not the backend.** `claude-opus-5`
-    has a 1M-token context window, and 1M is both its default and its maximum:
-    there is no separate 1M model id and no beta header to send (claude-api
-    skill — `shared/models.md`: "1M context window (default and maximum)";
-    `shared/model-migration.md` → Migrating to Claude Opus 5: "1M context
-    (default, no beta header)"). The CLI reporting `contextWindow: 1000000` on
-    the live run was this same model stating this same fact. So both `--via api`
-    and `--via claude-cli` are pointed at a 1M model here, and a 315k prompt is
-    at 31% of the window on either path.
-  * The request streams because of the clock, not the window. The SDK's default
-    request timeout is 10 minutes and it refuses a non-streaming call it expects
-    to exceed that. Nothing else about the documented call changes at this size:
-    the skill establishes no long-context price tier, header, or parameter that
-    engages above 200k input on this model. What it does not settle is left
-    unsaid here rather than guessed at, because a confident wrong sentence in
-    this docstring is paid for in Console credits.
-  * `main()` therefore preflights before it spends anything: it compares the
-    estimated prompt size against the target model's recorded window and exits
-    if the prompt is clearly over. The estimate is an estimate, so the guard
-    warns rather than refuses near the line, and `--ignore-context-window`
-    overrides it outright — an operator who knows better than the estimator
-    should not be held up by it.
+Invariant: main() preflights the prompt size before spending anything. Keep it
+a warning near the line rather than a refusal — the size is only an estimate,
+and `--ignore-context-window` is the override.
 
 Usage:
     python triage/run_triager.py runs/v1.0.rendered.md \\
@@ -76,10 +39,7 @@ from crawler import dotenv  # noqa: E402
 from triage import token_estimate  # noqa: E402
 from triage import model_runner  # noqa: E402
 
-# Re-exported: tests/test_run_triager.py imports these from here, and this
-# module's own docstring/CLI cite them by these names. `_RUNNER` is
-# deliberately NOT re-exported as a bare name below — see the note next to
-# the import block.
+# Re-exported because tests and this module's CLI refer to them by these names.
 from triage.model_runner import (  # noqa: E402,F401
     CLI_SYSTEM_PROMPT,
     EFFORT,
@@ -94,30 +54,21 @@ from triage.model_runner import (  # noqa: E402,F401
     run_meta,
 )
 
-# `_RUNNER` is deliberately NOT re-exported as a bare name here. It is looked
-# up, by name, inside `model_runner.cli_version` and
-# `model_runner.call_model_via_cli` — both now live in triage/model_runner.py,
-# so that lookup resolves in *that* module's globals, not this one's. Binding
-# a copy of the name here (`from triage.model_runner import _RUNNER`) would
-# give a caller something that looks patchable but silently isn't: patching
-# this module's copy would no longer reach either call site. A test (or an
-# operator) that needs the real seam patches `model_runner._RUNNER` —
-# reachable off this module as `run_triager.model_runner._RUNNER` — which is
-# where it actually lives now.
+# Invariant: don't re-export `_RUNNER` here. It's looked up inside
+# model_runner, so a copy in this module would look patchable but never reach
+# either call site. Patch `model_runner._RUNNER` instead.
 
 
 def main(argv: list[str] | None = None) -> int:
-    # A Windows console defaults to cp1252, which cannot encode the `✓` in the
-    # success line — so a run that had already called the model, written its
-    # record and cost real money died on the print and exited non-zero. The
-    # expensive work was done and the file was on disk; only the report failed.
-    # `errors="replace"` rather than a plain reconfigure: a console that cannot
-    # render a character should degrade, never abort.
+    """CLI entry point: run one triager prompt and write the record."""
+    # Invariant: keep errors="replace". A Windows console can't encode the `✓`
+    # in the success line, and a run that already called the model and wrote
+    # its file used to die on that print after spending real money.
     for stream in (sys.stdout, sys.stderr):
         try:
             stream.reconfigure(encoding="utf-8", errors="replace")
         except (AttributeError, ValueError):
-            pass                                # not a reconfigurable stream
+            pass                                # not a stream we can reconfigure
 
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("rendered", type=Path, help="a rendered prompt from render_prompt.py")
@@ -129,9 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-tokens", type=int, default=None,
                          help="--via api only: caps thinking plus response together "
                               f"(default {MAX_TOKENS}). Rejected with --via claude-cli, "
-                              "where max_tokens is not a controllable knob (see "
-                              "run_meta.comparability) — accepting it there would let a "
-                              "parameter that does nothing look like it did something.")
+                              "where it has no effect.")
     parser.add_argument("--env-file", type=Path, default=Path(".env"))
     parser.add_argument("--via", default="api", choices=["api", "claude-cli"],
                          help="api (default): anthropic SDK, billed to the Console API key. "
@@ -155,12 +104,8 @@ def main(argv: list[str] | None = None) -> int:
     started_at = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
     prompt = args.rendered.read_text(encoding="utf-8")
 
-    # Before anything is spent. Both backends send this same string to the same
-    # model, so both fail the same way if it does not fit — the api path costs
-    # Console credits to find that out and the cli path costs subscription
-    # quota. The check is on the requested model; on the cli path the CLI may
-    # resolve something else, which is exactly why call_model_via_cli reads the
-    # resolved model back out of the response rather than trusting this name.
+    # Check the size before spending anything. Both backends send the same
+    # string, so both fail the same way if it doesn't fit.
     verdict, message = token_estimate.context_preflight(prompt, model=args.model)
     if verdict == "refuse":
         if not args.ignore_context_window:
@@ -176,9 +121,7 @@ def main(argv: list[str] | None = None) -> int:
                 "max_tokens are not controllable knobs on that path (see "
                 "run_meta.comparability). Drop --max-tokens, or use --via api if you "
                 "need to control it.")
-        # Must happen before anything spawns a child — including cli_version()'s
-        # own `claude --version` below — or an absent CLI surfaces as a raw
-        # FileNotFoundError traceback instead of this actionable exit.
+        # Must run before anything spawns a child, including cli_version() below.
         model_runner._require_cli_on_path()
         meta = run_meta(model=args.model, effort=args.effort,
                         rendered_path=args.rendered, pack_path=args.pack,

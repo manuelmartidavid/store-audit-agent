@@ -1,12 +1,7 @@
-"""Secret hygiene — spec §2.
+"""Checks written output for the storefront password before reporting success (spec §2).
 
-"The password value never appears in any output file, log line, or error
-message." That sentence is only worth as much as the check that enforces it, so
-the crawler greps its own output before it is allowed to report success — the
-same check acceptance test §10.2 performs from outside.
-
-A hit is fatal and destructive: the offending fixtures are removed rather than
-left on disk for someone to commit.
+Invariant: a hit is fatal and destructive — the offending files are deleted so
+they can't be committed.
 """
 
 from __future__ import annotations
@@ -17,11 +12,11 @@ from urllib.parse import quote
 
 
 class SecretLeak(RuntimeError):
-    """Raised when a secret is found in written output. The files are gone."""
+    """Raised when a secret is found in written output. The files are deleted."""
 
 
 def _variants(secret: str) -> list[bytes]:
-    """The forms a password can take on its way into a file."""
+    """Every encoding a password might appear in inside a file."""
     forms = {
         secret,
         quote(secret),

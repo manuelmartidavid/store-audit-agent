@@ -1,12 +1,11 @@
-"""Constants that the rest of the crawler codes against.
-
-Anything here that changes the bytes of a fixture is provenance: it belongs in
-manifest.yaml too, or a fixture regression becomes undebuggable six weeks later.
-"""
+"""Constants the rest of the crawler reads."""
 
 from __future__ import annotations
 
 from . import __version__
+
+# Invariant: any value here that changes the bytes of a fixture must also be
+# recorded in manifest.yaml, or fixture regressions become impossible to trace.
 
 # --- conduct (spec §3, brief §5) -------------------------------------------
 # Non-negotiable for stores we don't own.
@@ -23,22 +22,20 @@ NAV_TIMEOUT_MS = 30_000
 SETTLE_TIMEOUT_MS = 5_000  # networkidle is best-effort; never fatal
 
 # --- transient-error retry --------------------------------------------------
-# A store we don't own may throttle us with a 429 or a 5xx that clears on a
-# retry. Retrying these (with backoff, politeness preserved) keeps a transient
-# blip from demoting a template to `error` and the whole crawl to `partial`. A
-# 4xx is never retried — that is a genuine "absent", not a hiccup.
+# Retried with backoff so a temporary blip doesn't mark a template as an error.
+# 4xx is never retried — that means the page really is missing.
 TRANSIENT_RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 MAX_TRANSIENT_RETRIES = 2
 RETRY_BACKOFF_S = 3.0
 
 # --- templates (spec §3) ----------------------------------------------------
-# Order is the discovery order AND the canonical order of every array we emit.
+# Discovery order, and the order of every array we emit.
 TEMPLATES = ("home", "collection", "pdp", "cart", "search", "404")
 
 # --- throttling (spec §7/§8) ------------------------------------------------
-# Name is what manifest.yaml records; the numbers are what the Node sidecar pins.
-# Lighthouse's own mobile default is Slow 4G — pinned explicitly so a Lighthouse
-# default change shows up as a version bump, not a silent fixture drift.
+# The name manifest.yaml records; the Node sidecar pins the actual numbers.
+# Invariant: pinned on purpose — if Lighthouse changes its mobile default, this
+# must show up as a version bump rather than silent fixture drift.
 THROTTLING_PROFILE = "mobile-4g-slow"
 
 # --- distillation (spec §5) -------------------------------------------------
@@ -48,8 +45,10 @@ MAX_DATA_URI_BYTES = 1024
 MAX_TEXT_CHARS = 4000  # per node; guards against a pathological single text node
 
 # --- app fingerprints (spec §4) ---------------------------------------------
-# Detection only. Never causally attributed — see MNC-002. The value is the
-# display name; the key is a substring matched against script/link/img URLs.
+# Key is a substring matched against script/link/img URLs; value is the display
+# name.
+# Invariant: detection only — never claim one of these apps caused a problem
+# (MNC-002).
 APP_SIGNATURES: dict[str, str] = {
     "judge.me": "Judge.me",
     "jdgm": "Judge.me",

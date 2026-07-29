@@ -3,10 +3,8 @@
     python -m crawler --origin https://example.myshopify.com --out fixtures/
     python -m crawler --context evals/golden/02-sabotaged/context.yaml --out fixtures/
 
-The ``--context`` form reads ``store.password_env`` and ``eval.fixtures.source``
-straight out of a golden entry, so capturing entry 02 and entry 05 differs by one
-flag (``--no-password``) rather than by two hand-typed invocations — which is the
-whole design of that pair.
+The ``--context`` form reads the origin and password env var out of a golden
+entry, so two entries of the same store differ by one flag.
 """
 
 from __future__ import annotations
@@ -25,11 +23,9 @@ _SIMPLE_KEY = re.compile(r"^(\s*)([A-Za-z_][\w-]*):\s*(.*?)\s*$")
 
 
 def _read_context(path: Path) -> tuple[str | None, str | None, dict]:
-    """Pull (origin, password_env) out of a golden context.yaml.
+    """Read the origin, password env var, and pinned targets from a context.yaml.
 
-    Uses PyYAML when it is installed and falls back to a two-key line scan when
-    it is not: the crawler should not need a YAML dependency to read two strings,
-    and the `eval:` block is never rendered anywhere, only read here.
+    Uses PyYAML if installed, otherwise falls back to a simple line scan.
     """
     text = path.read_text(encoding="utf-8")
     try:
@@ -60,6 +56,7 @@ def _read_context(path: Path) -> tuple[str | None, str | None, dict]:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line parser."""
     parser = argparse.ArgumentParser(
         prog="python -m crawler",
         description="Capture the deterministic evidence base for one store (specs/crawler.md v0.1).",
@@ -85,11 +82,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _force_utf8_output() -> None:
-    """Never let a console codepage abort a crawl.
+    """Switch stdout and stderr to UTF-8.
 
-    The progress log uses arrows and check marks; a legacy Windows console
-    (cp1252) raises UnicodeEncodeError on the first one and takes the whole run
-    down with it. Reconfigure to UTF-8 with a safe fallback where supported.
+    Invariant: keep this. The progress log uses arrows and check marks, and an
+    older Windows console raises UnicodeEncodeError on the first one and kills
+    the run.
     """
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
@@ -101,12 +98,12 @@ def _force_utf8_output() -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """CLI entry point: parse the arguments and run one crawl."""
     _force_utf8_output()
     args = build_parser().parse_args(argv)
 
     if not args.no_env_file:
-        # Real environment always wins; the file only fills gaps. Names are safe
-        # to print, values never are.
+        # The real environment wins; the file only fills gaps. Print names only.
         loaded = load_dotenv(args.env_file)
         if loaded:
             print(f"· loaded {len(loaded)} var(s) from {args.env_file}: {', '.join(loaded)}")
@@ -152,7 +149,7 @@ def main(argv: list[str] | None = None) -> int:
     except SecretLeak as leak:
         print(f"FATAL: {leak}", file=sys.stderr)
         return 3
-    except Exception as exc:  # noqa: BLE001 — a crawl failure is an operator message
+    except Exception as exc:  # noqa: BLE001 — report the failure, don't traceback
         print(f"FATAL: {exc}", file=sys.stderr)
         return 1
 

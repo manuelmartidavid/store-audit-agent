@@ -1,9 +1,7 @@
-"""Crawl orchestration — the shape of a run, spec §2–§8.
+"""Runs a whole crawl in order: gate, discovery, captures, Lighthouse, output files.
 
-This module owns the order of operations and nothing else: the gate, then
-discovery, then captures, then Lighthouse, then the four output files. Every
-judgement it makes is a recording judgement — *what happened*, never *what it
-means*. A div-based add-to-cart button leaves here as a div with its attributes.
+Invariant: this layer only records what happened, never what it means. A
+div-based add-to-cart button leaves here as a div with its attributes.
 """
 
 from __future__ import annotations
@@ -42,6 +40,8 @@ from .session import Session
 
 @dataclass
 class Options:
+    """Everything one crawl run needs to know."""
+
     origin: str
     out_dir: Path
     password_env: str | None = None
@@ -57,6 +57,8 @@ class Options:
 
 @dataclass
 class Result:
+    """What one crawl run produced."""
+
     crawl: dict[str, Any]
     manifest: Manifest
     manifest_sha256: str | None = None
@@ -66,11 +68,12 @@ class Result:
 
 
 def _now() -> str:
+    """The current local time as an ISO-8601 string."""
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
 
 
 def _blank_template(url: str | None = None, status: str = "absent") -> dict[str, Any]:
-    """Always all five keys. Absence must be distinguishable from omission."""
+    """An empty template entry, with all five keys always present."""
     return {
         "url": url,
         "status": status,
@@ -81,6 +84,7 @@ def _blank_template(url: str | None = None, status: str = "absent") -> dict[str,
 
 
 def crawl(options: Options, *, log=print) -> Result:
+    """Crawl one store end to end and write its fixture files."""
     origin = options.origin.rstrip("/")
     password = os.environ.get(options.password_env) if options.password_env else None
     if options.password_env and not password:
@@ -138,7 +142,7 @@ def crawl(options: Options, *, log=print) -> Result:
         captured = [t for t in TEMPLATES if templates[t]["status"] == "captured"]
         lighthouse = None
         if options.run_lighthouse and captured:
-            # Carry the gate session into the context Lighthouse audits in.
+            # Carry the gate cookies into the context Lighthouse audits in.
             mirrored = session.mirror_session_to_default()
             log(f"· lighthouse: {len(captured)} template(s) (session cookies mirrored: {mirrored})")
             lighthouse = run_lighthouse(
@@ -163,9 +167,8 @@ def crawl(options: Options, *, log=print) -> Result:
     }
     if block is not None:
         crawl_json["block"] = block
-    # A store that was not observed reports platform "unknown" even when the page
-    # that blocked us is recognisably Shopify (MNC-003, enforced here rather than
-    # in the prompt — the cheapest place to enforce anything).
+    # Invariant: a store we never got into reports platform "unknown", even
+    # when the page that blocked us was obviously Shopify (MNC-003).
     crawl_json["fingerprint"] = build_fingerprint(signals, observed=observed) if observed else empty_fingerprint()
     crawl_json["templates"] = {t: templates[t] for t in TEMPLATES}
 
@@ -202,7 +205,7 @@ def crawl(options: Options, *, log=print) -> Result:
 # --- steps ------------------------------------------------------------------
 
 def _fetch_robots(session: Session, origin: str, *, log) -> Robots:
-    """robots.txt is fetched first and respected (spec §3)."""
+    """Fetch robots.txt before anything else, treating failures as permissive."""
     status, body = session.fetch_text(urljoin(origin + "/", "/robots.txt"))
     if status is None:
         log("· robots.txt: unreachable — treating as permissive")
@@ -229,6 +232,7 @@ def _crawl_templates(
     pinned: dict,
     log,
 ) -> None:
+    """Find and capture each of the six templates in order."""
     static = static_targets(origin)
 
     def capture(template: str, url: str) -> None:
@@ -248,8 +252,8 @@ def _crawl_templates(
     # home ------------------------------------------------------------------
     capture("home", static["home"])
 
-    # collection: first /collections/{handle} in the home nav, else sitewide,
-    # else /collections/all (spec §3 table).
+    # collection: first /collections/{handle} in the home nav, then anywhere on
+    # the page, then /collections/all.
     collection_url = pinned_target(pinned, "collection", origin)
     if collection_url:
         log(f"· collection: pinned {collection_url}")
@@ -260,7 +264,7 @@ def _crawl_templates(
     collection_url = collection_url or urljoin(origin + "/", "/collections/all")
     capture("collection", collection_url)
 
-    # pdp: first product link within the chosen collection, else sitewide.
+    # pdp: first product link in the chosen collection, else anywhere on the site.
     pdp_url = pinned_target(pinned, "pdp", origin)
     if pdp_url:
         log(f"· pdp: pinned {pdp_url}")
@@ -283,7 +287,7 @@ def _crawl_templates(
 def _product_sitewide(
     session: Session, origin: str, already: str, robots: Robots, *, log
 ) -> str | None:
-    """Fallback product discovery: one extra fetch of /collections/all, no more."""
+    """Last-resort product search: one extra fetch of /collections/all, no more."""
     fallback = urljoin(origin + "/", "/collections/all")
     if fallback.rstrip("/") == already.rstrip("/") or not robots.allows(fallback):
         return None
@@ -306,8 +310,10 @@ def _capture(
     verify_idempotence: bool,
     log,
 ) -> dict[str, Any]:
+    """Visit one template's URL and record everything captured there."""
     if not robots.allows(url):
-        # A fact for the report, not a gap to route around.
+        # Invariant: a robots block is recorded as a fact. Never route around
+        # it.
         log(f"· {template}: blocked_by_robots")
         axe_status[template] = "skipped"
         return _blank_template(url, "blocked_by_robots")
@@ -332,9 +338,8 @@ def _capture(
     raw, dropped = session.walk_dom()
     distilled = distill(raw)
     if verify_idempotence:
-        # Acceptance test §10.6, run inline: the same page distilled twice must
-        # be byte-identical. Cheap, and it fails at capture time rather than
-        # after a fixture has been frozen and labeled.
+        # Distilling the same page twice must give identical bytes. Checked here
+        # so it fails during capture, not after a fixture has been frozen.
         second = distill(raw)
         if _canonical_json(distilled) != _canonical_json(second):
             raise RuntimeError(f"distillation is not deterministic for {template} ({visit.url})")
@@ -364,15 +369,15 @@ def _capture(
 # --- classification ---------------------------------------------------------
 
 def _template_status(template: str, http_status: int | None, final_url: str, origin: str) -> str:
+    """Decide whether a visit counts as captured, absent, or an error."""
     if not same_origin(final_url, origin):
-        return "absent"  # redirected off-origin — recorded, not guessed at
+        return "absent"  # redirected off-origin
     if template == "404":
-        # Whatever the store serves for an unknown path *is* the 404 template.
-        # A 200 here is a soft-404 and it is the triager's to interpret.
-        # A 5xx is not: it is the platform's error interstitial (observed live:
-        # Shopify's "Something went wrong" throttle page on a 503), and
-        # capturing it would plant the wrong page as the negative control —
-        # Lighthouse and axe would then measure a page that isn't the store.
+        # Whatever the store serves for an unknown path is the 404 template, so
+        # a 200 here is a soft-404 for the triager to interpret.
+        # Invariant: a 5xx is the platform's own error page, not the store's
+        # 404. Capturing it would make Lighthouse and axe measure the wrong
+        # page.
         if http_status is None or http_status >= 500:
             return "error"
         return "captured"
@@ -386,6 +391,7 @@ def _template_status(template: str, http_status: int | None, final_url: str, ori
 
 
 def _overall_status(templates: dict[str, dict[str, Any]]) -> str:
+    """Roll the per-template statuses up into complete, partial, or blocked."""
     statuses = [entry["status"] for entry in templates.values()]
     captured = statuses.count("captured")
     if captured == 0:
@@ -396,6 +402,7 @@ def _overall_status(templates: dict[str, dict[str, Any]]) -> str:
 
 
 def _lh_status(template, templates, lighthouse, requested: bool) -> str:
+    """The Lighthouse status to record for one template."""
     if templates[template]["status"] != "captured":
         return "skipped"
     if not requested:
@@ -408,10 +415,12 @@ def _lh_status(template, templates, lighthouse, requested: bool) -> str:
 # --- output -----------------------------------------------------------------
 
 def _canonical_json(value: Any) -> str:
+    """JSON in the one formatting every output file uses."""
     return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=False)
 
 
 def _node_count(node: dict[str, Any] | None) -> int:
+    """How many nodes are in a distilled tree."""
     if not node:
         return 0
     total = 1
@@ -432,6 +441,7 @@ def _write(
     *,
     log,
 ) -> None:
+    """Write the four fixture files and check nothing leaked the password."""
     out = options.out_dir
     out.mkdir(parents=True, exist_ok=True)
 
@@ -445,6 +455,6 @@ def _write(
 
     result.manifest_sha256 = result.manifest.write(out / "manifest.yaml")
 
-    # "The password value never appears in any output file" — verified, not asserted.
+    # Check the written bytes rather than trusting that nothing wrote it.
     assert_absent(out, password)
     log(f"✓ {out} · manifest sha256 {result.manifest_sha256[:12]}")

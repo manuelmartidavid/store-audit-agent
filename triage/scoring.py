@@ -1,12 +1,9 @@
-"""Rubric §4 arithmetic — the composite, the bands, and roadmap order.
+"""Turns findings into a score, a band, and a roadmap order (rubric §4).
 
-Extracted from triage/eval_triage.py so that exactly one spelling of these rules
-exists. Decision 28's third argument, applied one layer out: the harness scores
-against this and triage/build_brief.py builds the production roadmap from it. A
-second implementation would not raise — it would silently rank differently, and
-the report would be wrong with no error anywhere.
+Pure arithmetic over the severity and effort values the model already picked.
 
-Nothing here judges. It arithmetic-s the enums a model already chose.
+Invariant: this is the only place these rules live. A second copy wouldn't
+error — it would just rank differently and quietly produce a wrong report.
 """
 
 from __future__ import annotations
@@ -23,8 +20,8 @@ CATEGORY_TIEBREAK = {"performance": 0, "conversion": 1, "seo": 2, "accessibility
 BANDS = [(85, "Healthy"), (65, "Minor drag"), (45, "Material friction"),
          (25, "Significant work needed"), (0, "Critical")]
 
-#: Rubric §4 rule 3 (v0.4). Emitted for every store, not only blocked ones — a
-#: field that appears only on failure is a field a renderer forgets to handle.
+#: Emitted for every store, not just blocked ones — a field that only shows up on
+#: failure is one a renderer forgets to handle.
 STATUS_ASSESSED = "ASSESSED"
 STATUS_INACCESSIBLE = "INACCESSIBLE"
 BAND_INACCESSIBLE = "Inaccessible"
@@ -34,6 +31,7 @@ MAX_TOTAL = 25
 
 
 def band_for(score: int | None) -> str:
+    """The band name a score falls in."""
     if score is None:
         return BAND_INACCESSIBLE
     for floor, name in BANDS:
@@ -45,21 +43,16 @@ def band_for(score: int | None) -> str:
 def status_for(score: int | None) -> str:
     """`INACCESSIBLE` when there is no score, `ASSESSED` when there is.
 
-    Derived from the score rather than passed in, so the two can never disagree:
-    a status saying ASSESSED beside a null score would be worse than either
-    field alone.
+    Derived from the score so the two can never disagree.
     """
     return STATUS_INACCESSIBLE if score is None else STATUS_ASSESSED
 
 
 def composite(findings: list[dict[str, Any]], blocked: bool = False) -> dict[str, Any]:
-    """Rubric §4, computed by script from the model's enums. Never read back.
+    """Work out the composite score and its breakdown (rubric §4).
 
-    A store that could not be assessed has **no score** (rubric §4 rule 3,
-    decision 7). Not zero: zero renders as "Critical" on the band table, which is
-    a judgment about a store nobody saw — fabrication by arithmetic. The failure
-    mode is a number rather than a sentence, which is exactly why it survives a
-    read-through of the narrative and has to be caught here.
+    Invariant: a store that couldn't be assessed gets no score, never zero.
+    Zero renders as "Critical", which is a judgement about a store nobody saw.
     """
     if blocked:
         return {"score": None, "status": STATUS_INACCESSIBLE, "band": band_for(None),
@@ -70,9 +63,9 @@ def composite(findings: list[dict[str, Any]], blocked: bool = False) -> dict[str
     for f in findings:
         category = f.get("category")
         if category not in per_category:
-            continue                                  # security is not scored
+            continue                                  # security isn't scored
         if f.get("confidence") == "low":
-            continue                                  # rule 1: weight 0
+            continue                                  # low confidence counts for 0
         per_category[category] += SEVERITY_WEIGHT.get(f.get("severity"), 0)
     capped = {c: min(v, CATEGORY_CAP) for c, v in per_category.items()}
     total = sum(capped.values())
@@ -89,7 +82,7 @@ def composite(findings: list[dict[str, Any]], blocked: bool = False) -> dict[str
 
 
 def roadmap(findings: list[dict[str, Any]]) -> list[str]:
-    """Rubric §4: severity_weight ÷ effort_cost, ties by category then id."""
+    """Order finding ids by severity ÷ effort, breaking ties by category then id."""
     scored = [f for f in findings
               if f.get("severity") in SEVERITY_WEIGHT and f.get("confidence") != "low"]
 

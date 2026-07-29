@@ -1,21 +1,18 @@
-"""Re-encode an image to a target wire size, preserving its content.
+"""Re-encode an image to a target wire size, keeping the picture itself.
 
     python planting/fit_image.py product-packs-cards.jpg --target-kb 300
     python planting/fit_image.py photo.jpg --target-kb 300 --max-width 2000
 
-P-02's knob. The PDP featured image is served VERBATIM (master URL, no
-transform params -> no CDN transcode; verified 2026-07-27: 1562 KB jpeg on the
-wire while its width-transformed siblings arrived as 51-65 KB webp). So the
-uploaded file's bytes ARE the wire bytes, and hitting an LCP window means
-hitting a byte budget. This bisects JPEG quality against the encoded size, so
-the store keeps its real product photo - realism matters on a golden entry;
-a PDP with obviously synthetic art reads as a test harness.
+The PDP featured image is served verbatim - a master URL with no transform
+params, so the CDN never transcodes it. The uploaded file's bytes are the wire
+bytes, which makes an LCP target a byte budget. This bisects JPEG quality to
+hit that budget while the store keeps its real product photo; obviously
+synthetic art on a golden entry reads as a test harness.
 
-Prints seed-free provenance (bytes + sha256): unlike the P-01 grain plate the
-input photo is not generated, so the input file's own hash travels alongside
-the output's (decision 12 - a hash of something unrecoverable is not provenance).
+Prints the input's hash as well as the output's, since the input photo isn't
+generated and a hash of something unrecoverable isn't provenance.
 
-Sizing only. measure.py decides when to stop; the recaptured fixture labels.
+Sizing only - measure.py decides when to stop.
 """
 
 from __future__ import annotations
@@ -30,20 +27,22 @@ from PIL import Image
 
 
 def encode(img: Image.Image, quality: int) -> bytes:
+    """Encode an image to JPEG bytes at the given quality."""
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=quality, optimize=True, progressive=True)
     return buf.getvalue()
 
 
 def main(argv: list[str] | None = None) -> int:
+    """CLI entry point: fit one image to a target size and write it out."""
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("input", type=Path)
     p.add_argument("--target-kb", type=float, required=True,
-                   help="Encoded size to aim for. P-02: ~250-350 (baseline PDP was 2.33s on ~65 KB; the 3.0-3.8s window affords ~+225 KB)")
+                   help="Encoded size to aim for, in KB")
     p.add_argument("--max-width", type=int, default=None,
-                   help="Downscale first if wider (keeps aspect exactly; only shrinks, never enlarges)")
+                   help="Downscale first if wider (keeps aspect; only shrinks)")
     p.add_argument("--min-quality", type=int, default=35,
-                   help="Refuse to go below this JPEG quality (default 35) - visible artifacts on a product photo break golden-entry realism; downscale instead")
+                   help="Never go below this JPEG quality (default 35) - artifacts on a product photo break realism; downscale instead")
     p.add_argument("--out", type=Path, default=None, help="Default: <input>-fitted.jpg")
     args = p.parse_args(argv)
 

@@ -1,10 +1,11 @@
-"""Render a prompt template against its input data. One substitution, no engine.
+"""Fill a prompt template's one placeholder with its input JSON.
 
-`{{PACK}}` inside a triager template's `<input_data>` block is replaced with the
-pack JSON; `{{BRIEF}}` does the same for a narrator template against a brief.
-Exactly one of `--pack`/`--brief` is given per call, so exactly one placeholder
-is substituted. Nothing else is — a template language here would be a second
-place for the prompt to change, and prompt versions have to mean one file.
+`{{PACK}}` in a triager template takes the pack; `{{BRIEF}}` in a narrator
+template takes the brief. Pass exactly one of `--pack` or `--brief`.
+
+Invariant: don't add a template engine. A prompt version has to mean one file,
+and anything more than this single substitution gives the prompt a second place
+to change.
 
 Usage:
     python triage/render_prompt.py prompts/finding-triager/v0.1.md \
@@ -26,12 +27,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from triage import token_estimate  # noqa: E402
 
-PLACEHOLDER = "{{PACK}}"   # kept: the triager's templates and its docs name it
+PLACEHOLDER = "{{PACK}}"   # kept because the triager's templates and docs name it
 _FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.S)
 
 
 def prompt_version(template_text: str) -> str:
-    """`prompt: x` + `version: y` from the front matter — the provenance pin."""
+    """The `prompt/version` pair from a template's front matter."""
     match = _FRONTMATTER.match(template_text)
     if not match:
         return "unpinned"
@@ -45,11 +46,9 @@ def prompt_version(template_text: str) -> str:
 
 def render(template_path: Path, data_path: Path, indent: int | None = None,
            placeholder: str = "PACK") -> tuple[str, str]:
-    """Substitute one placeholder. Still no template engine.
+    """Substitute one placeholder and return the text plus the prompt version.
 
-    `placeholder` names the token rather than spelling it, so the narrator can
-    render `{{BRIEF}}` through the same one substitution the triager uses. A
-    second renderer would be a second place for a prompt to change.
+    `placeholder` is the token's name, so `PACK` and `BRIEF` share one renderer.
     """
     token = "{{" + placeholder + "}}"
     text = template_path.read_text(encoding="utf-8")
@@ -62,6 +61,7 @@ def render(template_path: Path, data_path: Path, indent: int | None = None,
 
 
 def main(argv: list[str] | None = None) -> int:
+    """CLI entry point: render one template to a file."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("template", type=Path)
     parser.add_argument("--pack", type=Path, help="evidence pack (the triager's input)")
@@ -77,10 +77,8 @@ def main(argv: list[str] | None = None) -> int:
     text, version = render(args.template, data, args.indent, placeholder)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(text, encoding="utf-8")
-    # The character count is printed beside the estimate deliberately: chars are
-    # counted, tokens are inferred, and a reader who wants to check the second
-    # needs the first. `est.` is the only thing separating the two here, so it
-    # stays. The ratio and its one measured datapoint live in token_estimate.
+    # Character count sits next to the token estimate on purpose: characters are
+    # counted, tokens are only inferred, so `est.` stays in the output.
     print(f"{args.out}  {len(text) / 1024:.0f} KB  {token_estimate.describe(text)}  "
           f"prompt_version={version}")
     return 0

@@ -1,9 +1,9 @@
-"""Run the impact-narrator against a rendered prompt and record what produced it.
+"""Run the impact-narrator on a rendered prompt and save the result with its provenance.
 
-Same two backends and the same provenance record as run_triager.py, because both
-call triage/model_runner.py. Tools are disabled on the CLI path for the same
-reason as triage: with them on, the model could read the fixture directly and the
-measurement would be void.
+Uses the same two backends as run_triager.py.
+
+Invariant: keep tools disabled on the CLI path. With them on, the model could
+read the fixture directly and the measurement would mean nothing.
 
 Usage:
     python triage/run_narrator.py runs/02-narrator-v0.1.rendered.md \
@@ -29,11 +29,12 @@ sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
 def main(argv: list[str] | None = None) -> int:
+    """CLI entry point: run one narrator prompt and write the record."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("rendered", type=Path)
     parser.add_argument("--brief", type=Path, required=True)
     parser.add_argument("--prompt-version", required=True,
-                        help="no default, deliberately — an unpinned run is not a result")
+                        help="required on purpose — an unpinned run is not a result")
     parser.add_argument("--via", choices=["api", "claude-cli"], default="api")
     parser.add_argument("--model", default=model_runner.MODEL)
     parser.add_argument("--effort", default=model_runner.EFFORT)
@@ -63,8 +64,7 @@ def main(argv: list[str] | None = None) -> int:
             started_at=started_at, max_tokens=args.max_tokens)
 
     meta["usage"] = usage
-    # run_meta names the input digest pack_sha256 because the triage layer's
-    # input is a pack; this layer's input is a brief, so the key is renamed.
+    # run_meta calls the input digest pack_sha256; this layer's input is a brief.
     meta["brief_sha256"] = meta.pop("pack_sha256")
 
     record = {"run_meta": meta, "output": model_runner.extract_json(text)}

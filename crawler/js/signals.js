@@ -1,5 +1,8 @@
-// Fingerprint signal collection. Observation only — every judgement about what
-// these signals mean lives in fingerprint.py, and none of it is causal.
+// Collects the raw signals used to fingerprint a store: asset URLs, inline
+// scripts, meta tags, the Shopify global, and body classes.
+//
+// Invariant: collect only. What these signals mean is decided in
+// fingerprint.py.
 () => {
   const urls = [];
   const push = (u) => {

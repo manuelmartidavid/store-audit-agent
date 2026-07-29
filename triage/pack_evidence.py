@@ -1,26 +1,17 @@
-"""Fixtures → a model-sized evidence pack. Contract: specs/triager-io.md §4.
+"""Turns a captured fixture into a model-sized evidence pack.
 
-    fixtures/<entry>/{crawl,lighthouse,axe}.json + manifest.yaml
-    evals/golden/<entry>/context.yaml        (store: block only)
-        ↓
-    pack/v0.1  ≈ 220k tokens est. for a six-template Shopify capture
-               (396 KB; estimated at the calibrated ratio in
-                triage/token_estimate.py — this line used to read "≈ 100k",
-                which was the same 396 KB divided by a 4-chars-per-token prose
-                rule that measured 2.16x low on this content)
+Reads the crawl, Lighthouse, and axe files plus the store context, and produces
+one pack of roughly 220k tokens for a six-template Shopify capture.
 
-Governing rule: scripts measure, the model judges. Nothing here decides whether
-something is a finding. The packer's whole job is to remove bytes that no finding
-could ever cite, and to *count* what it removed so that absence stays
-distinguishable from omission (crawler spec §4).
+Invariant: scripts measure, the model judges. Nothing here decides what counts
+as a finding — the job is to drop bytes no finding could cite, and to count
+what was dropped so absence stays distinguishable from omission.
 
-The reduction is by structural rule, not by an enumerated allow-list of audits.
+Invariant: drop audits by structural rule, never by an allow-list of audit ids.
 An allow-list is a detection ceiling: a finding whose only evidence is an audit
-nobody listed is undetectable by construction — the same shape of bug as
-distillation dropping the div-button (C-01), which cost a recapture cycle to
-find. So audits are dropped only when they are payload carriers (a screenshot, a
-network log, a source-map dump) or when Lighthouse itself declared them
-notApplicable, and audits that *passed* collapse to an id rather than vanishing.
+nobody listed can't be found at all. Audits go only when they're payload
+carriers or Lighthouse called them notApplicable, and passing audits collapse
+to an id rather than disappearing.
 
 Usage:
     python triage/pack_evidence.py fixtures/02-sabotaged \
@@ -42,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from triage import token_estimate  # noqa: E402
 
-try:  # pyyaml is in requirements.txt; keep the import survivable for --stats
+try:  # pyyaml is a requirement, but --stats should still work without it
     import yaml
 except ImportError:  # pragma: no cover
     yaml = None  # type: ignore[assignment]
@@ -52,20 +43,19 @@ from crawler import pointers as ptr  # noqa: E402
 
 PACK_VERSION = "pack/v0.2"
 
-#: Key carrying each distilled node's own evidence pointer. Short on purpose —
-#: it appears ~2,200 times in a six-template capture.
+#: Key holding each node's own evidence pointer. Short on purpose — it appears
+#: about 2,200 times in a six-template capture.
 POINTER_KEY = "@"
 
 # ---------------------------------------------------------------------------
 # Lighthouse reduction rules
 # ---------------------------------------------------------------------------
 
-#: Audits that carry a payload rather than a conclusion. Every one of these is a
-#: log, a screenshot or a dump: the raw material Lighthouse used to reach a
-#: verdict, not the verdict. Dropping them is ~85% of the LHR by weight and
-#: costs no evidence, because a finding cites the audit that concluded, never the
-#: bytes underneath it. Dumped into pack_dropped so the list is auditable, and it
-#: must be re-derived against the labels whenever a golden entry is added.
+#: Audits that carry a payload rather than a conclusion — logs, screenshots,
+#: dumps. Dropping them is about 85% of the Lighthouse result by weight and
+#: costs no evidence.
+#: Invariant: re-check this list against the labels whenever a golden entry is
+#: added.
 PAYLOAD_ONLY = frozenset({
     "network-requests",
     "screenshot-thumbnails",
@@ -75,17 +65,16 @@ PAYLOAD_ONLY = frozenset({
     "valid-source-maps",
     "user-timings",
     "main-thread-tasks",
-    "metrics",              # a re-bundle of the individual metric audits
+    "metrics",              # just a re-bundle of the individual metric audits
     "network-rtt",
     "network-server-latency",
     "diagnostics",
     "resource-summary",
 })
 
-#: Metrics whose *number* is evidence regardless of how Lighthouse scored it.
-#: The rubric's severity thresholds are numeric (LCP > 4.0s, CLS > 0.25), so a
-#: green CLS of 0 is as much a fact as a red one of 0.268 — and a finding on a
-#: neighbouring template may need to say the number was fine here.
+#: Metrics whose number is evidence however Lighthouse scored it. The rubric's
+#: thresholds are numeric, so a passing CLS of 0 is as much a fact as a failing
+#: one of 0.268.
 ALWAYS_NUMERIC = frozenset({
     "first-contentful-paint",
     "largest-contentful-paint",
@@ -111,7 +100,7 @@ MAX_AXE_SUMMARY_CHARS = 220
 
 
 class PackError(RuntimeError):
-    """Configuration or fixture problem — a config error, not a silent miss."""
+    """Something is wrong with the fixture or its config. Raised, never ignored."""
 
 
 # ---------------------------------------------------------------------------
@@ -119,13 +108,10 @@ class PackError(RuntimeError):
 # ---------------------------------------------------------------------------
 
 def slim_audit(audit: dict[str, Any]) -> dict[str, Any]:
-    """One LHR audit, stripped to its conclusion plus a sample of its evidence.
+    """Strip one Lighthouse audit to its conclusion plus a sample of its evidence.
 
-    `description` goes: it is static boilerplate keyed on the audit id, identical
-    across every run of every store, and a model that knows the id knows the
-    description. `title` stays — Lighthouse phrases it as the verdict ("Document
-    does not have a meta description"), so it is the cheapest possible statement
-    of what happened.
+    `title` is kept because Lighthouse phrases it as the verdict. `description`
+    is dropped — it's boilerplate that's identical for every run of every store.
     """
     out: dict[str, Any] = {"title": audit.get("title")}
     for key in _AUDIT_SCALARS:
@@ -152,7 +138,7 @@ def slim_audit(audit: dict[str, Any]) -> dict[str, Any]:
 
 
 def pack_lighthouse_run(lhr: dict[str, Any]) -> tuple[dict[str, Any], dict[str, int]]:
-    """One LHR → the packed form, plus what was dropped from it."""
+    """Pack one Lighthouse result, returning it and a count of what was dropped."""
     audits_out: dict[str, Any] = {}
     passed: list[str] = []
     dropped = {"payload_only": 0, "not_applicable": 0, "passed_collapsed": 0}
@@ -187,12 +173,10 @@ def pack_lighthouse_run(lhr: dict[str, Any]) -> tuple[dict[str, Any], dict[str, 
 # ---------------------------------------------------------------------------
 
 def pack_axe_run(result: dict[str, Any]) -> tuple[dict[str, Any], dict[str, int]]:
-    """One axe result → violations only, with the pass/incomplete counts kept.
+    """Pack one axe result down to violations, keeping the pass counts.
 
-    The counts are not decoration. `rules_passed: 38` is what makes "axe checked
-    this template and found nothing" different from "axe never ran here", and
-    MNC-404 (no findings against the negative controls) turns on exactly that
-    distinction.
+    Invariant: keep `rules_passed`. It's the only thing separating "axe checked
+    this template and found nothing" from "axe never ran here".
     """
     violations = []
     for violation in result.get("violations") or []:
@@ -234,26 +218,15 @@ def pack_axe_run(result: dict[str, Any]) -> tuple[dict[str, Any], dict[str, int]
 # ---------------------------------------------------------------------------
 
 def annotate_pointers(crawl: dict[str, Any]) -> tuple[dict[str, Any], int]:
-    """Stamp each distilled node with the pointer that names it (pack/v0.2).
+    """Stamp every distilled node with the evidence pointer that names it.
 
-    Measured across nine v0.1 runs, models do not reliably construct §9 semantic
-    paths from the tree: every run before prompt v0.3 emitted at least one path
-    that resolves to nothing, which is automatic-fail #2 and kills a run outright
-    however good its detection was. The causes were consistent — a CSS class used
-    as an anchor, a qualifier taken from the most descriptive attribute instead of
-    the first one the grammar specifies, an invented `main` on a page that has
-    none.
+    Models built these paths themselves at first and got them wrong often enough
+    to fail runs outright, so the pack precomputes them with the same function
+    the harness resolves with. Model and matcher then read one identical string.
 
-    Spec §9's argument against *opaque* ids stands untouched: `node-4f2a` forces
-    blind lookup-table work and models emit plausible-but-wrong ids. What this
-    carries is not an opaque id — it is the semantic path itself, precomputed by
-    the same `pointers.iter_paths` the harness resolves with. So the model and
-    the matcher read one string and grammar drift is impossible by construction.
-
-    What it costs: pointer construction stops being a capability under test. That
-    is the right trade if pointers are plumbing — the join key exists so evidence
-    can be checked, not to measure DOM navigation — and it is recorded here
-    rather than assumed.
+    The trade-off: building pointers is no longer something the model is tested
+    on. That's fine — they're plumbing for checking evidence, not a skill under
+    measurement.
     """
     stamped = 0
     for template, entry in (crawl.get("templates") or {}).items():
@@ -268,7 +241,7 @@ def annotate_pointers(crawl: dict[str, Any]) -> tuple[dict[str, Any], int]:
 
 
 def _url_index(crawl: dict[str, Any]) -> dict[str, str]:
-    """url → template. Lighthouse and axe key by URL; the pack keys by template."""
+    """A url → template lookup. Lighthouse and axe key by URL, the pack by template."""
     index: dict[str, str] = {}
     for template, entry in (crawl.get("templates") or {}).items():
         url = entry.get("url")
@@ -279,18 +252,18 @@ def _url_index(crawl: dict[str, Any]) -> dict[str, str]:
 
 
 def _template_for(url: str | None, index: dict[str, str]) -> str | None:
+    """The template a URL belongs to, or None if it isn't one of ours."""
     if not url:
         return None
     return index.get(url) or index.get(url.rstrip("/"))
 
 
 def load_store_context(path: Path | None) -> dict[str, Any]:
-    """The `store:` block, and only it.
+    """Read the `store:` block out of a context.yaml, and only that block.
 
-    context.yaml has a hard store:/eval: split and the eval: block must never
-    reach a prompt — it holds the pinned targets and the expected score, which
-    is the answer key. Reading the whole file and trusting the prompt not to look
-    at half of it is not a control.
+    Invariant: never let the `eval:` block through. It holds the expected score
+    — the answer key — and trusting a prompt not to read half a file is not a
+    control.
     """
     if path is None:
         return {}
@@ -303,6 +276,7 @@ def load_store_context(path: Path | None) -> dict[str, Any]:
 
 
 def build_pack(fixture_dir: Path, context_path: Path | None = None) -> dict[str, Any]:
+    """Build the whole evidence pack from a fixture directory."""
     fixture_dir = Path(fixture_dir)
     crawl = json.loads((fixture_dir / "crawl.json").read_text(encoding="utf-8"))
     lighthouse_raw = json.loads((fixture_dir / "lighthouse.json").read_text(encoding="utf-8"))
@@ -340,9 +314,8 @@ def build_pack(fixture_dir: Path, context_path: Path | None = None) -> dict[str,
         for key, value in dropped.items():
             axe_dropped[key] += value
 
-    # Absence must be distinguishable from omission (crawler spec §4). A template
-    # with no Lighthouse run is stated as such, in the pack, rather than being a
-    # missing key the model has to notice.
+    # Say "not run" out loud rather than leaving the key missing, so the model
+    # can tell absence from omission.
     for template in templates:
         if template not in lighthouse:
             lighthouse[template] = {"status": "not_run",
@@ -390,6 +363,7 @@ def build_pack(fixture_dir: Path, context_path: Path | None = None) -> dict[str,
 # ---------------------------------------------------------------------------
 
 def pack_stats(pack: dict[str, Any]) -> dict[str, Any]:
+    """Size figures for a pack, by section and in total."""
     def chars(obj: Any) -> int:
         return len(json.dumps(obj, separators=(",", ":"), default=str))
 
@@ -399,18 +373,15 @@ def pack_stats(pack: dict[str, Any]) -> dict[str, Any]:
         "lighthouse_kb": round(chars(pack["lighthouse"]) / 1024, 1),
         "axe_kb": round(chars(pack["axe"]) / 1024, 1),
         "total_kb": round(total / 1024, 1),
-        # `total_chars` is counted; `approx_tokens` is inferred from it. Both are
-        # reported so the second can be rederived from the first — the reason
-        # this pair exists at all is that the previous estimate (4 chars/token,
-        # a prose rule of thumb) was 2.16x low on this pack and nothing printed
-        # alongside it let a reader notice. The calibration and its single
-        # measured datapoint are in triage/token_estimate.py.
+        # `total_chars` is counted, `approx_tokens` is inferred from it. Both are
+        # reported so a reader can recompute the second from the first.
         "total_chars": total,
         "approx_tokens": token_estimate.estimate_tokens(total),
     }
 
 
 def main(argv: list[str] | None = None) -> int:
+    """CLI entry point: build a pack, print its stats, and optionally write it."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("fixture_dir", type=Path)
     parser.add_argument("--context", type=Path, default=None,

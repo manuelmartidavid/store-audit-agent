@@ -1,18 +1,10 @@
-"""Platform / theme / app fingerprinting — spec §4.
+"""Works out a store's platform, theme, and installed apps (spec §4).
 
-Pattern-matching only, per the boundary table. This module reports what was
-*observed of the store*. It never infers, and it never causally attributes an app
-to anything (MNC-002) — it records that a script was present, full stop.
+Apps are spotted two ways: a vendor-domain substring from ``APP_SIGNATURES``,
+and Shopify's theme-app-extension asset path.
 
-Apps are recognised two ways: a vendor-domain substring (``APP_SIGNATURES``), and
-the theme-app-extension asset path convention. The second exists because the
-first can only ever name an app somebody already hardcoded, and most of a modern
-Shopify store's third-party surface arrives as extensions.
-
-The blocked case is enforced at the data layer rather than the prompt layer: a
-store that was not observed yields ``platform: "unknown"`` with empty evidence,
-even when the page that blocked us is recognisably Shopify (MNC-003). That is
-what :func:`empty` is for.
+Invariant: pattern matching only. Record that a script was present and nothing
+more — never claim an app caused anything (MNC-002).
 """
 
 from __future__ import annotations
@@ -44,29 +36,26 @@ _THEME_NAME_RE = re.compile(r"theme[_-]?name[\"']?\s*[:=]\s*[\"']([^\"']+)[\"']"
 _THEME_VERSION_RE = re.compile(r"theme[_-]?version[\"']?\s*[:=]\s*[\"']([^\"']+)[\"']", re.I)
 
 # --- theme app extensions ---------------------------------------------------
-# Extension assets are served from a fixed path shape:
+# Extension assets always look like:
 #     /extensions/<uuid>/<handle>-<build>/assets/<file>
-# The uuid segment is required to look like a uuid. The bare `/extensions/` path
-# is cheap to collide with, and a wrong app name is worse than no app name — a
-# named app that isn't installed is a fabricated finding waiting to happen. If
-# Shopify changes the convention this matches nothing and reports nothing; it
-# never guesses.
+# Invariant: keep the uuid requirement. A bare `/extensions/` match collides
+# easily, and naming an app that isn't installed is worse than naming none. If
+# Shopify changes the path shape this should match nothing rather than guess.
 _EXTENSION_PATH_RE = re.compile(
     r"/extensions/"
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/"
     r"(?P<segment>[^/?#]+)/",
     re.I,
 )
-# Only the *last* numeric segment is the build counter: `restockrocket-1-546`
-# is handle `restockrocket-1`, build 546. Digits earlier in the segment belong
-# to the handle the developer chose.
+# Only the last numeric segment is the build counter: `restockrocket-1-546` is
+# handle `restockrocket-1`, build 546.
 _EXTENSION_BUILD_RE = re.compile(r"-\d+$")
 
 EVIDENCE_SCRIPT_SRC = "script src pattern"
 EVIDENCE_EXTENSION = "theme app extension asset path"
 EVIDENCE_BOTH = "script src pattern + theme app extension asset path"
 
-# Below this length a normalized vendor name is too collision-prone to fold on.
+# Shorter normalized vendor names collide too easily to fold on.
 _MIN_FOLD_CHARS = 4
 
 
@@ -84,6 +73,7 @@ class Signals:
     body_classes: list[str] = field(default_factory=list)
 
     def merge(self, other: "Signals") -> None:
+        """Fold another page's signals into this one."""
         self.urls.extend(other.urls)
         self.inline_scripts.extend(other.inline_scripts)
         for k, v in other.meta.items():
@@ -98,11 +88,16 @@ class Signals:
 
 
 def empty() -> Fingerprint:
-    """The fingerprint of a store that was not observed (spec §6)."""
+    """The fingerprint of a store we never got to observe (spec §6).
+
+    Invariant: a blocked crawl uses this even when the blocking page was
+    obviously Shopify — we didn't see the store (MNC-003).
+    """
     return {"platform": "unknown", "evidence": [], "theme": None, "apps": []}
 
 
 def _detect_theme(signals: Signals) -> dict[str, Any] | None:
+    """Find the theme name and version, or None if nothing says."""
     theme = signals.shopify_theme
     if isinstance(theme, dict):
         name = theme.get("name") or theme.get("theme_name")
@@ -135,17 +130,17 @@ def _detect_theme(signals: Signals) -> dict[str, Any] | None:
 
 
 def _normalize(name: str) -> str:
-    """Lowercase alphanumerics only — the key two observations of one app share."""
+    """Strip a name down to lowercase letters and digits for comparison."""
     return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
 def extension_handle(url: str) -> str | None:
     """The theme-app-extension handle in ``url``, or None if it isn't one.
 
-    The handle is returned verbatim, build counter stripped. It is not
-    title-cased or prettified: `al-bulk-discount-manager` is what the store
-    actually serves, and turning it into "AL Bulk Discount Manager" would be a
-    guess at a product name that nothing in the capture supports.
+    Returned verbatim with the build counter stripped.
+
+    Invariant: don't prettify the handle — `al-bulk-discount-manager` is what
+    the store serves, and a nicer product name would be a guess.
     """
     match = _EXTENSION_PATH_RE.search(url)
     if not match:
@@ -155,8 +150,10 @@ def extension_handle(url: str) -> str | None:
 
 
 def _detect_apps(signals: Signals) -> list[dict[str, str]]:
-    # Evidence is the *shape* of the observation, never a claim about what the
-    # app does to the store (MNC-002).
+    """List the apps observed on the store, sorted by name.
+
+    Each entry's evidence says how the app was spotted, not what it does.
+    """
     known: dict[str, dict[str, str]] = {}
     extensions: dict[str, None] = {}
 
@@ -169,12 +166,9 @@ def _detect_apps(signals: Signals) -> list[dict[str, str]]:
         if handle is not None:
             extensions.setdefault(handle, None)
 
-    # One app can be observed twice — once on its vendor domain, once as its
-    # theme app extension. Fold those into a single entry when the handle
-    # contains the known name under normalization. That is near-miss
-    # normalization of one observation (decision 9's rule applied to app names),
-    # not an inference about a second app. Anything that doesn't fold stays
-    # separate under its raw handle.
+    # One app can show up twice — on its vendor domain and as a theme app
+    # extension. Merge those into one entry when the handle contains the known
+    # name; anything that doesn't merge stays separate under its raw handle.
     for handle in list(extensions):
         for display, entry in known.items():
             normalized = _normalize(display)
@@ -190,7 +184,7 @@ def _detect_apps(signals: Signals) -> list[dict[str, str]]:
 
 
 def build(signals: Signals, observed: bool = True) -> Fingerprint:
-    """Derive the §4 fingerprint block from accumulated signals."""
+    """Build the fingerprint block from the collected signals (spec §4)."""
     if not observed:
         return empty()
 
@@ -224,13 +218,13 @@ def build(signals: Signals, observed: bool = True) -> Fingerprint:
         if evidence:
             platform = "woocommerce"
         elif signals.urls or signals.meta:
-            # Pages were observed and matched nothing known. That is a fact about
-            # the store, not an absence of observation.
+            # We saw the pages and recognised nothing — that's "custom", not
+            # "unknown".
             platform = "custom"
             if generator:
                 evidence.append(f"generator meta: {signals.meta.get('generator')}")
 
-    # Stable order, no duplicates — evidence lists are compared across runs.
+    # Stable order, no duplicates — these lists are compared across runs.
     deduped = list(dict.fromkeys(evidence))
     return {
         "platform": platform,

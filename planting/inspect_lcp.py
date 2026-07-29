@@ -3,13 +3,13 @@
     python planting/inspect_lcp.py https://torontosportscard.myshopify.com/
     python planting/inspect_lcp.py <url> --selector img.product-page__featured-img
 
-measure.py tells you which element won LCP. When the answer is not the element
-you planted, the next question is always one of: is it in the DOM, is it
-displayed, did it load, and is anything else simply bigger. This answers all
-four in one page load, at the same 412x823 viewport the Lighthouse sidecar
-emulates, through the same gated Session.
+measure.py tells you which element won LCP. When it isn't the one you planted,
+the question is always: is it in the DOM, is it displayed, did it load, and is
+something else simply bigger. This answers all four in one page load, at the
+same 412x823 viewport the Lighthouse sidecar uses and through the same gated
+Session.
 
-It measures nothing and labels nothing. Geometry and load state only.
+Geometry and load state only - it measures nothing and labels nothing.
 """
 
 from __future__ import annotations
@@ -172,12 +172,10 @@ def main(argv: list[str] | None = None) -> int:
 
         data = session.page.evaluate(PROBE, args.selector)
 
-        # WHICH THEME rendered this page? Shopify.theme carries the id and role
-        # of the theme that actually served the HTML. When local source, the
-        # code editor and the rendered page disagree, this is the fact that
-        # settles it - a preview cookie, a stale edge cache and a genuinely
-        # stuck compile all look identical from the outside, and this tells
-        # them apart.
+        # Which theme actually served this HTML? When the local source, the
+        # code editor and the rendered page disagree, this settles it - a
+        # preview cookie, a stale edge cache and a stuck compile all look the
+        # same from outside.
         provenance = session.page.evaluate(
             "() => ({"
             " theme: (window.Shopify && window.Shopify.theme) ? window.Shopify.theme : null,"
@@ -189,11 +187,10 @@ def main(argv: list[str] | None = None) -> int:
             "})"
         )
 
-        # Where does the rule ACTUALLY come from on the live store? Reading
-        # document.styleSheets[].cssRules throws for cross-origin sheets, and
-        # Shopify serves theme CSS from cdn.shopify.com, so the page cannot
-        # introspect its own styles. Fetch the sheets through the session
-        # instead - same gate, same cookies, no CORS involved.
+        # Where does the rule actually come from? Reading cssRules throws for
+        # cross-origin sheets and Shopify serves theme CSS from its CDN, so the
+        # page can't introspect its own styles. Fetch the sheets through the
+        # session instead - same gate, same cookies, no CORS.
         sheets = session.page.evaluate(
             "() => ({"
             " links: [...document.querySelectorAll('link[rel=stylesheet]')].map(l => l.href),"

@@ -1,26 +1,20 @@
-// Lighthouse sidecar — spec §7.
-//
-// Runs via the Node API against the *shared* browser, not the CLI — the CLI
-// cannot carry the storefront-gate session, so it would audit the password page
-// six times and report it as the store. Python launches Chromium with
-// --remote-debugging-port and passes that port here; Lighthouse opens its tabs
-// in that browser's default context, into which the crawler has mirrored the
-// gate cookie (see below).
+// Runs Lighthouse against the browser Python already launched (spec §7).
 //
 //   node lighthouse_runner.mjs <port> <targets.json> <out.json>
 //
 // targets.json: [{ "template": "pdp", "url": "https://…" }, …]
 // out.json:     [{ "template", "url", "ok", "lhr"?, "error"? }, …]
 //
-// A failure on one template is recorded and the run continues (spec §7).
-// Partial evidence is recorded as partial, never interpolated.
+// One template failing is recorded and the run carries on.
+//
+// Invariant: use the Node API, not the Lighthouse CLI. The CLI can't carry the
+// storefront-gate session and would audit the password page six times.
 
 import fs from "node:fs";
 import lighthouse from "lighthouse";
 
-// mobile-4g-slow, pinned explicitly. These are Lighthouse's own mobile defaults
-// today; pinning them means a Lighthouse default change shows up as a version
-// bump in manifest.yaml rather than as silent fixture drift.
+// The mobile-4g-slow profile, spelled out rather than left to Lighthouse's
+// defaults so a change on their side shows up as a version bump, not drift.
 const CONFIG = {
   extends: "lighthouse:default",
   settings: {
@@ -49,21 +43,19 @@ const port = Number(portArg);
 const targets = JSON.parse(fs.readFileSync(targetsPath, "utf8"));
 const results = [];
 
-// Lighthouse opens its tabs in the browser's default context. Before invoking
-// this, the crawler mirrors the storefront-gate cookie from its own isolated
-// context into that default context (session.mirror_session_to_default), so
-// these audits hit the store behind the gate rather than /password (spec §7).
-// disableStorageReset keeps that cookie from being cleared between templates.
+// Invariant: keep disableStorageReset on. Lighthouse audits in the browser's
+// default context, where the crawler mirrored the gate cookie — clearing
+// storage between templates would drop it and audit the password page instead.
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const GAP_MS = 2000; // politeness between full page loads on a store we don't own
-const RETRY_MS = 5000; // let a throttled dev store recover before a second try
+const GAP_MS = 2000; // be polite between full page loads
+const RETRY_MS = 5000; // give a throttled store time to recover before retrying
 
-// Lighthouse does not throw on a load failure — it returns an LHR carrying a
-// `runtimeError` (ERRORED_DOCUMENT_REQUEST, etc.) with null metrics. Treating
-// that as success would report a template as audited when it was not, so a
-// runtimeError is a failure here, retried once (slow dev stores throttle under
-// back-to-back audits) and then recorded as failed — never interpolated (§7).
+// Audit one target, retrying once. Returns { ok: true, lhr } or { ok: false, error }.
+//
+// Invariant: Lighthouse doesn't throw when a page fails to load — it returns a
+// result carrying a `runtimeError` and null metrics. Treat that as a failure,
+// or a template gets reported as audited when it wasn't.
 async function audit(target) {
   let lastError = null;
   for (let attempt = 0; attempt < 2; attempt++) {

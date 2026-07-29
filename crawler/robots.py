@@ -1,11 +1,6 @@
-"""robots.txt handling — spec §3.
+"""Reads robots.txt and answers whether a URL may be fetched (spec §3).
 
-Fetched first and respected. A disallowed template is recorded as
-``blocked_by_robots``: a fact for the report, not a gap to route around.
-
-Wraps :mod:`urllib.robotparser` so the crawler never has to care whether the file
-was missing, empty, or served as a 500 — all three mean "nothing is disallowed",
-and each is a different provenance note.
+A missing, empty, or failed robots.txt all mean "nothing is disallowed".
 """
 
 from __future__ import annotations
@@ -18,7 +13,7 @@ from .config import ROBOTS_UA
 
 @dataclass
 class Robots:
-    """A parsed robots.txt, or a permissive stand-in for one that wasn't served."""
+    """A parsed robots.txt, or a permissive stand-in when none was served."""
 
     status: str  # fetched | absent | error
     http_status: int | None = None
@@ -26,19 +21,21 @@ class Robots:
 
     @classmethod
     def parse(cls, body: str, http_status: int | None = 200) -> "Robots":
+        """Build a Robots from robots.txt text."""
         parser = robotparser.RobotFileParser()
         parser.parse(body.splitlines())
         return cls(status="fetched", http_status=http_status, _parser=parser)
 
     @classmethod
     def permissive(cls, status: str = "absent", http_status: int | None = None) -> "Robots":
+        """Build a Robots that allows everything."""
         return cls(status=status, http_status=http_status, _parser=None)
 
     def allows(self, url: str) -> bool:
+        """True if the URL may be fetched."""
         if self._parser is None:
             return True
-        # Checked under our identifying UA first, then the wildcard group, so a
-        # site that names us specifically wins over a generic rule.
+        # Our own UA first, then the wildcard group, so a rule naming us wins.
         return bool(self._parser.can_fetch(ROBOTS_UA, url)) and bool(
             self._parser.can_fetch("*", url)
         )
