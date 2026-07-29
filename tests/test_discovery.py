@@ -6,9 +6,12 @@ import random
 import re
 
 from crawler.discovery import (
+    SHOPIFY,
+    WOOCOMMERCE,
     pick_collection,
     pick_product,
     pinned_target,
+    profile_for,
     random_404_path,
     same_origin,
     static_targets,
@@ -91,3 +94,57 @@ def test_a_cross_origin_pin_is_a_config_error_not_a_silent_miss():
     import pytest
     with pytest.raises(ValueError):
         pinned_target({"pdp": "https://elsewhere.test/products/x"}, "pdp", ORIGIN)
+
+
+# --- platform profiles (design D3) ------------------------------------------
+
+def test_an_unrecognised_platform_gets_the_shopify_profile():
+    """0.3.0 must not regress a store 0.2.0 crawled — and 0.2.0 was Shopify-only."""
+    for platform in ("custom", "unknown", "", None, "Magento"):
+        assert profile_for(platform) is SHOPIFY
+
+
+def test_the_platform_name_is_matched_case_insensitively():
+    assert profile_for("WooCommerce") is WOOCOMMERCE
+    assert profile_for("shopify") is SHOPIFY
+
+
+def test_woocommerce_collection_discovery_reads_product_category_urls():
+    hrefs = [
+        f"{ORIGIN}/about/",
+        f"{ORIGIN}/product-category/nuts/",
+        f"{ORIGIN}/product-category/seeds/",
+    ]
+    assert pick_collection(hrefs, ORIGIN, WOOCOMMERCE) == f"{ORIGIN}/product-category/nuts/"
+
+
+def test_woocommerce_collection_discovery_accepts_a_nested_category():
+    hrefs = [f"{ORIGIN}/product-category/nuts/almonds/"]
+    assert pick_collection(hrefs, ORIGIN, WOOCOMMERCE) == f"{ORIGIN}/product-category/nuts/almonds/"
+
+
+def test_woocommerce_product_discovery_reads_singular_product_urls():
+    hrefs = [f"{ORIGIN}/product-category/nuts/", f"{ORIGIN}/product/organic-almonds/"]
+    assert pick_product(hrefs, ORIGIN, WOOCOMMERCE) == f"{ORIGIN}/product/organic-almonds/"
+
+
+def test_the_two_profiles_do_not_answer_for_each_other():
+    """`/products/x` and `/product/x` differ by one character and mean different stores."""
+    assert pick_product([f"{ORIGIN}/products/card-1"], ORIGIN, WOOCOMMERCE) is None
+    assert pick_product([f"{ORIGIN}/product/almonds/"], ORIGIN, SHOPIFY) is None
+    assert pick_collection([f"{ORIGIN}/collections/rookies"], ORIGIN, WOOCOMMERCE) is None
+    assert pick_collection([f"{ORIGIN}/product-category/nuts/"], ORIGIN, SHOPIFY) is None
+
+
+def test_woocommerce_static_targets_use_the_woocommerce_search_form():
+    targets = static_targets(ORIGIN, WOOCOMMERCE)
+    assert targets["home"] == f"{ORIGIN}/"
+    assert targets["search"] == f"{ORIGIN}/?s=a"
+    assert targets["cart"] == f"{ORIGIN}/cart", "a starting point; discovery overrides it"
+
+
+def test_each_profile_carries_a_fallback_for_both_link_based_templates():
+    assert SHOPIFY.collection_fallback == "/collections/all"
+    assert SHOPIFY.sitewide_product_page == "/collections/all"
+    assert WOOCOMMERCE.collection_fallback == "/shop/"
+    assert WOOCOMMERCE.sitewide_product_page == "/shop/"
