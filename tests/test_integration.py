@@ -262,6 +262,32 @@ def test_the_crawl_is_bounded_regardless_of_catalog_size(tmp_path):
     assert sum(1 for p in documents if p.startswith("/collections/")) == 1
 
 
+def test_the_crawl_is_bounded_regardless_of_catalog_size_on_woocommerce(tmp_path):
+    """Companion to the Shopify bound above. WooCommerce is the platform whose
+    `Profile` gives `collection_fallback` and `sitewide_product_page` the same
+    page (`/shop/`) — the case `_product_sitewide`'s dedupe guard exists for —
+    and nothing exercised the WooCommerce discovery path's fetch bound before
+    this test.
+    """
+    with StoreServer(platform="woocommerce") as server:
+        result = _run(tmp_path, server)
+        # Unlike Shopify's fixture head (all off-origin CDN URLs), WooCommerce's
+        # head references same-origin theme/plugin assets, so the browser's
+        # subresource fetches for those land in `hits` too. Those are the
+        # store's own asset choices, not the crawler's navigations — excluded
+        # here the same way `/img/` already is above.
+        documents = [
+            p for p in server.options.hits
+            if p != "/robots.txt" and not p.startswith("/img/") and not p.startswith("/wp-content/")
+        ]
+
+    assert result.fetches <= 12, f"{result.fetches} navigations"
+    assert len(documents) <= 12, documents
+    # One page per template: the 50-card grid is fetched once, not fifty times.
+    assert sum(1 for p in documents if p.startswith("/product/")) == 1
+    assert sum(1 for p in documents if p.startswith("/product-category/")) == 1
+
+
 def test_the_div_add_to_cart_survives_into_the_fixture_with_a_resolvable_pointer(tmp_path):
     """C-01 end to end: recorded as a div with its attributes, not interpreted."""
     with StoreServer() as server:
