@@ -167,6 +167,53 @@ def test_indexable_gate_passes_when_no_robots_meta_present():
     assert gate.passed is True
 
 
+# --- _REVENUE_TEMPLATES ------------------------------------------------------
+
+def test_revenue_templates_is_exactly_home_collection_pdp():
+    # Regression: this constant used to be named _PERF_TEMPLATES and only
+    # governed the perf gates. It now also scopes indexable_gate — cart and
+    # search must stay OUT of it, or a noindex on cart/search (normal SEO
+    # hygiene) starts producing a false re-selection trigger again.
+    assert set(sc._REVENUE_TEMPLATES) == {"home", "collection", "pdp"}
+    assert "cart" not in sc._REVENUE_TEMPLATES
+    assert "search" not in sc._REVENUE_TEMPLATES
+
+
+# --- assemble_head_gates -----------------------------------------------------
+
+NOINDEX_HEAD = '<head><meta name="robots" content="noindex, follow"></head>'
+
+
+def test_assemble_head_gates_does_not_fail_indexable_on_a_noindex_search_page():
+    # https://www.forestwholefoods.co.uk/?s=a serves noindex, follow — correct
+    # SEO practice for a search-results page (Yoast/WooCommerce default), not
+    # a defect. Gating on it is a false re-selection trigger.
+    gates, _hygiene = sc.assemble_head_gates("search", 200, NOINDEX_HEAD, "https://x.test/?s=a")
+    assert not any(g.name.startswith("indexable") for g in gates)
+    assert all(g.passed for g in gates)
+
+
+def test_assemble_head_gates_still_fails_indexable_on_a_noindex_home_page():
+    gates, _hygiene = sc.assemble_head_gates("home", 200, NOINDEX_HEAD, "https://x.test/")
+    indexable = next(g for g in gates if g.name.startswith("indexable"))
+    assert indexable.passed is False
+
+
+def test_assemble_head_gates_still_checks_reachable_on_cart_and_search():
+    # Only indexable (and perf) narrow to revenue templates — reachable keeps
+    # probing every template, cart and search included.
+    gates, _hygiene = sc.assemble_head_gates("cart", 404, "", "https://x.test/cart/")
+    reachable = next(g for g in gates if g.name.startswith("reachable"))
+    assert reachable.passed is False
+    assert "404" in reachable.detail
+
+
+def test_assemble_head_gates_returns_no_hygiene_line_on_fetch_failure():
+    gates, hygiene_line = sc.assemble_head_gates("home", 404, "", "https://x.test/")
+    assert hygiene_line is None
+    assert len(gates) == 1  # reachable only — no facts to build indexable from
+
+
 # --- permalink_gate ---------------------------------------------------------
 
 WOO_DEFAULT = """<body>

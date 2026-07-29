@@ -221,6 +221,48 @@ def indexable_gate(template: str, facts: HeadFacts) -> Gate:
                 detail=f"meta robots={facts.robots!r}")
 
 
+def assemble_head_gates(
+    template: str, status: int, html: str, final_url: str
+) -> tuple[list[Gate], str | None]:
+    """Turn one template's raw head-probe fetch into gates plus a hygiene line.
+
+    Pure and network-free so the indexable-gate SCOPING is directly testable:
+    `indexable_gate` is only appended for templates in `_REVENUE_TEMPLATES`.
+    A `noindex` on cart or search (e.g. forestwholefoods.co.uk's `/?s=a`,
+    which correctly serves `noindex, follow`) is normal SEO hygiene, not a
+    defect — gating on it is a false re-selection trigger, not a real one.
+    `reachable` still runs on EVERY template, including cart and search;
+    only `indexable` (and, separately, perf) narrow to revenue templates.
+
+    Returns `([Gate(...)], None)` when the fetch itself failed (non-200 or
+    empty body) — there are no head facts to build hygiene or indexable from
+    in that case, only the fact that the template was unreachable.
+    """
+    if status != 200 or not html:
+        return [Gate(f"reachable:{template}", False, f"HTTP {status}")], None
+
+    facts = parse_head(html, status)
+    # A gate can show up two ways: a <form action="/password"> served
+    # in-page, OR a redirect that already landed on /password before any
+    # form is even parsed (measure._is_gate_url — reused rather than
+    # respelled here, see MNC-004 in measure.py). Either one disqualifies.
+    redirected_to_gate = measure._is_gate_url(final_url)
+    gated = facts.password_form or redirected_to_gate
+    detail = f"HTTP {status}"
+    if facts.password_form:
+        detail += " — storefront password form present"
+    elif redirected_to_gate:
+        detail += f" — redirected to {final_url} (storefront password gate)"
+
+    gates = [Gate(f"reachable:{template}", not gated, detail)]
+    if template in _REVENUE_TEMPLATES:
+        gates.append(indexable_gate(template, facts))
+
+    hygiene_line = (f"  {template:<11} title={facts.title!r}"
+                    f"  description={'present' if facts.description else 'ABSENT'}")
+    return gates, hygiene_line
+
+
 # --- permalinks -------------------------------------------------------------
 
 _HREF = re.compile(r'href\s*=\s*["\']([^"\']+)["\']', re.I)
@@ -346,16 +388,28 @@ ENTRIES: dict[str, dict] = {
             "home": "/",
             "collection": "/shop/",
             "pdp": "/product/organic-almonds/",
-            "cart": "/cart/",
+            # WooCommerce lets a store rename the cart page slug; this is a
+            # UK store and uses the British term. Verified directly: /cart/
+            # 404s here, /basket/ serves 200. Do not "correct" this back to
+            # /cart/ — that guess is what was wrong the first time.
+            "cart": "/basket/",
             "search": "/?s=a",
         },
     },
 }
 
-#: Gates run on revenue templates only (rubric §1: home/collection/pdp/cart).
-#: cart is not measured for LCP — it is behind an empty-cart redirect on many
-#: stores and its LCP says more about that than about the theme.
-_PERF_TEMPLATES = ("home", "collection", "pdp")
+#: The templates rubric §1 calls "revenue" templates — the ones a shopper must
+#: pass through to buy something. Governs TWO gates: perf (LCP/CLS) and
+#: indexable. cart and search are deliberately excluded from both:
+#:   - perf: cart sits behind an empty-cart redirect on many stores, and its
+#:     LCP says more about that redirect than about the theme.
+#:   - indexable: a `noindex` on cart or search is normal SEO hygiene
+#:     (WooCommerce/Yoast set it by default so these pages don't compete with
+#:     revenue templates in search) — NOT a defect. Gating on it produces a
+#:     false re-selection trigger, exactly what happened to entry 04's
+#:     `/?s=a` on 2026-07-29. reachable is still checked on every template,
+#:     including cart and search — only indexable and perf narrow to revenue.
+_REVENUE_TEMPLATES = ("home", "collection", "pdp")
 
 
 def _fetch(url: str, timeout: int = 30) -> tuple[int, str, str]:
@@ -408,25 +462,10 @@ def main(argv: list[str] | None = None) -> int:
         status, html, final_url = _fetch(url)
         if template == "home":
             home_html = html
-        if status != 200 or not html:
-            gates.append(Gate(f"reachable:{template}", False, f"HTTP {status}"))
-            continue
-        facts = parse_head(html, status)
-        # A gate can show up two ways: a <form action="/password"> served
-        # in-page, OR a redirect that already landed on /password before any
-        # form is even parsed (measure._is_gate_url — reused rather than
-        # respelled here, see MNC-004 in measure.py). Either one disqualifies.
-        redirected_to_gate = measure._is_gate_url(final_url)
-        gated = facts.password_form or redirected_to_gate
-        detail = f"HTTP {status}"
-        if facts.password_form:
-            detail += " — storefront password form present"
-        elif redirected_to_gate:
-            detail += f" — redirected to {final_url} (storefront password gate)"
-        gates.append(Gate(f"reachable:{template}", not gated, detail))
-        gates.append(indexable_gate(template, facts))
-        hygiene.append(f"  {template:<11} title={facts.title!r}"
-                       f"  description={'present' if facts.description else 'ABSENT'}")
+        new_gates, hygiene_line = assemble_head_gates(template, status, html, final_url)
+        gates.extend(new_gates)
+        if hygiene_line:
+            hygiene.append(hygiene_line)
 
     gates.append(permalink_gate(home_html, urlparse(origin).netloc, platform))
 
@@ -446,7 +485,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- performance --------------------------------------------------------
     if not args.skip_perf:
-        for template in _PERF_TEMPLATES:
+        for template in _REVENUE_TEMPLATES:
             path = entry["templates"].get(template)
             if not path:
                 continue
