@@ -209,6 +209,13 @@ def indexable_gate(template: str, facts: HeadFacts) -> Gate:
     Four of the nine theme demos screened on 2026-07-29 failed here. It is not
     bad luck: demo stores are deliberately deindexed so they do not compete
     with real merchant stores in search.
+
+    This function does NOT scope itself to revenue templates — it will happily
+    build an indexable gate for `cart` or `search` if asked to. The scoping
+    happens at the call site, `assemble_head_gates`, which only invokes this
+    for templates in `_REVENUE_TEMPLATES`. A future direct caller must apply
+    that same scoping itself, or risk the exact false re-selection trigger
+    `assemble_head_gates`'s docstring records for `/?s=a`.
     """
     if is_noindex(facts.robots):
         return Gate(
@@ -239,7 +246,12 @@ def assemble_head_gates(
     in that case, only the fact that the template was unreachable.
     """
     if status != 200 or not html:
-        return [Gate(f"reachable:{template}", False, f"HTTP {status}")], None
+        # status == 0 is `_fetch`'s sentinel for a network failure (DNS,
+        # connection timeout, TLS, ...) rather than an HTTP response at all —
+        # `final_url` carries the readable reason in that case, not a URL.
+        # See `_fetch`'s docstring.
+        detail = f"HTTP {status}" if status else final_url
+        return [Gate(f"reachable:{template}", False, detail)], None
 
     facts = parse_head(html, status)
     # A gate can show up two ways: a <form action="/password"> served
@@ -422,6 +434,21 @@ def _fetch(url: str, timeout: int = 30) -> tuple[int, str, str]:
     (`torontosportscard.myshopify.com/` -> `.../password`). A caller reading
     only the body of the originally-requested URL would never see that
     redirect happened.
+
+    A network failure below the HTTP layer — DNS failure, connection timeout,
+    a TLS error — raises `URLError` (or a bare `OSError` for some of those,
+    e.g. a `socket.timeout`), not `HTTPError`; there is no HTTP response to
+    read a status from. This path is LIVE, not theoretical: this project has
+    a machine with a broken route to one of the two entry stores. Left
+    uncaught it aborts the whole run as a bare traceback before any gate
+    report prints — the same shape `build_brief.py::main()` was fixed for in
+    d8e5bfb. So it is caught here too and turned into the sentinel
+    `status == 0`, with `final_url` repurposed to carry a human-readable
+    reason instead of a URL. `assemble_head_gates` treats any non-200 status
+    as a `reachable` failure already; it special-cases `0` only to source the
+    detail text from `final_url` instead of formatting `"HTTP 0"`, which
+    would name nothing. The failure is never swallowed — `reachable` still
+    FAILS, with the real reason attached.
     """
     req = urllib.request.Request(
         url, headers={"User-Agent": ROBOTS_UA, "Accept-Encoding": "gzip",
@@ -434,6 +461,37 @@ def _fetch(url: str, timeout: int = 30) -> tuple[int, str, str]:
             return resp.status, raw.decode("utf-8", "replace"), resp.url
     except urllib.error.HTTPError as exc:
         return exc.code, "", exc.url or url
+    except (urllib.error.URLError, OSError) as exc:
+        reason = getattr(exc, "reason", exc)
+        return 0, "", f"{url} — fetch failed: {reason}"
+
+
+_DEFAULT_DELAY = 1.5
+
+_CRAWL_DELAY = re.compile(r"(?im)^\s*crawl-delay\s*:\s*([\d.]+)")
+
+
+def effective_delay(robots_body: str | None) -> float:
+    """The delay, in seconds, to hold between every polite fetch.
+
+    `max(default floor, robots.txt's declared Crawl-delay)` — the HIGHER of
+    the two always wins, never the lower. specs/crawler.md §3 says robots.txt
+    is "fetched first and respected"; the project's brief §5 calls politeness
+    non-negotiable for stores this project does not own, with no carve-out
+    for the project's own tooling. So a declared Crawl-delay below our own
+    1.5s floor does not shrink the gap, and an absent, unfetchable
+    (`robots_body is None`), or malformed directive (e.g. `Crawl-delay: abc` —
+    `_CRAWL_DELAY` simply fails to match it) falls back to the floor rather
+    than raising or silently defaulting to 0.
+    """
+    if robots_body:
+        match = _CRAWL_DELAY.search(robots_body)
+        if match:
+            try:
+                return max(_DEFAULT_DELAY, float(match.group(1)))
+            except ValueError:
+                pass
+    return _DEFAULT_DELAY
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -454,10 +512,43 @@ def main(argv: list[str] | None = None) -> int:
     hygiene: list[str] = []
     home_html = ""
 
-    # --- head probe, one polite GET per template ---------------------------
-    for i, (template, path) in enumerate(entry["templates"].items()):
-        if i:
-            time.sleep(1.5)
+    # --- robots.txt, fetched FIRST and respected (specs/crawler.md §3) -----
+    # Recorded, never gated — but fetched and parsed before a single template
+    # is touched, so `notes` (and the delay every subsequent fetch uses) are
+    # ready before the probe loop starts. Reporting which templates robots
+    # blocks AFTER already fetching them would be backwards.
+    status, robots_body_raw, _final = _fetch(origin + "/robots.txt")
+    notes: list[str] = []
+    robots_body = robots_body_raw if status == 200 and robots_body_raw else None
+    if robots_body:
+        robots = Robots.parse(robots_body)
+        blocked = [t for t, p in entry["templates"].items() if not robots.allows(origin + p)]
+        notes.append(f"robots.txt blocks: {blocked or 'nothing probed'}")
+        delay_match = _CRAWL_DELAY.search(robots_body)
+        if delay_match:
+            notes.append(f"robots.txt declares Crawl-delay: {delay_match.group(1)}"
+                         f" — conduct requires honouring it (design D6)")
+    else:
+        notes.append(f"robots.txt: HTTP {status}")
+
+    # This is the ONLY spot allowed to fall back to the 1.5s floor silently:
+    # everywhere else in this function, that floor is `delay`, already
+    # raised to match a real Crawl-delay if one was declared. Printed too, so
+    # the run's own output evidences the conduct rather than merely asserting
+    # it (the module used to print the Crawl-delay note while spacing its own
+    # requests 1.5s apart regardless — asserting an obligation in the same
+    # breath it failed to meet it).
+    delay = effective_delay(robots_body)
+    reason = "robots.txt Crawl-delay" if delay > _DEFAULT_DELAY else "default"
+    notes.append(f"politeness: {delay:.1f}s between fetches ({reason})")
+
+    # --- head probe, one polite GET per template ----------------------------
+    # `delay` is held before EVERY fetch here, including before the first
+    # template — i.e. between robots.txt and that first fetch too. There is
+    # no exemption for "the first one": robots.txt already used its own slot
+    # before this loop started.
+    for template, path in entry["templates"].items():
+        time.sleep(delay)
         url = origin + path
         status, html, final_url = _fetch(url)
         if template == "home":
@@ -468,20 +559,6 @@ def main(argv: list[str] | None = None) -> int:
             hygiene.append(hygiene_line)
 
     gates.append(permalink_gate(home_html, urlparse(origin).netloc, platform))
-
-    # --- robots, recorded not gated ----------------------------------------
-    status, body, _final = _fetch(origin + "/robots.txt")
-    notes: list[str] = []
-    if status == 200 and body:
-        robots = Robots.parse(body)
-        blocked = [t for t, p in entry["templates"].items() if not robots.allows(origin + p)]
-        notes.append(f"robots.txt blocks: {blocked or 'nothing probed'}")
-        delay = re.search(r"(?im)^\s*crawl-delay\s*:\s*([\d.]+)", body)
-        if delay:
-            notes.append(f"robots.txt declares Crawl-delay: {delay.group(1)}"
-                         f" — conduct requires honouring it (design D6)")
-    else:
-        notes.append(f"robots.txt: HTTP {status}")
 
     # --- performance --------------------------------------------------------
     if not args.skip_perf:

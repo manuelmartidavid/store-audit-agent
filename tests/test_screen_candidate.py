@@ -9,6 +9,7 @@ running the tool, the same split tests/test_measure.py uses.
 from __future__ import annotations
 
 import sys
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -214,6 +215,61 @@ def test_assemble_head_gates_returns_no_hygiene_line_on_fetch_failure():
     assert len(gates) == 1  # reachable only — no facts to build indexable from
 
 
+# --- assemble_head_gates: the gate-redirect check (Finding 1) --------------
+#
+# `redirected_to_gate = measure._is_gate_url(final_url)` had ZERO test
+# coverage before this: a reviewer replaced it with `redirected_to_gate =
+# False` and all existing tests still passed. This is the FALSE-PASS mode —
+# a gated Shopify store 302s to /password and serves its form THERE, and this
+# is the half of gate detection that catches that when no <form> is served
+# at the originally-requested URL (e.g. a JS-rendered gate page, or a probe
+# that only fetched the head). No prior test ever drove `assemble_head_gates`
+# with a /password final URL. These do, across the three shapes
+# `measure._is_gate_url` is documented to handle: bare, trailing slash, and
+# a query string (urlparse separates the query from the path, so the query
+# variant exercises that `_is_gate_url` reads `.path`, not the raw string).
+
+@pytest.mark.parametrize("final_url", [
+    "https://x.test/password",
+    "https://x.test/password/",
+    "https://x.test/password?x=1",
+])
+def test_assemble_head_gates_fails_reachable_when_redirected_to_the_password_gate(final_url):
+    # No <form action="/password"> in this HTML — the ONLY signal that this
+    # landed on the gate is the redirect target itself.
+    gates, _hygiene = sc.assemble_head_gates("home", 200, "<head></head>", final_url)
+    reachable = next(g for g in gates if g.name.startswith("reachable"))
+    assert reachable.passed is False
+    assert "password" in reachable.detail.lower()
+
+
+def test_assemble_head_gates_passes_reachable_when_not_redirected_to_the_gate():
+    # Sanity check on the other side of the same branch: a normal 200 with no
+    # password form and no gate redirect must still pass.
+    gates, _hygiene = sc.assemble_head_gates("home", 200, "<head></head>", "https://x.test/")
+    reachable = next(g for g in gates if g.name.startswith("reachable"))
+    assert reachable.passed is True
+
+
+# --- assemble_head_gates: network failures (Finding 3) ----------------------
+
+def test_assemble_head_gates_reports_a_readable_detail_on_a_network_failure():
+    # `_fetch`'s sentinel for a below-HTTP failure: status == 0, with the
+    # human-readable reason smuggled through the final_url slot (see
+    # `_fetch`'s docstring). `assemble_head_gates` must surface that reason,
+    # not print a meaningless "HTTP 0".
+    gates, hygiene_line = sc.assemble_head_gates(
+        "home", 0, "",
+        "https://www.forestwholefoods.co.uk/ — fetch failed: "
+        "[Errno 11001] getaddrinfo failed")
+    assert hygiene_line is None
+    reachable = gates[0]
+    assert reachable.name == "reachable:home"
+    assert reachable.passed is False
+    assert "getaddrinfo failed" in reachable.detail
+    assert reachable.detail != "HTTP 0"
+
+
 # --- permalink_gate ---------------------------------------------------------
 
 WOO_DEFAULT = """<body>
@@ -301,3 +357,76 @@ def test_perf_gates_fail_when_nothing_was_measured():
     gates = sc.perf_gates("home", measure.SampleRun(samples=[], failed=3,
                                                     gate_leak=False, blocked=None))
     assert all(g.passed is False for g in gates)
+
+
+# --- ENTRIES: entry 04's cart slug (Finding 1) -------------------------------
+
+def test_entry_04_cart_slug_is_basket_not_cart():
+    # /cart/ genuinely 404s on forestwholefoods.co.uk (verified directly);
+    # /basket/ is the real slug, a UK-store WooCommerce rename. There is a
+    # comment next to the ENTRIES entry asking people not to "correct" this
+    # back to /cart/ — a comment requests, this test enforces.
+    assert sc.ENTRIES["04"]["templates"]["cart"] == "/basket/"
+
+
+# --- effective_delay (Finding 2) --------------------------------------------
+
+def test_effective_delay_uses_a_declared_crawl_delay_above_the_floor():
+    assert sc.effective_delay("User-agent: *\nCrawl-delay: 10\n") == 10.0
+
+
+def test_effective_delay_floors_a_declared_crawl_delay_below_1_5s():
+    # The floor wins — a store declaring a SMALLER Crawl-delay does not make
+    # this tool less polite than its own default.
+    assert sc.effective_delay("User-agent: *\nCrawl-delay: 0.5\n") == 1.5
+
+
+def test_effective_delay_defaults_to_1_5s_with_no_directive():
+    assert sc.effective_delay("User-agent: *\nDisallow: /admin\n") == 1.5
+
+
+def test_effective_delay_defaults_to_1_5s_when_unfetchable():
+    assert sc.effective_delay(None) == 1.5
+
+
+def test_effective_delay_defaults_to_1_5s_on_an_empty_body():
+    assert sc.effective_delay("") == 1.5
+
+
+def test_effective_delay_does_not_raise_on_a_malformed_crawl_delay():
+    # A non-numeric Crawl-delay value must fall back to the floor, not raise.
+    assert sc.effective_delay("User-agent: *\nCrawl-delay: abc\n") == 1.5
+
+
+# --- _fetch: network failures below the HTTP layer (Finding 3) --------------
+
+def test_fetch_returns_a_sentinel_instead_of_raising_on_a_urlerror(monkeypatch):
+    # DNS failure, connection timeout, TLS errors: all surface as URLError
+    # (sometimes wrapping a bare OSError as .reason), not HTTPError. This
+    # path is LIVE — this machine currently cannot reach one of the two entry
+    # stores. Uncaught, this used to abort the whole run as a bare traceback
+    # before any gate report printed.
+    def _boom(*_args, **_kwargs):
+        raise urllib.error.URLError("[Errno 11001] getaddrinfo failed")
+
+    monkeypatch.setattr(sc.urllib.request, "urlopen", _boom)
+    status, html, final_url = sc._fetch("https://nonexistent.example.test/")
+    assert status == 0
+    assert html == ""
+    assert "getaddrinfo failed" in final_url
+
+
+def test_fetch_still_reports_http_errors_via_the_existing_path(monkeypatch):
+    # Regression guard: the new except clause must not swallow HTTPError
+    # (a URLError subclass) into the generic branch — status/url must still
+    # come from the HTTPError itself.
+    import io
+
+    def _boom(*_args, **_kwargs):
+        raise urllib.error.HTTPError("https://x.test/", 404, "Not Found", {}, io.BytesIO(b""))
+
+    monkeypatch.setattr(sc.urllib.request, "urlopen", _boom)
+    status, html, final_url = sc._fetch("https://x.test/")
+    assert status == 404
+    assert html == ""
+    assert final_url == "https://x.test/"
