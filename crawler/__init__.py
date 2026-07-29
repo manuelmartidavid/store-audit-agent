@@ -4,7 +4,7 @@ Importable without Playwright: browser code sits behind lazy imports so the
 pure parts stay testable on their own.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 SCHEMA_CRAWL = "crawl/v0.1"
 SCHEMA_MANIFEST = "manifest/v0.1"
