@@ -45,16 +45,31 @@ failure · 2 = a hard gate failed (re-selection trigger).
 
 from __future__ import annotations
 
+import argparse
+import gzip
 import re
 import sys
+import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse, urlsplit
 
-# planting/ is not a package; reach crawler/ the way measure.py does.
+# planting/ is not a package; reach crawler/ the way measure.py does. Both
+# entries are needed: parents[1] (project root) for `crawler.*`, and this
+# file's own directory for the bare `import measure` below — the docstring
+# above documents `python -m planting.screen_candidate` as the entrypoint,
+# and under `-m` the script's own directory is NOT auto-added to sys.path
+# (only cwd is), unlike `python planting/screen_candidate.py`. Without this
+# second insert, `import measure` only resolves under the invocation the
+# module does not document.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import measure
+from crawler.config import ROBOTS_UA
+from crawler.robots import Robots
 
 # --- head parsing -----------------------------------------------------------
 
@@ -305,3 +320,163 @@ def perf_gates(template: str, run: "measure.SampleRun") -> list[Gate]:
              + (f"; {len(over)} above {cls_high}" if over else ""))))
 
     return gates
+
+
+# --- the selected entries ---------------------------------------------------
+
+#: The stores selected on 2026-07-29 (design D1, D2). Keyed by eval id so the
+#: screen can be re-run as `--entry 01` without anyone retyping a URL, and so
+#: the URLs live in exactly one place alongside the gates that chose them.
+ENTRIES: dict[str, dict] = {
+    "01": {
+        "origin": "https://theme-dawn-demo.myshopify.com",
+        "platform": "shopify",
+        "templates": {
+            "home": "/",
+            "collection": "/collections/bags",
+            "pdp": "/products/small-convertible-flex-bag-cappuccino",
+            "cart": "/cart",
+            "search": "/search?q=a",
+        },
+    },
+    "04": {
+        "origin": "https://www.forestwholefoods.co.uk",
+        "platform": "woocommerce",
+        "templates": {
+            "home": "/",
+            "collection": "/shop/",
+            "pdp": "/product/organic-almonds/",
+            "cart": "/cart/",
+            "search": "/?s=a",
+        },
+    },
+}
+
+#: Gates run on revenue templates only (rubric §1: home/collection/pdp/cart).
+#: cart is not measured for LCP — it is behind an empty-cart redirect on many
+#: stores and its LCP says more about that than about the theme.
+_PERF_TEMPLATES = ("home", "collection", "pdp")
+
+
+def _fetch(url: str, timeout: int = 30) -> tuple[int, str, str]:
+    """One polite GET. Identifying UA, matching specs/crawler.md §3 conduct.
+
+    Returns `(status, html, final_url)`. `final_url` is `resp.url` — the URL
+    after any redirects urllib followed — because a gated Shopify storefront
+    does not serve its password form at the requested URL, it 302s to
+    `/password` and serves the form THERE
+    (`torontosportscard.myshopify.com/` -> `.../password`). A caller reading
+    only the body of the originally-requested URL would never see that
+    redirect happened.
+    """
+    req = urllib.request.Request(
+        url, headers={"User-Agent": ROBOTS_UA, "Accept-Encoding": "gzip",
+                      "Accept": "text/html"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read()
+            if resp.headers.get("Content-Encoding") == "gzip":
+                raw = gzip.decompress(raw)
+            return resp.status, raw.decode("utf-8", "replace"), resp.url
+    except urllib.error.HTTPError as exc:
+        return exc.code, "", exc.url or url
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--entry", choices=sorted(ENTRIES), required=True)
+    parser.add_argument("--runs", type=int, default=2,
+                        help="Lighthouse runs per revenue template (default 2)")
+    parser.add_argument("--skip-perf", action="store_true",
+                        help="Head and permalink gates only — no browser")
+    parser.add_argument("--debug-port", type=int, default=9223)
+    args = parser.parse_args(argv)
+
+    entry = ENTRIES[args.entry]
+    origin, platform = entry["origin"], entry["platform"]
+    print(f"screening entry {args.entry}: {origin}  (declared platform: {platform})\n")
+
+    gates: list[Gate] = []
+    hygiene: list[str] = []
+    home_html = ""
+
+    # --- head probe, one polite GET per template ---------------------------
+    for i, (template, path) in enumerate(entry["templates"].items()):
+        if i:
+            time.sleep(1.5)
+        url = origin + path
+        status, html, final_url = _fetch(url)
+        if template == "home":
+            home_html = html
+        if status != 200 or not html:
+            gates.append(Gate(f"reachable:{template}", False, f"HTTP {status}"))
+            continue
+        facts = parse_head(html, status)
+        # A gate can show up two ways: a <form action="/password"> served
+        # in-page, OR a redirect that already landed on /password before any
+        # form is even parsed (measure._is_gate_url — reused rather than
+        # respelled here, see MNC-004 in measure.py). Either one disqualifies.
+        redirected_to_gate = measure._is_gate_url(final_url)
+        gated = facts.password_form or redirected_to_gate
+        detail = f"HTTP {status}"
+        if facts.password_form:
+            detail += " — storefront password form present"
+        elif redirected_to_gate:
+            detail += f" — redirected to {final_url} (storefront password gate)"
+        gates.append(Gate(f"reachable:{template}", not gated, detail))
+        gates.append(indexable_gate(template, facts))
+        hygiene.append(f"  {template:<11} title={facts.title!r}"
+                       f"  description={'present' if facts.description else 'ABSENT'}")
+
+    gates.append(permalink_gate(home_html, urlparse(origin).netloc, platform))
+
+    # --- robots, recorded not gated ----------------------------------------
+    status, body, _final = _fetch(origin + "/robots.txt")
+    notes: list[str] = []
+    if status == 200 and body:
+        robots = Robots.parse(body)
+        blocked = [t for t, p in entry["templates"].items() if not robots.allows(origin + p)]
+        notes.append(f"robots.txt blocks: {blocked or 'nothing probed'}")
+        delay = re.search(r"(?im)^\s*crawl-delay\s*:\s*([\d.]+)", body)
+        if delay:
+            notes.append(f"robots.txt declares Crawl-delay: {delay.group(1)}"
+                         f" — conduct requires honouring it (design D6)")
+    else:
+        notes.append(f"robots.txt: HTTP {status}")
+
+    # --- performance --------------------------------------------------------
+    if not args.skip_perf:
+        for template in _PERF_TEMPLATES:
+            path = entry["templates"].get(template)
+            if not path:
+                continue
+            run = measure.sample_url(origin + path, runs=args.runs,
+                                     password=None, debug_port=args.debug_port,
+                                     echo=False)
+            if run.blocked:
+                print(f"blocked at the gate on {template}: {run.blocked}", file=sys.stderr)
+                return 1
+            gates.extend(perf_gates(template, run))
+
+    # --- report -------------------------------------------------------------
+    print("gates")
+    for gate in gates:
+        print(f"  [{'PASS' if gate.passed else 'FAIL'}] {gate.name:<20} {gate.detail}")
+    print("\nseo hygiene (recorded, NOT a gate — these become labels)")
+    for line in hygiene:
+        print(line)
+    print("\nnotes")
+    for note in notes:
+        print(f"  {note}")
+
+    failed = [g for g in gates if not g.passed]
+    if failed:
+        print(f"\nRE-SELECTION TRIGGER — {len(failed)} hard gate(s) failed: "
+              f"{', '.join(g.name for g in failed)}")
+        return 2
+    print(f"\nall {len(gates)} hard gates passed — entry {args.entry} is fit to capture")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
