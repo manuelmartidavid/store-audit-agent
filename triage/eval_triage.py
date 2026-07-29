@@ -1086,6 +1086,16 @@ def self_test(entry: Path, fixtures: Path) -> int:
 # ---------------------------------------------------------------------------
 
 def main(argv: list[str] | None = None) -> int:
+    # A Windows console defaults to cp1252, which cannot encode the `≥` in a
+    # self-test check name or the `§` in a bar's detail — so a run that scored
+    # cleanly died on the print that reported it. `errors="replace"` is
+    # load-bearing: the same guard `run_triager` and `eval_narrative` carry.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass                                # not a stream we can reconfigure
+
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("output", nargs="?", type=Path, help="triage/v0.1 JSON from a run")
     parser.add_argument("--entry", type=Path, default=Path("evals/golden/02-sabotaged"))
