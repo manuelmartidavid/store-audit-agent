@@ -49,10 +49,12 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlparse, urlsplit
 
 # planting/ is not a package; reach crawler/ the way measure.py does.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import measure
 
 # --- head parsing -----------------------------------------------------------
 
@@ -202,3 +204,104 @@ def indexable_gate(template: str, facts: HeadFacts) -> Gate:
         )
     return Gate(name=f"indexable:{template}", passed=True,
                 detail=f"meta robots={facts.robots!r}")
+
+
+# --- permalinks -------------------------------------------------------------
+
+_HREF = re.compile(r'href\s*=\s*["\']([^"\']+)["\']', re.I)
+_WOO_COLLECTION = re.compile(r"^/(shop|product-category/[^/]+)/?$", re.I)
+
+
+def permalink_gate(html: str, host: str, platform: str) -> Gate:
+    """WooCommerce entries must use DEFAULT permalinks, or discovery cannot find them.
+
+    The 0.3.0 discovery table (design D3) keys on `/shop`,
+    `/product-category/{slug}` and `/product/{slug}`. A store on customised
+    permalinks (`/store/{cat}/{product}`) is a hard disqualifier for this entry
+    — not a defect in the store, and not something to route around with a pin,
+    because entry 04 exists to exercise the non-Shopify discovery path.
+
+    Only ONE default collection URL is required. `offermanwoodshop.com` exposes
+    `/product-category/` and no `/shop/`, and discovery needs either. Product
+    links are NOT required on home: discovery reaches the PDP from the
+    collection page (specs/crawler.md §3).
+
+    `_WOO_COLLECTION` matches exactly one category segment
+    (`/product-category/{slug}`), not a nested one
+    (`/product-category/{parent}/{child}/`) — deliberately: the discovery table
+    this gate exists to protect (design D3, above) only knows the one-segment
+    shape. A store whose only collection link is nested would fail discovery
+    the same way it fails here, so this is not a gap to widen.
+    """
+    if platform != "woocommerce":
+        return Gate(name="permalinks", passed=True,
+                    detail=f"n/a — platform is {platform}")
+
+    paths = []
+    for href in _HREF.findall(html):
+        parsed = urlparse(href)
+        if parsed.netloc and parsed.netloc != host:
+            continue
+        paths.append(parsed.path or href)
+
+    collections = sorted({p for p in paths if _WOO_COLLECTION.match(p)})
+    if collections:
+        return Gate(name="permalinks", passed=True,
+                    detail=f"default collection URL present: {collections[0]}")
+    return Gate(
+        name="permalinks",
+        passed=False,
+        detail=("no /shop or /product-category/{slug} link on home — discovery "
+                "cannot reach a collection, so this store needs customised "
+                "permalink support that entry 04 is not the place to build"),
+    )
+
+
+# --- performance ------------------------------------------------------------
+
+def perf_gates(template: str, run: "measure.SampleRun") -> list[Gate]:
+    """LCP and CLS must stay off the `high` side on EVERY run.
+
+    Every run, not the median: a median under the line with one run over it is
+    exactly what measure.py already refuses to call a pass ("the aim has not
+    landed - this is noise, not a defect"). Screening inherits that discipline
+    because a fixture is captured once, and it can be captured on the bad run.
+
+    An empty sample list fails both gates. A gate that passes having evaluated
+    nothing is the vacuous-pass shape step 8 found twice in this repo.
+
+    Reads `s.lcp`/`s.cls` directly rather than through `getattr(s, ..., None)`:
+    `run.samples` is typed as `list[measure.Sample]`, and `Sample` always
+    carries both fields (defaulting to `None` when Lighthouse has no reading,
+    which is what the `is not None` filter below is for). A bare `getattr`
+    default would instead swallow a genuine shape mismatch — e.g. a caller
+    passing an object with no `.lcp` at all — as "nothing measured", which is
+    the same silent-pass-shaped failure this function exists to refuse.
+    """
+    lcp_high, cls_high = measure.LCP_HIGH_MS, measure.CLS_HIGH
+    lcps = [s.lcp for s in run.samples if s.lcp is not None]
+    clss = [s.cls for s in run.samples if s.cls is not None]
+
+    gates: list[Gate] = []
+
+    if not lcps:
+        gates.append(Gate(f"lcp:{template}", False,
+                          "nothing measured — treated as a failure, not a pass"))
+    else:
+        over = [v for v in lcps if v > lcp_high]
+        gates.append(Gate(
+            f"lcp:{template}", not over,
+            (f"{min(lcps)/1000:.2f}–{max(lcps)/1000:.2f}s over {len(lcps)} run(s)"
+             + (f"; {len(over)} on the HIGH side (> {lcp_high/1000:.1f}s)" if over else ""))))
+
+    if not clss:
+        gates.append(Gate(f"cls:{template}", False,
+                          "nothing measured — treated as a failure, not a pass"))
+    else:
+        over = [v for v in clss if v > cls_high]
+        gates.append(Gate(
+            f"cls:{template}", not over,
+            (f"{min(clss):.3f}–{max(clss):.3f} over {len(clss)} run(s)"
+             + (f"; {len(over)} above {cls_high}" if over else ""))))
+
+    return gates

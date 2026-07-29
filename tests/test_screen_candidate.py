@@ -16,6 +16,20 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "planting"))
 
 import screen_candidate as sc  # noqa: E402
+import measure  # noqa: E402  (same sys.path bootstrap as screen_candidate)
+
+
+class _StubSample:
+    """measure.Sample carries fields the perf gates never read.
+
+    A stub keeps these tests independent of that dataclass's full shape, while
+    the SampleRun wrapper around it stays the real type — so a field rename in
+    SampleRun breaks these tests, which is the point.
+    """
+
+    def __init__(self, lcp: float | None, cls: float | None):
+        self.lcp = lcp
+        self.cls = cls
 
 
 # --- parse_head -------------------------------------------------------------
@@ -151,3 +165,92 @@ def test_indexable_gate_fails_on_noindex_and_says_it_is_a_critical():
 def test_indexable_gate_passes_when_no_robots_meta_present():
     gate = sc.indexable_gate("home", sc.parse_head("<head></head>", 200))
     assert gate.passed is True
+
+
+# --- permalink_gate ---------------------------------------------------------
+
+WOO_DEFAULT = """<body>
+<a href="/shop/">Shop</a>
+<a href="https://ex.test/product-category/bakery/">Bakery</a>
+<a href="https://ex.test/product/organic-almonds/">Almonds</a>
+<a href="/cart/">Cart</a>
+</body>"""
+
+WOO_CUSTOM = """<body>
+<a href="/store/">Store</a>
+<a href="/store/bakery/">Bakery</a>
+<a href="/store/bakery/organic-almonds/">Almonds</a>
+</body>"""
+
+
+def test_permalink_gate_passes_on_default_woocommerce_urls():
+    gate = sc.permalink_gate(WOO_DEFAULT, "ex.test", "woocommerce")
+    assert gate.passed is True
+
+
+def test_permalink_gate_fails_on_customised_permalinks():
+    gate = sc.permalink_gate(WOO_CUSTOM, "ex.test", "woocommerce")
+    assert gate.passed is False
+    assert "discovery" in gate.detail.lower()
+
+
+def test_permalink_gate_accepts_product_category_without_a_shop_root():
+    # offermanwoodshop.com exposes /product-category/ but no /shop/ — discovery
+    # needs ONE default collection URL, not both.
+    html = '<a href="/product-category/hearth/">Hearth</a>'
+    assert sc.permalink_gate(html, "ex.test", "woocommerce").passed is True
+
+
+def test_permalink_gate_does_not_require_product_links_on_home():
+    # Discovery finds the PDP from the COLLECTION page, not from home
+    # (specs/crawler.md §3). The first screening pass got this wrong and
+    # disqualified offermanwoodshop for it.
+    html = '<a href="/shop/">Shop</a>'
+    assert sc.permalink_gate(html, "ex.test", "woocommerce").passed is True
+
+
+def test_permalink_gate_is_not_applicable_to_shopify():
+    gate = sc.permalink_gate("<body></body>", "ex.test", "shopify")
+    assert gate.passed is True
+    assert "n/a" in gate.detail.lower()
+
+
+# --- perf_gates -------------------------------------------------------------
+
+def _run(*pairs):
+    samples = [_StubSample(lcp=lcp, cls=cls) for lcp, cls in pairs]
+    return measure.SampleRun(samples=samples, failed=0, gate_leak=False, blocked=None)
+
+
+def test_perf_gates_pass_below_the_thresholds():
+    gates = sc.perf_gates("home", _run((2420.0, 0.0), (2430.0, 0.0)))
+    assert all(g.passed for g in gates)
+
+
+def test_perf_gates_fail_when_any_run_exceeds_lcp_4s():
+    # EVERY run must hold. A median under the line with one run over it is the
+    # "aim has not landed" case measure.py already refuses to call a pass.
+    gates = sc.perf_gates("home", _run((3900.0, 0.0), (4950.0, 0.0)))
+    lcp = next(g for g in gates if g.name.startswith("lcp"))
+    assert lcp.passed is False
+    assert "high" in lcp.detail.lower()
+
+
+def test_perf_gates_pass_at_exactly_the_boundary():
+    # rubric §1: boundary values take the LOWER level. 4000ms is medium.
+    gates = sc.perf_gates("home", _run((4000.0, 0.25)))
+    assert all(g.passed for g in gates)
+
+
+def test_perf_gates_fail_on_cls_above_the_threshold():
+    gates = sc.perf_gates("pdp", _run((2000.0, 0.31)))
+    cls = next(g for g in gates if g.name.startswith("cls"))
+    assert cls.passed is False
+
+
+def test_perf_gates_fail_when_nothing_was_measured():
+    # An empty sample list is an operational failure, not a silent pass — the
+    # exact shape eval_triage's vacuous-gate bug took.
+    gates = sc.perf_gates("home", measure.SampleRun(samples=[], failed=3,
+                                                    gate_leak=False, blocked=None))
+    assert all(g.passed is False for g in gates)
