@@ -92,3 +92,11 @@ def test_a_store_declaring_no_delay_records_null_not_a_number():
     parsed = yaml.safe_load(_manifest().to_yaml())
     assert parsed["crawl_delay_declared"] is None
     assert parsed["fetch_interval_s"] == 1
+
+
+def test_a_store_declaring_zero_delay_records_zero_not_null():
+    """A declared 0 is not an absence — conflating them is the evidence layer
+    interpreting rather than recording."""
+    yaml = __import__("importlib").import_module("yaml")
+    parsed = yaml.safe_load(_manifest(crawl_delay_declared=0.0).to_yaml())
+    assert parsed["crawl_delay_declared"] == 0

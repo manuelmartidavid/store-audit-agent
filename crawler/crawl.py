@@ -117,7 +117,7 @@ def crawl(options: Options, *, log=print) -> Result:
     try:
         robots = _fetch_robots(session, origin, log=log)
         interval = session.honour_crawl_delay(robots.crawl_delay_s)
-        if robots.crawl_delay_s:
+        if robots.crawl_delay_s is not None:
             projected = interval * EXPECTED_FETCHES_PER_CAPTURE
             log(f"· robots.txt: Crawl-delay {robots.crawl_delay_s:g}s → {interval:g}s between "
                 f"fetches (~{projected / 60:.0f} min of waiting across this capture)")

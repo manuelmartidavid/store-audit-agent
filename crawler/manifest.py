@@ -47,7 +47,7 @@ class Manifest:
             f"throttling: {self.throttling}",
             f"fetch_interval_s: {self.fetch_interval_s:g}",
             f"crawl_delay_declared: "
-            f"{format(self.crawl_delay_declared, 'g') if self.crawl_delay_declared else 'null'}",
+            f"{format(self.crawl_delay_declared, 'g') if self.crawl_delay_declared is not None else 'null'}",
             "templates:",
         ]
         for template in TEMPLATES:
