@@ -2,7 +2,8 @@
 
     updated:  2026-07-29 (v1.0 frozen · repo consolidated · entry 05 first-run ·
               step 8 measurement hardening · pushed to a private GitHub remote ·
-              step 8 merged to main · decision 30 → rubric v0.5, prompt v1.1)
+              step 8 merged to main · decision 30 → rubric v0.5, prompt v1.1 ·
+              step 9 impact-narrator · step 10 entries 01/04 selected)
     note:     decision 30 was argued, run and verified on 2026-07-28; its six
               commits landed 2026-07-29 00:02 across the midnight boundary. Files
               written that evening carry the 28th, and that is the decision date.
@@ -490,6 +491,9 @@ reported, never once obeyed.
    `critical`s in two categories, close to the pathological case the cap exists
    for. Entry 01 settles it cheaply: a cap binding on a clean theme means the
    weights are wrong. Rubric change, so it waits for that evidence.
+   **Entry 01 now exists as a selection (2026-07-29) but not as a capture**, so
+   this stays open until the 0.3.0 wave runs it. Nothing about the selection
+   pre-empts the answer.
 3. **MC-116 severity: label `medium`, two of three runs `low`.** Two independent
    runs agreeing against the label is worth one look before assuming the label is
    right.
@@ -974,28 +978,95 @@ is the intended behaviour and the signal to re-label.
    truncates. Roadmap rank is script work"). Noted as corrected here rather
    than silently rewritten, matching how decision 30's section handles the
    same situation.
-10. **Select the entry-01 store** (clean theme demo — the false-positive test) and
-    the **entry-04 store** (WooCommerce, reduced path, null-AOV trap). Selection
-    is free; capture is not.
+10. ~~**Select the entry-01 store and the entry-04 store.**~~ **Done 2026-07-29.**
+    Design: `docs/superpowers/specs/2026-07-29-golden-entries-01-04-selection-design.md`.
+
+    - **Entry 01 = `theme-dawn-demo.myshopify.com`** (Shopify's Dawn reference
+      theme demo), `evals/golden/01-clean-theme/`. Sole survivor of a
+      nine-candidate screen: four demos are `noindex` sitewide — a correct
+      `critical`, and structural rather than unlucky, since demo stores are
+      deliberately deindexed — and four more exceed LCP 4.0s on
+      `mobile-4g-slow`. Dawn measured LCP 2.42s home / 2.52s collection /
+      2.87s pdp, CLS 0.000 throughout, perf 0.92.
+    - **Entry 04 = `www.forestwholefoods.co.uk`** (UK organic wholefoods SMB on
+      WooCommerce, default permalinks), `evals/golden/04-woocommerce/`. Nalgene
+      rejected for disallowing `/cart/` in robots.txt.
+    - **Entry 01 gates `[score_range, findings_above_medium]` and leaves the
+      finding count ungated.** The screen found real defects on Dawn — no meta
+      description on four templates, home `<title>` = the raw store handle, PDP
+      LCP in the `medium` band — so a correct audit plausibly emits 3-5
+      findings and rubric §5's `≤ 3` would fail on **true positives** while the
+      two false-positive bars hold. `max_findings: 3` is set and printed so the
+      recalibration argument accumulates evidence.
+    - **Neither store is owned**, so `planting/screen_candidate.py` re-runs the
+      selection criteria immediately before capture; a failing gate is a
+      re-selection trigger. `crawler/archive.py` at capture is the only
+      recoverable copy for both.
+    - **`planting/screen_candidate.py` was built in this same step** — the
+      re-runnable form of the criteria above: `python -m planting.screen_candidate
+      --entry 01|04`. Live results: **entry 01 passes 9 of 9 hard gates, exit
+      0** (LCP home 2.14-2.83s, collection 2.34-2.37s, pdp 2.34-2.69s, CLS
+      0.000 on all three); **entry 04 passes 9 of 9 hard gates on the
+      head-probe screen (`--skip-perf`), exit 0**. Entry 04's performance is
+      therefore **unmeasured, not merely unfavourable** — an earlier attempt
+      produced LCP 19-23s, but four independent fetches of that host each took
+      ~65s regardless of page weight, a DNS/IPv6 timeout signature rather than
+      a page-weight one. Those figures are **retracted** and must not be read
+      as a property of the store.
+    - **The screen caught two defects in the selection itself on its first
+      live run — one step earlier than intended.** Entry 04's pinned `cart`
+      target was `/cart/`, which 404s; verified directly, the cart is at
+      `/basket/` (a UK store using the British term — WooCommerce lets the
+      cart slug be renamed per store). And `indexable_gate` was applied to
+      every probed template including search, so it failed entry 04's `/?s=a`
+      for correctly serving `noindex, follow` — normal SEO practice
+      (Yoast/WooCommerce default it so search and cart pages don't compete
+      with revenue templates for rank), and rubric §1 scopes `critical` to
+      pages that should rank. Both fixed in the screen; the cart finding is
+      also why item 11 below widens D3's scope to the cart slug.
 
 ### Then — one capture wave
 
-11. **Fix the distiller short-text gap.** Rendered prices and stock badges are
+11. **Platform-generic discovery** (selection design D3). Discovery is hardcoded
+    to `/collections/{handle}`, `/products/{handle}` and `/search?q=a`; pointed
+    at a WooCommerce store it returns collection, pdp and search `absent` — no
+    product page, which guts the conversion axis. Add a fingerprint-selected URL
+    table: `/shop` or `/product-category/{slug}` → collection, `/product/{slug}`
+    → pdp, `/?s=a` → search. Shopify behaviour unchanged. `path_under_test:
+    reduced` therefore means *fewer platform-specific signals*, not fewer pages.
+    Satisfies `specs/crawler.md` §10 acceptance test 4.
+    **Scope widened during selection (2026-07-29): the cart slug too.**
+    `crawler/discovery.py`'s `static_targets()` hardcodes `"cart": "/cart"` for
+    every store, but WooCommerce lets the cart page slug be renamed per store.
+    Verified directly on entry 04: `https://www.forestwholefoods.co.uk/cart/`
+    returns HTTP 404, and the store's cart serves at `/basket/` (a UK store
+    using the British term). `planting/screen_candidate.py`'s own pinned-target
+    table hit this exact bug first and was patched locally there — the
+    production fix belongs here, in discovery, not only in the screen.
+12. **`robots.txt` `Crawl-delay`** (selection design D6). `crawler/robots.py`
+    parses allow/disallow only and `session.py` sleeps a fixed `min_interval_s`.
+    Forest Whole Foods declares `Crawl-delay: 10`, as does Nalgene — normal for
+    WordPress behind a caching plugin. Every prior entry is a store we own, so
+    this has never bound; brief §5 conduct is non-negotiable for one we do not.
+    `session.py` honours `max(min_interval_s, crawl_delay)` and `manifest.yaml`
+    records the effective value. At 10s over ~14 fetches an entry-04 capture
+    takes ~3 minutes in delays alone — worth knowing before it reads as a hang.
+13. **Fix the distiller short-text gap.** Rendered prices and stock badges are
     dropped (`$149.99` is 7 chars, below `TEXT_KEEP_MIN_CHARS` 20, and a price
     span is not interactive). Verified: zero `$` in any distilled template. Same
     shape as C-01, one layer out. Bump crawler to 0.3.0 — it changes capture
     output.
-12. **Recapture everything under 0.3.0 in one pass:** `02-sabotaged` (re-freeze,
+14. **Recapture everything under 0.3.0 in one pass:** `02-sabotaged` (re-freeze,
     re-label — price and stock become detectable, so the presence checklist gains
     back two items and the label set likely grows), `05`, `makerlab` (confirm as
     entry 03), and capture `01` and `04` fresh.
-13. **Re-run and re-measure v1.0** against the new entry-02 fixture; restore the
+15. **Re-run and re-measure v1.0** against the new entry-02 fixture; restore the
     two removed presence-checklist items in a v1.1. Then run entry 01 — the first
     real precision measurement the project will have.
 
 ### Then — the deliverable
 
-14. `report-composer`, rendering rubric §5's "N additional minor items" line
+16. `report-composer`, rendering rubric §5's "N additional minor items" line
     from the brief's `overflow_count`. Inherits two obligations recorded
     during step 9, not yet built: rendering the `noted` bucket
     (`specs/narrator-io.md` §2.3 — a report section the rubric never assigns
@@ -1009,9 +1080,9 @@ is the intended behaviour and the signal to re-label.
     already computed. The composer renders that count; it does not rank or
     truncate. Noted as corrected here rather than silently rewritten, matching
     decision 30's section and item 9's correction above.
-15. End-to-end on a real store; test decision 3's kill criterion (>30% editing
+17. End-to-end on a real store; test decision 3's kill criterion (>30% editing
     cost) for the first time.
-16. **Cost and latency at portfolio scale.** The runner shipped in step 8, so this
+18. **Cost and latency at portfolio scale.** The runner shipped in step 8, so this
     is no longer "build a runner" — it is: exercise the Console-API backend
     (`--via api`, never yet run), then measure N runs across several stores for
     spend and latency variance. One run is a data point, not a model.
