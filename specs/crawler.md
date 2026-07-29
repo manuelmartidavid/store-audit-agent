@@ -189,7 +189,11 @@ is therefore part of the prompt architecture, and its rules are conservative:
   interactive, so without this clause the whole conversion axis reasons about a
   page with no prices in it. **Residual gap, recorded rather than closed:** a
   bare `<span>In stock</span>` with no class hook and no number is still
-  dropped.
+  dropped. A generic `badge` class is deliberately excluded from the
+  class-name list — this theme's own `.badge--new` / `.badge--hot` /
+  `.badge--preorder` marketing labels are not purchase-decision facts — so a
+  stock badge whose only hook is a bare `badge` class (no `stock`,
+  `availab`, `inventory`, `sold-out`/`soldout`) is also still dropped.
 - Script/link *references*: src/href + async/defer/type. Never bodies.
 
 **Dropped, with counts recorded in `dropped`:** script bodies, style blocks, SVG

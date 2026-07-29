@@ -82,10 +82,15 @@ _CURRENCY_CODES = (
     "USD|CAD|EUR|GBP|AUD|NZD|JPY|CNY|HKD|SGD|INR|PHP|MYR|THB|IDR|VND|KRW|"
     "CHF|SEK|NOK|DKK|PLN|CZK|HUF|RON|TRY|ILS|AED|SAR|ZAR|MXN|BRL|ARS|CLP|COP"
 )
+# Invariant: no re.I here. Several ISO codes alias ordinary English words
+# (TRY, COP, SAR) — lower-casing the match would turn "Try 10 days risk-free"
+# or "cop 10" into a price. Real stores render currency codes uppercase, so
+# case-sensitive matching is the correct convention, not an oversight; do not
+# re-add re.I. Currency symbols are caseless characters, so this does not
+# weaken the symbol arm at all.
 _MONEY_RE = re.compile(
     rf"(?:[{_CURRENCY_SYMBOLS}]|\b(?:{_CURRENCY_CODES})\b)\s*[\d]"
-    rf"|[\d]\s*(?:[{_CURRENCY_SYMBOLS}]|\b(?:{_CURRENCY_CODES})\b)",
-    re.I,
+    rf"|[\d]\s*(?:[{_CURRENCY_SYMBOLS}]|\b(?:{_CURRENCY_CODES})\b)"
 )
 
 # Stock and availability have no lexical shape and no language-independent
@@ -94,7 +99,7 @@ _MONEY_RE = re.compile(
 # word list would read as coverage and would miss every store that isn't in
 # English.
 _VALUE_CLASS_SUBSTRINGS = (
-    "price", "stock", "availab", "inventory", "sold-out", "soldout", "badge",
+    "price", "stock", "availab", "inventory", "sold-out", "soldout",
 )
 
 

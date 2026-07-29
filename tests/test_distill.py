@@ -363,3 +363,23 @@ def test_short_text_with_neither_signal_is_still_elided():
     tree, _ = _distill("<html><body><div><em>New</em></div><div><span>In stock</span></div></body></html>")
     assert _find(tree, "em") is None
     assert _find(tree, "span") is None
+
+
+@pytest.mark.parametrize("text", ["Try 10 days risk-free", "try 2 sizes", "cop 10", "sar 10"])
+def test_iso_code_shaped_english_words_are_not_money(text):
+    """TRY, COP and SAR are real ISO 4217 codes that also spell ordinary English
+    words. `_MONEY_RE` must not case-fold, or "Try 10 days risk-free" reads as a
+    price. Real stores render currency codes uppercase, so uppercase-only is the
+    correct convention, not a coverage gap."""
+    assert not is_value_text(text)
+
+
+def test_a_generic_badge_class_does_not_grant_a_pass_below_the_floor():
+    """A bare `badge` class is deliberately excluded from
+    `_VALUE_CLASS_SUBSTRINGS` — this repo's own theme uses `.badge--new` /
+    `.badge--hot` / `.badge--preorder` for marketing labels that are not
+    purchase-decision facts, so keeping the substring would let them all
+    through. Below-floor text still needs `stock`, `availab`, `inventory`, or
+    `sold-out`/`soldout` to survive on a class hook alone."""
+    tree, _ = _distill('<html><body><main><span class="badge badge--new">New</span></main></body></html>')
+    assert _find(tree, "span") is None
