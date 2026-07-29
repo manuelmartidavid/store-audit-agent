@@ -1025,12 +1025,20 @@ is the intended behaviour and the signal to re-label.
       or CLS at all) and the full run (a different, larger gate count) — into
       one sentence claiming "9 of 9 hard gates ... LCP ... CLS" for entry 01,
       which the full screen never produced. Restated from a run actually taken
-      on 2026-07-29: **entry 01, full screen (`python -m
-      planting.screen_candidate --entry 01 --runs 1`), passes all 15 hard
-      gates, exit 0** — LCP home 2.28s, collection 1.84s, pdp 3.65s; CLS 0.000
+      on 2026-07-29, and **re-taken after the `platform` gate landed**, which
+      moved the counts again: **entry 01, full screen (`python -m
+      planting.screen_candidate --entry 01 --runs 1`), passes all 16 hard
+      gates, exit 0** — LCP home 2.02s, collection 1.84s, pdp 2.15s; CLS 0.000
       on all three (single run per template, so each figure is one
-      measurement, not a range). **Entry 04's figure stays head-probe-only**:
-      `--skip-perf` passes 9 of 9 head gates, exit 0. Entry 04's performance is
+      measurement, not a range). The earlier figures recorded here (15 gates;
+      home 2.28s, pdp 3.65s) were correct for the code at that commit and are
+      superseded rather than wrong — a reminder that a gate count is a property
+      of the screen, not of the store, and dates with the code.
+      **Entry 04's figure stays head-probe-only, and is now stale by one gate**:
+      its last screen passed 9 of 9 head gates at exit 0, taken *before* the
+      `platform` gate and the exit-3 change. It has not been re-screened,
+      because this machine has no healthy route to that host (below). Expect 10
+      head gates and exit 3 when it is. Entry 04's performance is
       therefore **unmeasured, not merely unfavourable** — an earlier attempt
       produced LCP 19-23s, but four independent fetches of that host each took
       ~65s regardless of page weight, a DNS/IPv6 timeout signature rather than
