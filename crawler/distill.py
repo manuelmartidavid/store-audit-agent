@@ -18,6 +18,7 @@ step.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Iterable
 
 from .config import MAX_SIBLING_RUN, TEXT_KEEP_MIN_CHARS
@@ -71,6 +72,42 @@ def _has_control_class(attrs: dict) -> bool:
     classes = (attrs.get("class") or "").lower()
     return any(sub in classes for sub in _CONTROL_CLASS_SUBSTRINGS)
 
+# Money has a lexical shape — a currency symbol or an ISO 4217 code next to a
+# number — so it can be recognised by convention rather than by a per-store
+# list (the same reasoning as decision 13's extension-path parser).
+# Invariant: this code list is a standard (ISO 4217), not a guess at what a
+# store might use — it is not a per-vendor enumeration in disguise.
+_CURRENCY_SYMBOLS = "$€£¥₩₹₽₺₪฿₴₦₱₫₡"
+_CURRENCY_CODES = (
+    "USD|CAD|EUR|GBP|AUD|NZD|JPY|CNY|HKD|SGD|INR|PHP|MYR|THB|IDR|VND|KRW|"
+    "CHF|SEK|NOK|DKK|PLN|CZK|HUF|RON|TRY|ILS|AED|SAR|ZAR|MXN|BRL|ARS|CLP|COP"
+)
+_MONEY_RE = re.compile(
+    rf"(?:[{_CURRENCY_SYMBOLS}]|\b(?:{_CURRENCY_CODES})\b)\s*[\d]"
+    rf"|[\d]\s*(?:[{_CURRENCY_SYMBOLS}]|\b(?:{_CURRENCY_CODES})\b)",
+    re.I,
+)
+
+# Stock and availability have no lexical shape and no language-independent
+# vocabulary, so they are recognised by the slot they render into instead.
+# Invariant: keep this list structural (class names), not linguistic. An English
+# word list would read as coverage and would miss every store that isn't in
+# English.
+_VALUE_CLASS_SUBSTRINGS = (
+    "price", "stock", "availab", "inventory", "sold-out", "soldout", "badge",
+)
+
+
+def _has_value_class(attrs: dict) -> bool:
+    """True when an element's class names a price, stock or availability slot."""
+    classes = (attrs.get("class") or "").lower()
+    return any(sub in classes for sub in _VALUE_CLASS_SUBSTRINGS)
+
+
+def is_value_text(text: str | None) -> bool:
+    """True for text carrying a price — recognised by money's lexical shape."""
+    return bool(text) and bool(_MONEY_RE.search(text))
+
 # For script and link we keep the reference and loading attributes, never bodies.
 _SCRIPT_ATTRS = ("id", "src", "type", "async", "defer", "nomodule", "crossorigin", "integrity")
 _LINK_ATTRS = (
@@ -116,6 +153,14 @@ def keep(raw: Raw) -> bool:
     if any(is_click_attr(name) for name in attrs):
         return True
     if _has_control_class(attrs):
+        return True
+    # Purchase-decision facts sit below the prose floor: `$149.99` is 7
+    # characters and a price span is not interactive, so the rule below drops
+    # it.
+    # Invariant: without this clause every early triager run reports "no price
+    # on the PDP" — a false positive manufactured by the evidence base, one
+    # layer out from C-01.
+    if is_value_text(raw.get("text")) or _has_value_class(attrs):
         return True
     # Invariant: this prose rule is how page copy reaches the triager. Removing
     # it makes every copy-based finding impossible to detect.
@@ -194,10 +239,8 @@ def _text_for(raw: Raw) -> str | None:
             return full
     if not own:
         return None
-    if len(own) > TEXT_KEEP_MIN_CHARS or interactive:
-        return own
-    # Short text is cheap to keep, and dropping it loses prices, badges, and
-    # stock labels.
+    # Short text is kept: it is where prices, badges and stock labels live, and
+    # `keep()` has already decided this element is worth emitting.
     return own
 
 

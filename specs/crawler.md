@@ -182,6 +182,14 @@ is therefore part of the prompt architecture, and its rules are conservative:
 - Text nodes over 20 chars, whitespace-collapsed — this is what V-01/V-02/V-03
   and the X-01 injection ride in on; drop it and the model-only findings are
   undetectable by construction
+- Short text carrying a purchase-decision fact, below the 20-char floor: text
+  with money's lexical shape (a currency symbol or ISO 4217 code adjacent to a
+  number), and any element whose class names a price, stock, availability or
+  inventory slot. `$149.99` is 7 characters and a price span is not
+  interactive, so without this clause the whole conversion axis reasons about a
+  page with no prices in it. **Residual gap, recorded rather than closed:** a
+  bare `<span>In stock</span>` with no class hook and no number is still
+  dropped.
 - Script/link *references*: src/href + async/defer/type. Never bodies.
 
 **Dropped, with counts recorded in `dropped`:** script bodies, style blocks, SVG

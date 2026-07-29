@@ -417,3 +417,14 @@ def test_a_declared_crawl_delay_is_honoured_and_recorded(tmp_path):
     assert "crawl_delay_declared: 2" in body
     assert "fetch_interval_s: 2" in body
     assert result.crawl["status"] == "complete"
+
+
+def test_rendered_prices_reach_the_fixture(tmp_path):
+    """Blocking-adjacent finding from the step-7 loop: zero `$` survived
+    distillation in any template, so the prompt had to instruct the model not to
+    check two purchase-decision affordances."""
+    with StoreServer() as server:
+        result = _crawl(tmp_path, server)
+
+    collection = json.dumps(result["templates"]["collection"]["distilled"])
+    assert "$85.00" in collection
