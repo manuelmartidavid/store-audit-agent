@@ -44,12 +44,12 @@ class Robots:
     def crawl_delay_s(self) -> float | None:
         """The `Crawl-delay` that applies to us, in seconds, or None if none does.
 
-        Our own UA group first, then the wildcard group — `crawl_delay(ua)`
-        falls back to the wildcard only when no named group matches at all, so a
-        group that names us but declares no delay would otherwise return None
-        and stop there.
+        Invariant: our own UA group is checked first, then the wildcard group.
+        `crawl_delay(ua)` falls back to the wildcard only when no named group
+        matches at all, so a group that names us but declares no delay would
+        otherwise return None and stop there.
 
-        `urllib.robotparser` parses integer delays only; a fractional
+        Invariant: `urllib.robotparser` parses integer delays only; a fractional
         declaration reads as absent. Anything under our 1s floor changes nothing
         either way (spec §3 conduct is a floor, not a target).
         """
