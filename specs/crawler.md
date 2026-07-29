@@ -49,16 +49,17 @@ The password value never appears in any output file, log line, or error message.
 
 ## 3. Template discovery
 
-Fixed target set, discovered in order, first match wins:
+Fixed target set, discovered in order, first match wins. The URL table is
+per-platform:
 
-| Template | Discovery | Fallback |
-|---|---|---|
-| home | `/` | — |
-| collection | first link matching `/collections/{handle}` from home nav, excluding `/collections/all` | `/collections/all` |
-| pdp | first product link within the chosen collection | first `/products/{handle}` sitewide |
-| cart | `/cart` | — |
-| search | `/search?q=a` | — |
-| 404 | `/{random-40-hex}` | — |
+| Template | Shopify | WooCommerce | Fallback |
+|---|---|---|---|
+| home | `/` | `/` | — |
+| collection | first `/collections/{handle}` from home nav, excluding `/collections/all` | first `/product-category/{slug}` from home nav | `/collections/all` · `/shop/` |
+| pdp | first `/products/{handle}` in the chosen collection | first `/product/{slug}` in the chosen collection | first product link sitewide |
+| cart | `/cart` | the store's own cart link, else `/cart` | — |
+| search | `/search?q=a` | `/?s=a` | — |
+| 404 | `/{random-40-hex}` | `/{random-40-hex}` | — |
 
 Rules:
 
@@ -74,6 +75,19 @@ Rules:
   as `blocked_by_robots` — a fact for the report, not a gap to route around.
 - Politeness: ≥1s between fetches, one concurrent request, identifying
   user-agent. Non-negotiable for stores we don't own (brief §5 conduct).
+- **The URL table is selected by the fingerprint**, from the home page's own
+  signals, so discovery and the written fixture cannot disagree about the
+  platform. A platform the fingerprint does not recognise (`custom`, `unknown`)
+  uses the Shopify table — that is what every capture before 0.3.0 did, so an
+  unrecognised store cannot regress relative to a frozen fixture.
+- **The cart slug is read off the store, not assumed.** WooCommerce lets a store
+  rename its cart page; entry 04 serves its cart at `/basket/` and 404s on
+  `/cart/`. Discovery reads the home page's own cart link (a class hook or a
+  cart/basket slug suffix), rejecting add-to-cart hrefs, and costs no extra
+  fetch. Shopify's cart is always `/cart` and is not discovered.
+- `path_under_test: reduced` therefore means **fewer platform-specific signals**
+  — no theme identity, no app-extension fingerprinting, no Shopify CDN
+  transcoding — not fewer pages.
 
 ### Pinned targets (eval-harness override)
 

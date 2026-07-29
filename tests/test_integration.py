@@ -118,13 +118,48 @@ def test_a_shopify_store_fingerprints_as_shopify_with_evidence(tmp_path):
 # --- §10.4 non-Shopify -------------------------------------------------------
 
 def test_a_non_shopify_store_still_completes_and_feeds_the_reduced_path(tmp_path):
+    """Acceptance test §10.4, and design D3: reduced means fewer platform-specific
+    signals, not fewer pages. Before 0.3.0 this store yielded collection, pdp and
+    search `absent` — the conversion axis, gone."""
     with StoreServer(platform="woocommerce") as server:
         result = _crawl(tmp_path, server)
+        origin = server.origin
 
     assert validate_crawl(result) == []
     assert result["status"] == "complete"
     assert result["fingerprint"]["platform"] == "woocommerce"
     assert result["fingerprint"]["evidence"]
+
+    templates = result["templates"]
+    assert [t for t, e in templates.items() if e["status"] == "captured"] == list(TEMPLATES)
+    assert templates["collection"]["url"] == f"{origin}/product-category/nuts/"
+    assert templates["pdp"]["url"].startswith(f"{origin}/product/card-")
+    assert templates["search"]["url"] == f"{origin}/?s=a"
+
+
+def test_a_renamed_cart_slug_is_discovered_rather_than_assumed(tmp_path):
+    """The bug the entry-04 screen found first: /cart/ 404s, the cart is /basket/."""
+    with StoreServer(platform="woocommerce") as server:
+        result = _crawl(tmp_path, server)
+        origin = server.origin
+        requested = list(server.options.hits)
+
+    assert result["templates"]["cart"]["url"] == f"{origin}/basket/"
+    assert result["templates"]["cart"]["status"] == "captured"
+    assert "/cart" not in requested, "a discovered cart costs no extra fetch"
+
+
+def test_a_shopify_store_still_discovers_exactly_as_it_did_before(tmp_path):
+    """0.3.0's discovery change must be invisible to a Shopify capture."""
+    with StoreServer() as server:
+        result = _crawl(tmp_path, server)
+        origin = server.origin
+
+    templates = result["templates"]
+    assert templates["collection"]["url"] == f"{origin}/collections/rookies"
+    assert templates["pdp"]["url"].startswith(f"{origin}/products/card-")
+    assert templates["cart"]["url"] == f"{origin}/cart"
+    assert templates["search"]["url"] == f"{origin}/search?q=a"
 
 
 # --- §10.5 robots ------------------------------------------------------------
