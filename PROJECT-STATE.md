@@ -901,16 +901,24 @@ the version bump is what makes fixtures from either side distinguishable.
 
 - **Platform-generic discovery (D3).** `crawler/discovery.py` gained a frozen
   `Profile` holding one platform's URL table, and `crawl.py` selects it from
-  `fingerprint.detect_platform` reading the home page's own signals — so
-  discovery and the written fixture cannot disagree about the platform. Anything
+  `fingerprint.detect_platform` reading the home page's own signals. Anything
   unrecognised gets the Shopify table, which is exactly 0.2.0's behaviour, so no
   frozen fixture can regress. The local storefront now serves WooCommerce URL
   shapes, and acceptance test §10.4 asserts six captured templates instead of
-  three `absent` ones.
+  three `absent` ones. **The home-only verdict this picks the URL table from
+  can disagree with the merged verdict the fixture records** — see "Final
+  review fix wave" below; the original text here claimed they cannot disagree,
+  which is wrong.
 - **The cart slug is discovered, not assumed.** Read off the home page's own
-  cart link, rejecting `add-to-cart` hrefs (WooCommerce's add button carries
-  class `add_to_cart_button`, which the selector matches). Costs no extra fetch.
-  Shopify is unchanged. This is the bug the entry-04 screen found first.
+  cart link. `pick_cart` rejects two shapes that carry the cart-matching class
+  without being the cart page: `add-to-cart` hrefs (`_NOT_THE_CART_RE`), and —
+  since the final review — any href matching the selected profile's
+  `product_re`, because WooCommerce's loop button for variable, grouped and
+  external products also carries class `add_to_cart_button` but links straight
+  to the product's own permalink rather than an add-to-cart href. `pick_cart`
+  therefore takes `profile: Profile = SHOPIFY` as a third parameter now; a
+  cart is never a product page, on any platform. Costs no extra fetch. Shopify
+  is unchanged. This is the bug the entry-04 screen found first.
 - **`Crawl-delay` (D6).** `robots.crawl_delay_s` reads our UA group then the
   wildcard; `session.honour_crawl_delay` raises the interval and never lowers
   it; `manifest.yaml` records both `crawl_delay_declared` and
@@ -935,6 +943,52 @@ the version bump is what makes fixtures from either side distinguishable.
   filter-count badge, none of which are purchase-decision facts. Spec §5
   records the extra residual gap this creates: a genuine stock badge whose only
   hook is a `badge` class and no number is now also dropped.
+- **Final review fix wave (2026-07-30, `3cad7b5..bf9278f`).** A whole-branch
+  review taken after this section was first written found six real defects
+  against the code, not against intent; all six landed as separate commits,
+  full suite green at `bf9278f` (614 passed, 1 skipped).
+  - `pick_cart`'s profile-aware rejection, folded into the cart bullet above.
+  - `detect_platform`'s docstring (`crawler/fingerprint.py`) and
+    `specs/crawler.md` §3 previously stated discovery and the fixture "cannot
+    disagree" about the platform. They can: `detect_platform` runs twice over
+    different signal sets — home-page-only in `crawl.py` to pick the URL
+    table, fully-merged at the end for the fixture — and Shopify evidence wins
+    outright over WooCommerce's, so a home-only `woocommerce` verdict flips to
+    `shopify` the moment any later template loads a Shopify asset. Separately,
+    `_WOO_URL_MARKERS` includes the generic `/wp-content/themes/`, so any
+    WordPress store qualifies for the home-only Woo verdict on template
+    evidence alone. **The behaviour ships as designed** — an unrecognised
+    platform still falls back to the Shopify table, so no frozen fixture can
+    regress — but the docstring and spec §3 now state the real limitation
+    instead of the false invariant, and `crawl.py` logs when the two verdicts
+    differ (`· platform: discovery used {x!r} but the merged fixture recorded
+    {y!r} — a later template's evidence changed the verdict`).
+  - `specs/crawler.md` §3 also now records a second limitation: a large
+    declared `Crawl-delay` is honoured in full, however long that takes — a
+    store declaring `Crawl-delay: 600` makes one capture spend ~2.3 hours
+    waiting. No cap, because a cap would under-honour what the store asked;
+    declining a store outright is the operator's call, not the crawler's.
+  - Smaller corrections: `NAV_SELECTOR`'s dropped ordering-rationale comment
+    restored verbatim; `_product_sitewide`'s `profile` parameter annotated as
+    `Profile` (it was the only unannotated parameter in `crawl.py`); a comment
+    added to `session.py` explaining why `honour_crawl_delay`'s truthiness
+    test is correct there even though `manifest.py` was deliberately corrected
+    away from truthiness in this same wave (a declared `0` and a missing
+    declaration are indistinguishable to `> min_interval_s` either way, unlike
+    the manifest's null-vs-zero rendering); the manifest spec-field-list test
+    extended to cover `fetch_interval_s` and `crawl_delay_declared`; a
+    bounded-fetch assertion added for the WooCommerce discovery path
+    (`tests/test_integration.py`).
+
+  Two gaps were found and recorded rather than closed:
+  - The new WooCommerce bounded-fetch test does not reach `_product_sitewide`'s
+    `already == fallback` dedupe branch: the fixture serves the same product
+    links from both `/shop` and `/product-category/nuts/`, so `pick_product`
+    always succeeds off the collection page and the sitewide fallback is never
+    invoked for WooCommerce. Closing it needs fixture changes that were out of
+    scope for this wave.
+  - The platform-divergence log line has no automated test; no test in this
+    suite asserts log output content.
 - **Crawler at `0.3.0`.** `manifest.yaml` records it, so `b219afac…` and its
   successor are distinguishable — which is the mechanism by which the
   fixture-hash pin fires on the next eval run and signals the re-label.
