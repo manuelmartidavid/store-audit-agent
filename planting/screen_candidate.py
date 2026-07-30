@@ -58,6 +58,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import re
+import socket
 import sys
 import time
 import urllib.error
@@ -545,6 +546,55 @@ def _fetch(url: str, timeout: int = 30) -> tuple[int, str, str]:
         return 0, "", f"{url} — fetch failed: {reason}"
 
 
+# --- IPv4 preference --------------------------------------------------------
+#
+# `urllib` has no Happy Eyeballs: it walks `getaddrinfo`'s list in order and
+# blocks on each address until the connect timeout. On a host whose IPv6 is
+# advertised but has no upstream transit, every dual-stack fetch therefore pays
+# a full ~60s connect timeout before falling back to IPv4 — measured 63.88s
+# against entry 04's host, whose IPv4 path answers in 0.96s. That artefact is
+# what produced entry 04's retracted "LCP 19-23s" figures, so this is a
+# correctness fix for the screen's numbers, not only a speed one.
+#
+# Chromium does implement Happy Eyeballs and fails over in ~300ms, so
+# `measure.py` and the capture path are unaffected and are deliberately left
+# alone: forcing a family there would change capture conduct to work around a
+# host quirk.
+#: Marks our wrapper so `prefer_ipv4` can tell whether the `getaddrinfo`
+#: currently installed is ours. A module-level "already done" flag would not:
+#: it outlives the wrapping it claims to describe, so anything that replaces
+#: `socket.getaddrinfo` afterwards (a test's monkeypatch, another library)
+#: leaves the flag asserting a preference that is no longer installed.
+_MARK = "_prefers_ipv4"
+
+
+def _ipv4_first(infos: list[tuple]) -> list[tuple]:
+    """`getaddrinfo` results with the IPv4 addresses moved to the front.
+
+    Invariant: reorder, never filter. Dropping AF_INET6 would make a genuinely
+    IPv6-only host unreachable — trading a local host quirk for a capability
+    loss. The sort is stable, so DNS round-robin order survives within a family.
+    """
+    return sorted(infos, key=lambda info: info[0] != socket.AF_INET)
+
+
+def prefer_ipv4() -> None:
+    """Make this process try IPv4 before IPv6 for every name it resolves.
+
+    Idempotent: `main` may run more than once per process (the test suite does),
+    and wrapping an already-wrapped `getaddrinfo` would nest pointlessly.
+    """
+    if getattr(socket.getaddrinfo, _MARK, False):
+        return
+    _inner = socket.getaddrinfo
+
+    def _wrapped(*args, **kwargs):
+        return _ipv4_first(_inner(*args, **kwargs))
+
+    setattr(_wrapped, _MARK, True)
+    socket.getaddrinfo = _wrapped
+
+
 _DEFAULT_DELAY = 1.5
 
 _CRAWL_DELAY = re.compile(r"(?im)^\s*crawl-delay\s*:\s*([\d.]+)")
@@ -579,6 +629,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="Head and permalink gates only — no browser")
     parser.add_argument("--debug-port", type=int, default=9223)
     args = parser.parse_args(argv)
+
+    # Before the first probe, not after: robots.txt is this screen's very first
+    # network act and it gates every template that follows, so a preference
+    # installed later would leave that one fetch paying the full IPv6 timeout.
+    prefer_ipv4()
 
     entry = ENTRIES[args.entry]
     origin, platform = entry["origin"], entry["platform"]
@@ -620,6 +675,13 @@ def main(argv: list[str] | None = None) -> int:
     delay = effective_delay(robots_body)
     reason = "robots.txt Crawl-delay" if delay > _DEFAULT_DELAY else "default"
     notes.append(f"politeness: {delay:.1f}s between fetches ({reason})")
+
+    # Same reasoning as the politeness note: `prefer_ipv4` reorders DNS results
+    # for the whole process, and a screen whose figures were retracted once for
+    # a DNS-shaped reason should evidence that in its own output rather than
+    # leave it to whoever reads the source.
+    notes.append("resolver: IPv4 tried before IPv6 (a dead AAAA route would "
+                 "otherwise cost ~60s per fetch and has skewed this screen before)")
 
     # --- head probe, one polite GET per template ----------------------------
     # `delay` is held before every fetch, the first template included —

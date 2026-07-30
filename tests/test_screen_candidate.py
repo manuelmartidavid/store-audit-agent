@@ -8,6 +8,7 @@ running the tool, the same split tests/test_measure.py uses.
 
 from __future__ import annotations
 
+import socket
 import sys
 import urllib.error
 from pathlib import Path
@@ -520,3 +521,103 @@ def test_fetch_still_reports_http_errors_via_the_existing_path(monkeypatch):
     assert status == 404
     assert html == ""
     assert final_url == "https://x.test/"
+
+
+# --- IPv4 preference: a dead AAAA record must not cost 60s a fetch -----------
+#
+# Diagnosed 2026-07-30. This machine's router advertises a global IPv6 prefix
+# with no upstream transit, so every AAAA connect attempt hangs until timeout.
+# `urllib` has no Happy Eyeballs, so it blocks ~60s per fetch before falling
+# back to IPv4 — measured 63.88s against entry 04's host, whose IPv4 path
+# answers in 0.96s. That artefact is what produced entry 04's retracted
+# "LCP 19-23s" figures. Chromium fails over in ~300ms, so `measure.py` is not
+# affected and the capture path is not either; only these urllib probes are.
+
+
+def test_ipv4_addresses_sort_before_ipv6():
+    infos = [
+        (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2606:4700::1", 443, 0, 0)),
+        (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("104.26.9.137", 443)),
+    ]
+    assert [i[0] for i in sc._ipv4_first(infos)] == [socket.AF_INET, socket.AF_INET6]
+
+
+def test_an_ipv6_only_host_keeps_its_addresses_rather_than_losing_them():
+    """Invariant: reorder, never filter. Dropping AF_INET6 would make a genuinely
+    IPv6-only host unreachable — trading a host quirk for a capability loss."""
+    infos = [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2606:4700::1", 443, 0, 0))]
+    assert sc._ipv4_first(infos) == infos
+
+
+def test_order_within_a_family_is_preserved():
+    """Stable sort: DNS round-robin order carries real load-balancing intent."""
+    a = (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("104.26.9.137", 443))
+    b = (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("104.26.8.137", 443))
+    v6 = (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2606:4700::1", 443, 0, 0))
+    assert sc._ipv4_first([v6, a, b]) == [a, b, v6]
+
+
+def test_prefer_ipv4_makes_socket_return_ipv4_first(monkeypatch):
+    """The installer is what `main` calls; it must reorder real getaddrinfo output."""
+    v6 = (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2606:4700::1", 443, 0, 0))
+    v4 = (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("104.26.9.137", 443))
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: [v6, v4])
+
+    sc.prefer_ipv4()
+
+    assert socket.getaddrinfo("shop.test", 443)[0][0] == socket.AF_INET
+
+
+def test_prefer_ipv4_is_idempotent(monkeypatch):
+    """`main` may run more than once in one process (the test suite does)."""
+    v6 = (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2606:4700::1", 443, 0, 0))
+    v4 = (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("104.26.9.137", 443))
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: [v6, v4])
+
+    sc.prefer_ipv4()
+    sc.prefer_ipv4()
+
+    assert [i[0] for i in socket.getaddrinfo("shop.test", 443)] == [
+        socket.AF_INET,
+        socket.AF_INET6,
+    ]
+
+
+def test_main_installs_the_ipv4_preference_before_it_fetches_anything(monkeypatch):
+    """Invariant: the preference must be in place before the first probe, not
+    after. `main` fetches robots.txt as its very first network act, so a
+    preference installed later would leave that fetch paying the full timeout —
+    and robots.txt gates every template that follows it."""
+    installed_before_first_fetch: list[bool] = []
+
+    def _spy_fetch(url, timeout=30):
+        installed_before_first_fetch.append(
+            getattr(socket.getaddrinfo, "_prefers_ipv4", False)
+        )
+        raise SystemExit(99)  # stop main here; the ordering is all we assert
+
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: [])
+    monkeypatch.setattr(sc, "_fetch", _spy_fetch)
+
+    with pytest.raises(SystemExit) as exc:
+        sc.main(["--entry", "04", "--skip-perf"])
+
+    assert exc.value.code == 99, "the spy should have been reached"
+    assert installed_before_first_fetch == [True]
+
+
+def test_the_report_evidences_the_resolver_preference_instead_of_asserting_it(capsys, monkeypatch):
+    """`prefer_ipv4` reorders DNS results process-wide, which is invisible in the
+    output of a tool whose figures were retracted once already for a DNS-shaped
+    reason. Same reasoning as the `politeness:` note: evidence the conduct.
+    """
+    monkeypatch.setattr(sc.time, "sleep", lambda *_a: None)
+    monkeypatch.setattr(
+        sc, "_fetch",
+        lambda url, timeout=30: (200, "<head><title>t</title></head>", url),
+    )
+
+    sc.main(["--entry", "04", "--skip-perf"])
+
+    notes = capsys.readouterr().out
+    assert "resolver: IPv4 tried before IPv6" in notes
