@@ -62,7 +62,9 @@ waits on, and it is Marti's: it needs live stores, `TSCC_STOREFRONT_PASSWORD`, a
   firing on the next eval run **is** the intended signal, not a failure.
 - `05` (blocked path), `makerlab` (confirm as entry 03 — currently stale at
   0.1.0), and fresh captures of `01` and `04`.
-- **Run the freshness gate.** Not optional — see *Storefront documents cache hard*.
+- **Follow `evals/FREEZE-CHECKLIST.md`.** It is the wave's procedure, written
+  2026-07-30. The freshness gate in particular is not optional and has no
+  implementation — see *Storefront documents cache hard*.
 - **Measure pack size**: `triage/pack_evidence.py --stats` on the new entry-02
   pack, recorded beside the old 522 KB. The price/stock clause's token cost is
   unknown and can only be measured from a live capture.
@@ -409,8 +411,12 @@ number, a lost hour, or a retracted figure.
   logged-in admin views hid it. **A capture can silently freeze the past** — a
   fixture of a stale snapshot would label a defect out of existence with no error
   anywhere. The **freshness gate** (assert `compiled_assets/styles.css ?v=` is
-  current on every revenue template before capturing) is on the freeze checklist
-  and is **not optional**. Note the `{% stylesheet %}` compile can lag ~4h too.
+  current on every revenue template before capturing) is step A4 of
+  `evals/FREEZE-CHECKLIST.md` and is **not optional**. It is also **not
+  implemented** — `planting/inspect_lcp.py` shows the stamp, nothing gates on it —
+  so skipping it still reports success everywhere downstream. Note the
+  `{% stylesheet %}` compile can itself lag ~4h behind a push, so a stale stamp
+  does not always mean a stale document; it always means stop and find out which.
 - **Shopify transcodes PNG masters to lossy webp (~108 KB on the wire at any upload
   weight) but ships JPEG masters verbatim.** An "oversized PNG hero" is not heavy on
   the wire, so a heavy-image performance defect **must** be a JPEG. CDN behaviour
@@ -530,14 +536,26 @@ number, a lost hour, or a retracted figure.
     narrator bans *all* digits precisely because the file is absent, which makes
     automatic-fail #1 unreachable by construction. So the numeral ban — not the
     benchmark file — is what actually enforces the project's top-risk control. If
-    benchmarks.md is ever written, that ban is the thing to revisit.
-  - **`02-store-audit-brief.md` does not exist** anywhere in the repo, and is cited
-    here as "Full brief" and in `supersedes:`. It was part of the phase-0 delivery
-    zip, which was never unpacked into the repo. The citation is unresolvable for
-    anyone reading this file today.
-  - **There is no "freeze checklist" document.** The freshness gate is called "not
-    optional" and lives only as prose here. **Step 14 depends on it**, so it needs a
-    real home before the recapture wave rather than after.
+    benchmarks.md is ever written, that ban is the thing to revisit. **Still
+    outstanding**; left alone deliberately, because the ban works.
+  - ~~`02-store-audit-brief.md` does not exist~~ — **addressed 2026-07-30, as an
+    explicitly-labelled RECONSTRUCTION.** The original was in the phase-0 zip,
+    never unpacked, and is not recoverable. The new file rebuilds only what the
+    repo's own citations pin — §5 (conduct is a floor · inputs are frozen · the
+    crawler is tested live and everything downstream against fixtures), §6 case 3
+    (injection, two-part pass condition), and non-goal 3 (no authenticated
+    testing, and the ruling that a storefront gate is not a customer session).
+    **§1–§4, §7+, and non-goals 1–2 are marked NOT RECOVERED rather than
+    invented**, and the file disclaims authority beyond those citations. If the
+    original ever surfaces it replaces the reconstruction wholesale.
+  - ~~There is no "freeze checklist" document~~ — **written 2026-07-30:
+    `evals/FREEZE-CHECKLIST.md`**, beside `PROMOTION-PROTOCOL.md`. Covers the
+    capture wave end to end (screen → store-state verification → IPv4 preference →
+    freshness gate → capture → verdict read → secret hygiene → archive →
+    provenance → pack → label → measure), with each item tied to the incident that
+    motivates it. **It records its own gaps:** the freshness gate is still the
+    highest-consequence item and the only one that is pure prose, because
+    automating it is an unscoped crawler change.
 
 ---
 
