@@ -1,9 +1,12 @@
 # Store Audit Agent — project state
 
-    updated:  2026-07-29 (v1.0 frozen · repo consolidated · entry 05 first-run ·
+    updated:  2026-07-30 (v1.0 frozen · repo consolidated · entry 05 first-run ·
               step 8 measurement hardening · pushed to a private GitHub remote ·
               step 8 merged to main · decision 30 → rubric v0.5, prompt v1.1 ·
-              step 9 impact-narrator · step 10 entries 01/04 selected)
+              step 9 impact-narrator · step 10 entries 01/04 selected ·
+              steps 11–13 → crawler 0.3.0 merged · decision 31 → MC-116)
+              The header read 2026-07-29 until 2026-07-30; the crawler 0.3.0 wave
+              landed its own section without updating it.
     note:     decision 30 was argued, run and verified on 2026-07-28; its six
               commits landed 2026-07-29 00:02 across the midnight boundary. Files
               written that evening carry the 28th, and that is the decision date.
@@ -484,7 +487,8 @@ reported, never once obeyed.
 ### Open decisions — need a call, not an inference
 
 ~~1. **MNC-001 vs rubric §1 "store unreachable"**~~ — **RESOLVED 2026-07-28,
-   decision 30.** Two remain.
+   decision 30.** ~~Two remain.~~ **One remains** — #3 resolved 2026-07-30 as
+   decision 31.
 
 2. **Two category caps bind** (`seo` by 4, `accessibility` by 1). Rubric §4 rule 2
    says that means the weights are wrong, not the cap — but this store has two
@@ -494,9 +498,10 @@ reported, never once obeyed.
    **Entry 01 now exists as a selection (2026-07-29) but not as a capture**, so
    this stays open until the 0.3.0 wave runs it. Nothing about the selection
    pre-empts the answer.
-3. **MC-116 severity: label `medium`, two of three runs `low`.** Two independent
-   runs agreeing against the label is worth one look before assuming the label is
-   right.
+~~3. **MC-116 severity: label `medium`, two of three runs `low`.**~~ **RESOLVED
+   2026-07-30, decision 31.** The look was taken. The label's verdict stands, two
+   factual errors in the label were found and fixed, and the dissent turned out to
+   be broader than recorded (three of *four* runs, not two of three).
 
 ### Blocking-adjacent findings from the loop
 
@@ -999,6 +1004,85 @@ clause's cost in tokens is unknown until step 14. Estimate it with
 `triage/pack_evidence.py --stats` on the new entry-02 pack and record it beside
 the old 522 KB figure.
 
+## Decision 31 — MC-116 keeps `medium`; the gap is in §1, not the label (2026-07-30)
+
+Resolves open decision #3. The recorded question was "two of three runs say
+`low`, is the label right?" Reading the runs' `severity_rationale` — the field
+decision 21 kept precisely so a severity disagreement is diagnosable rather than
+merely countable — reframed it three ways.
+
+1. **The dissent is broader than recorded: three of four runs, not two of three.**
+   `runs/v1.0-cli-run1.json` also answers `low`, and it is the only run in the
+   project with a recorded model. The open item counted the v0.6 lineage only.
+2. **The one run that agreed with the label agreed for a reason the fixture
+   contradicts.** v0.6-run3's rationale is "§1 medium: axe violation off the
+   purchase path". Both cited rules fire on pdp and cart, so the violation is
+   squarely *on* the purchase path. Nothing in the golden set was defending
+   `medium` on a correct reading.
+3. **The three `low` runs are not being sloppy.** They cite §1's `low` rule column
+   verbatim — "hygiene, no measurable session impact" — against evidence where
+   both rules are axe `best-practice` / impact `moderate` with **no `wcag*` tag**,
+   no Lighthouse metric moving, and nothing quantified anywhere. On the evidence
+   base as it exists, `low` is a defensible chain.
+
+**Ruling: the label keeps `medium`.** §1 `low` is not "small impact", it is *nil*
+impact — every representative example is a defect where nothing downstream changes
+for anyone (decorative images without alt, heading order in the footer, missing
+canonical on a non-duplicated page). Landmark navigation is a primary AT navigation
+mode; losing it forces linear traversal on revenue templates. That is §1 `medium`'s
+second clause, "a revenue-template issue affecting a subset of sessions". Flipping
+the label to `low` would make the `low` row absorb a real functional loss *and*
+settle a judgment call by model consensus — PROMOTION-PROTOCOL rule 3's in-sample
+failure mode, run backwards.
+
+**So the label is right and the rubric has the gap.** The label's reasoning is
+sound and appears nowhere in the model's inputs: nothing in §1 tells a model that
+assistive-technology navigation loss counts as a measurable session impact.
+
+**Two factual errors found in the label and fixed** (`evals/golden/02-sabotaged/expected/findings.md`):
+
+- **`instances` was one short on every template.** It carried `region`'s node
+  counts alone (21/14/18/2/4/7) while citing *both* `axe:region` and
+  `axe:landmark-one-main` as evidence. `landmark-one-main` fires once per template,
+  so the correct totals are 22/15/19/3/5/8 — **exactly what three of four runs
+  reported.** The ground truth was the less accurate side. No recorded verdict
+  moves: `triage/eval_triage.py` validates `instances` keys, never counts, and
+  `scoring.composite()` still returns 24 / Critical / penalties 76 / caps binding
+  `seo`+`accessibility`, byte-identical to the record.
+- **The note's claim about `search` was false.** It read "it fires on `search` too
+  even though that template does contain a `<main>`" and dismissed the discrepancy
+  as the theme's problem rather than the label's. There is no discrepancy: axe's
+  check is `page-has-main` on `target: ['html']` ("Document does not have a main
+  landmark"), and the distilled tree holds zero `main` nodes while keeping
+  `header`, `nav` and `footer` — `distill.py:33` puts `main` in `LANDMARK_TAGS`,
+  kept unconditionally at `:146`, so one would have survived if it existed. Struck.
+  This *strengthens* the label: the finding is uniform on all six templates with
+  nothing to reconcile.
+
+The severity dispute is now recorded in the label itself, per the project's own
+"record *why* a label diverges, in the label" convention — so a future reader
+inherits the analysis instead of re-deriving it.
+
+**The §1 clarification is deferred to step 15's re-label, not dropped.** It is a
+§1 edit, which every prompt inlines verbatim, so it moves the rubric pin
+(`rubric_version()` derives from the file's bytes) and needs a new prompt version
+to carry the edited text. Step 15 is *already* cutting one (restoring the two
+presence-checklist items the distiller fix unblocks) and *already* re-labeling
+(price and stock become detectable, `b219afac…` retires). Bundled there it costs
+nothing extra; taken standalone it costs a rubric edit plus a prompt version plus
+a re-label to move one label's severity, and every number in
+`evals/results/07-finding-triager.md` gets re-measured at step 15 regardless.
+This is a **sequencing** call; the content is settled either way.
+
+**Decision 29's closing warning, checked and paid cheaply.** It says a future §1
+edit "should expect to pay" — narrow-by-luck rather than narrow-by-structure. Audited
+now rather than at step 15, because a hit would have made the deferral the wrong
+call: **`MC-112` is the only `low` label in the entire golden set** (entry 05's
+labels describe an absence and carry no severity; entries 01/03/04 have no labels
+yet). It is redundant alt text on decorative icons — §1's own paradigm `low` case,
+nil-effect, and it loses no navigation. A clarification scoped to AT navigation
+loss does not touch it. **Label exposure of the deferred edit: zero.**
+
 ## Readiness — where the agent actually stands (2026-07-28)
 
 **Recall is proven in-sample. Precision has never been measured.** Four of entry
@@ -1079,9 +1163,10 @@ is the intended behaviour and the signal to re-label.
 ### Now — no capture required, nothing blocked
 
 8. ~~**Resolve the three open decisions above.**~~ **#1 done** (decision 30 —
-   rubric v0.5, prompt v1.1, entry 05 now 3/3). **Two left:** #2 waits on entry
-   01, and #3 (MC-116 severity — label `medium`, two of three runs `low`) is
-   still a ten-minute read.
+   rubric v0.5, prompt v1.1, entry 05 now 3/3). **#3 done 2026-07-30** (decision
+   31 — MC-116 keeps `medium`; two factual errors in the label fixed; the §1
+   clarification it exposed is scheduled onto step 15). **One left:** #2 waits on
+   entry 01.
 9. ~~**Write `impact-narrator`.**~~ **Done 2026-07-29.** v0.1 built and
    measured: entry 02 3/3, entry 05 1/1, zero numerals, zero MNC violations,
    editing cost ≈5% at N=1 (agent-conducted) against decision 3's >~30% kill
@@ -1202,6 +1287,14 @@ is the intended behaviour and the signal to re-label.
 15. **Re-run and re-measure v1.0** against the new entry-02 fixture; restore the
     two removed presence-checklist items in a v1.1. Then run entry 01 — the first
     real precision measurement the project will have.
+    **Carries decision 31's deferred obligation:** clarify rubric §1 so that loss
+    of assistive-technology navigation reads as a subset-of-sessions impact rather
+    than hygiene — the gap that has three of four runs answering `low` on MC-116
+    against a `medium` label. It rides here because §1 is inlined verbatim by every
+    prompt, so it needs the prompt version and re-label this step is cutting
+    anyway. Label exposure was audited at decision 31 and is zero (`MC-112`, the
+    only `low` label in the set, is unaffected). **Do not let the re-label pass
+    without it** — that is the whole cost argument for deferring.
 
 ### Then — the deliverable
 

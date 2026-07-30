@@ -418,15 +418,37 @@ confidence: high
 evidence:
   - axe:landmark-one-main
   - axe:region
-instances: {home: 21, collection: 14, pdp: 18, cart: 2, search: 4, 404: 7}
+instances: {home: 22, collection: 15, pdp: 19, cart: 3, search: 5, 404: 8}
 dedup: one finding, present on every template via the theme layout
 notes: >
-  PROMOTED 2026-07-28. axe fires `landmark-one-main` on all six templates and
-  `region` on all six, 2–21 nodes each. Medium rather than high: it degrades
+  PROMOTED 2026-07-28. axe fires `landmark-one-main` (1 node per template) and
+  `region` (2–21 nodes) on all six templates; `instances` is the sum of the two,
+  because both rules are cited as evidence. Medium rather than high: it degrades
   screen-reader navigation, which is a subset of sessions, and it does not block
-  purchase. Note it fires on `search` too even though that template does contain
-  a <main> — axe's verdict is the evidence, and reconciling it is the theme's
-  problem, not the label's.
+  purchase.
+  Two factual corrections, 2026-07-30. (a) `instances` previously carried the
+  `region` counts alone (21/14/18/2/4/7), one short on every template — three of
+  four recorded runs reported the correct totals, so the ground truth was the
+  less accurate side. Values are unscored (`eval_triage.py` validates `instances`
+  keys, never counts), so no recorded verdict moves. (b) This note previously
+  said the rule fires on `search` "even though that template does contain a
+  <main>", and treated the discrepancy as the theme's problem rather than the
+  label's. There is no discrepancy: search has no <main>. axe's check is
+  `page-has-main` on `target: ['html']`, and the distilled tree holds zero `main`
+  nodes while keeping `header`, `nav` and `footer` — `distill.py` keeps every
+  LANDMARK_TAG unconditionally, `main` included, so one would have survived. The
+  finding is uniform across all six templates, which strengthens the label.
+  Severity is disputed, and stands pending a rubric ruling. Three of four
+  recorded runs answer `low` ("hygiene, no measurable session impact"); the one
+  answering `medium` cites "axe violation off the purchase path", which the
+  fixture contradicts — both rules fire on pdp and cart. Both are axe
+  `best-practice`/`moderate` with no `wcag*` tag, so nothing in the evidence base
+  makes the impact measurable and `low` is a defensible read of §1 as written.
+  The label keeps `medium` on §1's "revenue-template issue affecting a subset of
+  sessions" clause: landmark navigation is a primary AT navigation mode, and its
+  loss is a functional degradation rather than the nil-effect shape every §1
+  `low` example has. Closing the gap means clarifying §1 — deferred to the
+  capture wave's re-label, since §1 is inlined verbatim by every prompt.
 match:
   any_of:
     - "axe:landmark-one-main"
