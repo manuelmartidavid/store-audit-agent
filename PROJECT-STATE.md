@@ -894,6 +894,111 @@ stdout/stderr now reconfigure to UTF-8 with `errors="replace"`. Also corrected
 `--pack-version` and named `runs/v1.0-run1.json`, the file step 8 found never
 existed.
 
+## Crawler 0.3.0 — the capture wave's code half (2026-07-30)
+
+Steps 11, 12 and 13 landed together, because all three change capture output and
+the version bump is what makes fixtures from either side distinguishable.
+
+- **Platform-generic discovery (D3).** `crawler/discovery.py` gained a frozen
+  `Profile` holding one platform's URL table, and `crawl.py` selects it from
+  `fingerprint.detect_platform` reading the home page's own signals. Anything
+  unrecognised gets the Shopify table, which is exactly 0.2.0's behaviour, so no
+  frozen fixture can regress. The local storefront now serves WooCommerce URL
+  shapes, and acceptance test §10.4 asserts six captured templates instead of
+  three `absent` ones. **The home-only verdict this picks the URL table from
+  can disagree with the merged verdict the fixture records** — see "Final
+  review fix wave" below; the original text here claimed they cannot disagree,
+  which is wrong.
+- **The cart slug is discovered, not assumed.** Read off the home page's own
+  cart link. `pick_cart` rejects two shapes that carry the cart-matching class
+  without being the cart page: `add-to-cart` hrefs (`_NOT_THE_CART_RE`), and —
+  since the final review — any href matching the selected profile's
+  `product_re`, because WooCommerce's loop button for variable, grouped and
+  external products also carries class `add_to_cart_button` but links straight
+  to the product's own permalink rather than an add-to-cart href. `pick_cart`
+  therefore takes `profile: Profile = SHOPIFY` as a third parameter now; a
+  cart is never a product page, on any platform. Costs no extra fetch. Shopify
+  is unchanged. This is the bug the entry-04 screen found first.
+- **`Crawl-delay` (D6).** `robots.crawl_delay_s` reads our UA group then the
+  wildcard; `session.honour_crawl_delay` raises the interval and never lowers
+  it; `manifest.yaml` records both `crawl_delay_declared` and
+  `fetch_interval_s`. Known limitation, tested rather than commented:
+  `urllib.robotparser` parses integer delays only, so a fractional declaration
+  reads as absent — which changes nothing below our 1s floor and loses a
+  fraction of a second above it. **Corrected from the plan text (human-ruled
+  deviation):** `manifest.py` renders `crawl_delay_declared` with an
+  `is not None` check, not the plan's truthiness test, so a store declaring
+  `Crawl-delay: 0` records as `0` rather than `null` — the evidence layer
+  records what was declared instead of interpreting it.
+- **The distiller's short-text gap.** `keep()` now keeps text with money's
+  lexical shape and elements whose class names a price/stock/availability slot.
+  Residual gap recorded in spec §5: a bare `<span>In stock</span>` with no class
+  hook and no number is still dropped. **Two further corrections from the plan
+  text (human-ruled deviations):** (a) `_MONEY_RE` is compiled *without*
+  `re.I`, so the ISO-4217-code arm requires uppercase — matching case-
+  insensitively caught ordinary copy like "Try 10 days risk-free" and "cop 10",
+  since TRY and COP are real currency codes; (b) `"badge"` was removed from
+  `_VALUE_CLASS_SUBSTRINGS`, because this repo's own fixture theme emits
+  `.badge--new`, `.badge--hot`, `.badge--preorder`, `.badge--limited` and a
+  filter-count badge, none of which are purchase-decision facts. Spec §5
+  records the extra residual gap this creates: a genuine stock badge whose only
+  hook is a `badge` class and no number is now also dropped.
+- **Final review fix wave (2026-07-30, `3cad7b5..bf9278f`).** A whole-branch
+  review taken after this section was first written found six real defects
+  against the code, not against intent; all six landed as separate commits,
+  full suite green at `bf9278f` (614 passed, 1 skipped).
+  - `pick_cart`'s profile-aware rejection, folded into the cart bullet above.
+  - `detect_platform`'s docstring (`crawler/fingerprint.py`) and
+    `specs/crawler.md` §3 previously stated discovery and the fixture "cannot
+    disagree" about the platform. They can: `detect_platform` runs twice over
+    different signal sets — home-page-only in `crawl.py` to pick the URL
+    table, fully-merged at the end for the fixture — and Shopify evidence wins
+    outright over WooCommerce's, so a home-only `woocommerce` verdict flips to
+    `shopify` the moment any later template loads a Shopify asset. Separately,
+    `_WOO_URL_MARKERS` includes the generic `/wp-content/themes/`, so any
+    WordPress store qualifies for the home-only Woo verdict on template
+    evidence alone. **The behaviour ships as designed** — an unrecognised
+    platform still falls back to the Shopify table, so no frozen fixture can
+    regress — but the docstring and spec §3 now state the real limitation
+    instead of the false invariant, and `crawl.py` logs when the two verdicts
+    differ (`· platform: discovery used {x!r} but the merged fixture recorded
+    {y!r} — a later template's evidence changed the verdict`).
+  - `specs/crawler.md` §3 also now records a second limitation: a large
+    declared `Crawl-delay` is honoured in full, however long that takes — a
+    store declaring `Crawl-delay: 600` makes one capture spend ~2.3 hours
+    waiting. No cap, because a cap would under-honour what the store asked;
+    declining a store outright is the operator's call, not the crawler's.
+  - Smaller corrections: `NAV_SELECTOR`'s dropped ordering-rationale comment
+    restored verbatim; `_product_sitewide`'s `profile` parameter annotated as
+    `Profile` (it was the only unannotated parameter in `crawl.py`); a comment
+    added to `session.py` explaining why `honour_crawl_delay`'s truthiness
+    test is correct there even though `manifest.py` was deliberately corrected
+    away from truthiness in this same wave (a declared `0` and a missing
+    declaration are indistinguishable to `> min_interval_s` either way, unlike
+    the manifest's null-vs-zero rendering); the manifest spec-field-list test
+    extended to cover `fetch_interval_s` and `crawl_delay_declared`; a
+    bounded-fetch assertion added for the WooCommerce discovery path
+    (`tests/test_integration.py`).
+
+  Two gaps were found and recorded rather than closed:
+  - The new WooCommerce bounded-fetch test does not reach `_product_sitewide`'s
+    `already == fallback` dedupe branch: the fixture serves the same product
+    links from both `/shop` and `/product-category/nuts/`, so `pick_product`
+    always succeeds off the collection page and the sitewide fallback is never
+    invoked for WooCommerce. Closing it needs fixture changes that were out of
+    scope for this wave.
+  - The platform-divergence log line has no automated test; no test in this
+    suite asserts log output content.
+- **Crawler at `0.3.0`.** `manifest.yaml` records it, so `b219afac…` and its
+  successor are distinguishable — which is the mechanism by which the
+  fixture-hash pin fires on the next eval run and signals the re-label.
+
+**Not measured yet, and it must be:** what this does to pack size. The
+distilled tree can only be recomputed from a live capture, so the price/stock
+clause's cost in tokens is unknown until step 14. Estimate it with
+`triage/pack_evidence.py --stats` on the new entry-02 pack and record it beside
+the old 522 KB figure.
+
 ## Readiness — where the agent actually stands (2026-07-28)
 
 **Recall is proven in-sample. Precision has never been measured.** Four of entry
@@ -1058,7 +1163,8 @@ is the intended behaviour and the signal to re-label.
 
 ### Then — one capture wave
 
-11. **Platform-generic discovery** (selection design D3). Discovery is hardcoded
+11. ~~**Platform-generic discovery** (selection design D3).~~ **Done 2026-07-30.**
+    Discovery is hardcoded
     to `/collections/{handle}`, `/products/{handle}` and `/search?q=a`; pointed
     at a WooCommerce store it returns collection, pdp and search `absent` — no
     product page, which guts the conversion axis. Add a fingerprint-selected URL
@@ -1074,7 +1180,8 @@ is the intended behaviour and the signal to re-label.
     using the British term). `planting/screen_candidate.py`'s own pinned-target
     table hit this exact bug first and was patched locally there — the
     production fix belongs here, in discovery, not only in the screen.
-12. **`robots.txt` `Crawl-delay`** (selection design D6). `crawler/robots.py`
+12. ~~**`robots.txt` `Crawl-delay`** (selection design D6).~~ **Done 2026-07-30.**
+    `crawler/robots.py`
     parses allow/disallow only and `session.py` sleeps a fixed `min_interval_s`.
     Forest Whole Foods declares `Crawl-delay: 10`, as does Nalgene — normal for
     WordPress behind a caching plugin. Every prior entry is a store we own, so
@@ -1082,11 +1189,12 @@ is the intended behaviour and the signal to re-label.
     `session.py` honours `max(min_interval_s, crawl_delay)` and `manifest.yaml`
     records the effective value. At 10s over ~14 fetches an entry-04 capture
     takes ~3 minutes in delays alone — worth knowing before it reads as a hang.
-13. **Fix the distiller short-text gap.** Rendered prices and stock badges are
+13. ~~**Fix the distiller short-text gap.**~~ **Done 2026-07-30.** Rendered prices and stock badges are
     dropped (`$149.99` is 7 chars, below `TEXT_KEEP_MIN_CHARS` 20, and a price
     span is not interactive). Verified: zero `$` in any distilled template. Same
     shape as C-01, one layer out. Bump crawler to 0.3.0 — it changes capture
-    output.
+    output. See "Crawler 0.3.0 — the capture wave's code half" above for what
+    actually shipped, including two human-ruled deviations from this plan text.
 14. **Recapture everything under 0.3.0 in one pass:** `02-sabotaged` (re-freeze,
     re-label — price and stock become detectable, so the presence checklist gains
     back two items and the label set likely grows), `05`, `makerlab` (confirm as

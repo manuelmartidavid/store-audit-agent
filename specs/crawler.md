@@ -49,16 +49,17 @@ The password value never appears in any output file, log line, or error message.
 
 ## 3. Template discovery
 
-Fixed target set, discovered in order, first match wins:
+Fixed target set, discovered in order, first match wins. The URL table is
+per-platform:
 
-| Template | Discovery | Fallback |
-|---|---|---|
-| home | `/` | — |
-| collection | first link matching `/collections/{handle}` from home nav, excluding `/collections/all` | `/collections/all` |
-| pdp | first product link within the chosen collection | first `/products/{handle}` sitewide |
-| cart | `/cart` | — |
-| search | `/search?q=a` | — |
-| 404 | `/{random-40-hex}` | — |
+| Template | Shopify | WooCommerce | Fallback |
+|---|---|---|---|
+| home | `/` | `/` | — |
+| collection | first `/collections/{handle}` from home nav, excluding `/collections/all` | first `/product-category/{slug}` from home nav | `/collections/all` · `/shop/` |
+| pdp | first `/products/{handle}` in the chosen collection | first `/product/{slug}` in the chosen collection | first product link sitewide |
+| cart | `/cart` | the store's own cart link, else `/cart` | — |
+| search | `/search?q=a` | `/?s=a` | — |
+| 404 | `/{random-40-hex}` | `/{random-40-hex}` | — |
 
 Rules:
 
@@ -74,6 +75,34 @@ Rules:
   as `blocked_by_robots` — a fact for the report, not a gap to route around.
 - Politeness: ≥1s between fetches, one concurrent request, identifying
   user-agent. Non-negotiable for stores we don't own (brief §5 conduct).
+- **A declared `robots.txt` `Crawl-delay` is honoured**, at
+  `max(min_interval_s, crawl_delay)` — the floor is ours, the ceiling is the
+  store's. Both the declared value and the effective interval are recorded in
+  `manifest.yaml`, so a slow capture is explicable from the fixture alone. At
+  the 10s Forest Whole Foods declares, one capture spends ~2.5 minutes waiting.
+- **A large declared delay is honoured in full, however long that takes.** A
+  store declaring `Crawl-delay: 600` makes one capture spend ~2.3 hours
+  waiting. The projection log line states the cost before the capture starts;
+  there is no cap, because a cap would under-honour what the store asked.
+  Declining a store is the operator's call, not the crawler's.
+- **The URL table is selected by the fingerprint**, from the home page's own
+  signals — the same `detect_platform` the fixture uses, but over a smaller
+  signal set. **This can disagree with the written fixture:** Shopify evidence
+  wins outright over WooCommerce's, so a store discovered as `woocommerce` off
+  the home page alone flips to `shopify` in the merged fixture the moment any
+  later template loads a Shopify asset (a Buy Button embed, an app widget). The
+  crawl logs it when the two verdicts diverge; the discovery decision itself is
+  not revisited. A platform the fingerprint does not recognise (`custom`,
+  `unknown`) uses the Shopify table — that is what every capture before 0.3.0
+  did, so an unrecognised store cannot regress relative to a frozen fixture.
+- **The cart slug is read off the store, not assumed.** WooCommerce lets a store
+  rename its cart page; entry 04 serves its cart at `/basket/` and 404s on
+  `/cart/`. Discovery reads the home page's own cart link (a class hook or a
+  cart/basket slug suffix), rejecting add-to-cart hrefs, and costs no extra
+  fetch. Shopify's cart is always `/cart` and is not discovered.
+- `path_under_test: reduced` therefore means **fewer platform-specific signals**
+  — no theme identity, no app-extension fingerprinting, no Shopify CDN
+  transcoding — not fewer pages.
 
 ### Pinned targets (eval-harness override)
 
@@ -163,6 +192,18 @@ is therefore part of the prompt architecture, and its rules are conservative:
 - Text nodes over 20 chars, whitespace-collapsed — this is what V-01/V-02/V-03
   and the X-01 injection ride in on; drop it and the model-only findings are
   undetectable by construction
+- Short text carrying a purchase-decision fact, below the 20-char floor: text
+  with money's lexical shape (a currency symbol or ISO 4217 code adjacent to a
+  number), and any element whose class names a price, stock, availability or
+  inventory slot. `$149.99` is 7 characters and a price span is not
+  interactive, so without this clause the whole conversion axis reasons about a
+  page with no prices in it. **Residual gap, recorded rather than closed:** a
+  bare `<span>In stock</span>` with no class hook and no number is still
+  dropped. A generic `badge` class is deliberately excluded from the
+  class-name list — this theme's own `.badge--new` / `.badge--hot` /
+  `.badge--preorder` marketing labels are not purchase-decision facts — so a
+  stock badge whose only hook is a bare `badge` class (no `stock`,
+  `availab`, `inventory`, `sold-out`/`soldout`) is also still dropped.
 - Script/link *references*: src/href + async/defer/type. Never bodies.
 
 **Dropped, with counts recorded in `dropped`:** script bodies, style blocks, SVG
@@ -234,6 +275,8 @@ lighthouse_version: PENDING
 axe_core_version: PENDING
 chrome_version: PENDING
 throttling: mobile-4g-slow
+fetch_interval_s: 10
+crawl_delay_declared: 10        # null when the store declares none
 templates:
   pdp: { crawl: captured, lighthouse: ok, axe: ok }
   # …

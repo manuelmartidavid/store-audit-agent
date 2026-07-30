@@ -118,13 +118,48 @@ def test_a_shopify_store_fingerprints_as_shopify_with_evidence(tmp_path):
 # --- §10.4 non-Shopify -------------------------------------------------------
 
 def test_a_non_shopify_store_still_completes_and_feeds_the_reduced_path(tmp_path):
+    """Acceptance test §10.4, and design D3: reduced means fewer platform-specific
+    signals, not fewer pages. Before 0.3.0 this store yielded collection, pdp and
+    search `absent` — the conversion axis, gone."""
     with StoreServer(platform="woocommerce") as server:
         result = _crawl(tmp_path, server)
+        origin = server.origin
 
     assert validate_crawl(result) == []
     assert result["status"] == "complete"
     assert result["fingerprint"]["platform"] == "woocommerce"
     assert result["fingerprint"]["evidence"]
+
+    templates = result["templates"]
+    assert [t for t, e in templates.items() if e["status"] == "captured"] == list(TEMPLATES)
+    assert templates["collection"]["url"] == f"{origin}/product-category/nuts/"
+    assert templates["pdp"]["url"].startswith(f"{origin}/product/card-")
+    assert templates["search"]["url"] == f"{origin}/?s=a"
+
+
+def test_a_renamed_cart_slug_is_discovered_rather_than_assumed(tmp_path):
+    """The bug the entry-04 screen found first: /cart/ 404s, the cart is /basket/."""
+    with StoreServer(platform="woocommerce") as server:
+        result = _crawl(tmp_path, server)
+        origin = server.origin
+        requested = list(server.options.hits)
+
+    assert result["templates"]["cart"]["url"] == f"{origin}/basket/"
+    assert result["templates"]["cart"]["status"] == "captured"
+    assert "/cart" not in requested, "a discovered cart costs no extra fetch"
+
+
+def test_a_shopify_store_still_discovers_exactly_as_it_did_before(tmp_path):
+    """0.3.0's discovery change must be invisible to a Shopify capture."""
+    with StoreServer() as server:
+        result = _crawl(tmp_path, server)
+        origin = server.origin
+
+    templates = result["templates"]
+    assert templates["collection"]["url"] == f"{origin}/collections/rookies"
+    assert templates["pdp"]["url"].startswith(f"{origin}/products/card-")
+    assert templates["cart"]["url"] == f"{origin}/cart"
+    assert templates["search"]["url"] == f"{origin}/search?q=a"
 
 
 # --- §10.5 robots ------------------------------------------------------------
@@ -225,6 +260,32 @@ def test_the_crawl_is_bounded_regardless_of_catalog_size(tmp_path):
     # One page per template: the 50-card grid is fetched once, not fifty times.
     assert sum(1 for p in documents if p.startswith("/products/")) == 1
     assert sum(1 for p in documents if p.startswith("/collections/")) == 1
+
+
+def test_the_crawl_is_bounded_regardless_of_catalog_size_on_woocommerce(tmp_path):
+    """Companion to the Shopify bound above. WooCommerce is the platform whose
+    `Profile` gives `collection_fallback` and `sitewide_product_page` the same
+    page (`/shop/`) — the case `_product_sitewide`'s dedupe guard exists for —
+    and nothing exercised the WooCommerce discovery path's fetch bound before
+    this test.
+    """
+    with StoreServer(platform="woocommerce") as server:
+        result = _run(tmp_path, server)
+        # Unlike Shopify's fixture head (all off-origin CDN URLs), WooCommerce's
+        # head references same-origin theme/plugin assets, so the browser's
+        # subresource fetches for those land in `hits` too. Those are the
+        # store's own asset choices, not the crawler's navigations — excluded
+        # here the same way `/img/` already is above.
+        documents = [
+            p for p in server.options.hits
+            if p != "/robots.txt" and not p.startswith("/img/") and not p.startswith("/wp-content/")
+        ]
+
+    assert result.fetches <= 12, f"{result.fetches} navigations"
+    assert len(documents) <= 12, documents
+    # One page per template: the 50-card grid is fetched once, not fifty times.
+    assert sum(1 for p in documents if p.startswith("/product/")) == 1
+    assert sum(1 for p in documents if p.startswith("/product-category/")) == 1
 
 
 def test_the_div_add_to_cart_survives_into_the_fixture_with_a_resolvable_pointer(tmp_path):
@@ -368,3 +429,28 @@ def test_lighthouse_attaches_to_the_shared_browser(tmp_path, monkeypatch):
     yaml = pytest.importorskip("yaml")
     manifest = yaml.safe_load((tmp_path / "manifest.yaml").read_text(encoding="utf-8"))
     assert manifest["lighthouse_version"] != "PENDING"
+
+
+# --- crawl-delay (design D6) --------------------------------------------------
+
+def test_a_declared_crawl_delay_is_honoured_and_recorded(tmp_path):
+    """Design D6. 2s is enough to prove the wiring; this adds ~14s to the suite,
+    which is the honest cost of testing a delay rather than mocking one."""
+    with StoreServer(robots="User-agent: *\nCrawl-delay: 2\nAllow: /\n") as server:
+        result = _run(tmp_path, server)
+
+    body = (tmp_path / "manifest.yaml").read_text(encoding="utf-8")
+    assert "crawl_delay_declared: 2" in body
+    assert "fetch_interval_s: 2" in body
+    assert result.crawl["status"] == "complete"
+
+
+def test_rendered_prices_reach_the_fixture(tmp_path):
+    """Blocking-adjacent finding from the step-7 loop: zero `$` survived
+    distillation in any template, so the prompt had to instruct the model not to
+    check two purchase-decision affordances."""
+    with StoreServer() as server:
+        result = _crawl(tmp_path, server)
+
+    collection = json.dumps(result["templates"]["collection"]["distilled"])
+    assert "$85.00" in collection

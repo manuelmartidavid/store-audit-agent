@@ -309,3 +309,77 @@ def test_a_plain_decorative_div_is_still_dropped():
     # The fix errs wide but must not keep every div, or the budget is blown.
     assert not keep({"tag": "div", "attrs": {"class": "card__inner"}, "text": "x", "children": []})
     assert not keep({"tag": "div", "attrs": {"data-product-id": "5"}, "text": "x", "children": []})
+
+
+# --- purchase-decision facts below the prose floor ---------------------------
+
+from crawler.distill import is_value_text
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["$149.99", "£4.50", "€19,99", "CAD 85.00", "85.00 CAD", "¥1200", "From $12", "₱500"],
+)
+def test_money_is_recognised_by_its_shape_not_by_a_vendor_list(text):
+    assert is_value_text(text)
+
+
+@pytest.mark.parametrize("text", ["New", "Add to cart", "", None, "Size 10", "2026"])
+def test_text_with_no_currency_marker_is_not_a_price(text):
+    assert not is_value_text(text)
+
+
+def test_a_rendered_price_survives_distillation():
+    """Every early triager run reported "no price on the PDP" — a false positive
+    manufactured by the evidence base. `$149.99` is 7 chars, under the 20-char
+    prose floor, and a price span is not interactive."""
+    tree, _ = _distill(
+        """<html><body><main><h1>1986 Rookie Card</h1>
+             <span class="price">$149.99</span>
+           </main></body></html>"""
+    )
+    price = _find(tree, "span", lambda n: "$149.99" in (n.get("text") or ""))
+    assert price is not None, "the price must reach the triager"
+    assert price["attrs"]["class"] == "price"
+
+
+def test_a_stock_badge_survives_on_its_class_hook_alone():
+    tree, _ = _distill(
+        """<html><body><main>
+             <p class="product__inventory">Sold out</p>
+             <div class="availability">In stock</div>
+           </main></body></html>"""
+    )
+    assert _find(tree, "p", lambda n: n.get("text") == "Sold out") is not None
+    assert _find(tree, "div", lambda n: n.get("text") == "In stock") is not None
+
+
+def test_short_text_with_neither_signal_is_still_elided():
+    """The floor still does its job — this is a narrowing, not its removal.
+
+    Recorded as a known residual gap: a bare `<span>In stock</span>` with no
+    class hook and no number does not survive.
+    """
+    tree, _ = _distill("<html><body><div><em>New</em></div><div><span>In stock</span></div></body></html>")
+    assert _find(tree, "em") is None
+    assert _find(tree, "span") is None
+
+
+@pytest.mark.parametrize("text", ["Try 10 days risk-free", "try 2 sizes", "cop 10", "sar 10"])
+def test_iso_code_shaped_english_words_are_not_money(text):
+    """TRY, COP and SAR are real ISO 4217 codes that also spell ordinary English
+    words. `_MONEY_RE` must not case-fold, or "Try 10 days risk-free" reads as a
+    price. Real stores render currency codes uppercase, so uppercase-only is the
+    correct convention, not a coverage gap."""
+    assert not is_value_text(text)
+
+
+def test_a_generic_badge_class_does_not_grant_a_pass_below_the_floor():
+    """A bare `badge` class is deliberately excluded from
+    `_VALUE_CLASS_SUBSTRINGS` — this repo's own theme uses `.badge--new` /
+    `.badge--hot` / `.badge--preorder` for marketing labels that are not
+    purchase-decision facts, so keeping the substring would let them all
+    through. Below-floor text still needs `stock`, `availab`, `inventory`, or
+    `sold-out`/`soldout` to survive on a class hook alone."""
+    tree, _ = _distill('<html><body><main><span class="badge badge--new">New</span></main></body></html>')
+    assert _find(tree, "span") is None

@@ -32,6 +32,8 @@ def test_the_manifest_carries_every_field_the_spec_names(tmp_path):
         "axe_core_version: 4.12.1",
         "chrome_version: 140.0.0.0",
         "throttling: mobile-4g-slow",
+        "fetch_interval_s:",
+        "crawl_delay_declared:",
     ):
         assert key in body
 
@@ -78,3 +80,25 @@ def test_the_manifest_parses_as_yaml():
     parsed = yaml.safe_load(_manifest().to_yaml())
     assert parsed["schema"] == "manifest/v0.1"
     assert parsed["templates"]["pdp"] == {"crawl": "captured", "lighthouse": "ok", "axe": "ok"}
+
+
+def test_the_manifest_records_the_delay_declared_and_the_interval_honoured():
+    """A slow capture must be explicable from the fixture alone (design D6)."""
+    body = _manifest(crawl_delay_declared=10, fetch_interval_s=10).to_yaml()
+    assert "crawl_delay_declared: 10" in body
+    assert "fetch_interval_s: 10" in body
+
+
+def test_a_store_declaring_no_delay_records_null_not_a_number():
+    yaml = __import__("importlib").import_module("yaml")
+    parsed = yaml.safe_load(_manifest().to_yaml())
+    assert parsed["crawl_delay_declared"] is None
+    assert parsed["fetch_interval_s"] == 1
+
+
+def test_a_store_declaring_zero_delay_records_zero_not_null():
+    """A declared 0 is not an absence — conflating them is the evidence layer
+    interpreting rather than recording."""
+    yaml = __import__("importlib").import_module("yaml")
+    parsed = yaml.safe_load(_manifest(crawl_delay_declared=0.0).to_yaml())
+    assert parsed["crawl_delay_declared"] == 0

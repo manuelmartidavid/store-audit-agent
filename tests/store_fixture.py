@@ -46,19 +46,38 @@ _FOOTER = """
 """
 
 
+_SHOPIFY_NAV = """
+  <a href="/">Home</a>
+  <a href="/collections/all">All products</a>
+  <a href="/collections/rookies">Rookie cards</a>
+  <a href="/collections/graded">Graded</a>
+  <a class="cart-contents" href="/cart">Cart</a>
+"""
+
+# A WooCommerce store that renamed its cart slug — the shape entry 04 has.
+# /cart/ is not served at all here, so a crawler that assumes it records an
+# absent cart.
+_WOO_NAV = """
+  <a href="/">Home</a>
+  <a href="/shop/">Shop</a>
+  <a href="/product-category/nuts/">Nuts</a>
+  <a href="/product-category/seeds/">Seeds</a>
+  <a class="cart-contents" href="/basket/">Basket</a>
+  <a class="add_to_cart_button" href="/shop/?add-to-cart=1">Add to basket</a>
+"""
+
+
 def _page(title: str, body: str, *, head: str = "", platform: str = "shopify") -> bytes:
     markers = _SHOPIFY_HEAD if platform == "shopify" else _WOO_HEAD
     body_class = "template-index" if platform == "shopify" else "woocommerce woocommerce-page"
+    nav = _SHOPIFY_NAV if platform == "shopify" else _WOO_NAV
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>{title}</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 {markers}{head}</head>
 <body class="{body_class}">
 <header><nav>
-  <a href="/">Home</a>
-  <a href="/collections/all">All products</a>
-  <a href="/collections/rookies">Rookie cards</a>
-  <a href="/collections/graded">Graded</a>
+{nav}
 </nav></header>
 {body}
 {_FOOTER}
@@ -201,6 +220,10 @@ class _Handler(BaseHTTPRequestHandler):
                 self.wfile.write(body)
                 return
 
+        if platform == "woocommerce":
+            self._woo_route(parsed, path)
+            return
+
         if path == "/":
             body = """
 <main>
@@ -226,6 +249,42 @@ class _Handler(BaseHTTPRequestHandler):
         else:
             body = '<main><h1>Page not found</h1><p>The page you were looking for does not exist.</p></main>'
             self._send(404, _page("404 Not Found", body, platform=platform))
+
+    _WOO_CARDS = "".join(
+        f'<li class="product"><img src="/img/c{i}.jpg" alt="Card {i}" width="200" height="200">'
+        f'<a href="/product/card-{i}/">Card number {i}</a>'
+        f'<span class="woocommerce-Price-amount">&pound;{i + 5}.00</span></li>'
+        for i in range(50)
+    )
+
+    def _woo_route(self, parsed, path: str) -> None:
+        """WooCommerce's default-permalink URL shapes, with a renamed cart slug."""
+        query = parse_qs(parsed.query)
+        if path == "/" and "s" in query:
+            body = (f'<main><h1>Search</h1><p>No products were found matching '
+                    f'{query["s"][0]}.</p></main>')
+            self._send(200, _page("Search", body, platform="woocommerce"))
+        elif path == "/":
+            body = """
+<main>
+  <h1>Forest Whole Foods</h1>
+  <img src="/img/hero.png" alt="Hero" width="3000" height="1600">
+  <p>Organic wholefoods, nuts and dried fruit, delivered across the UK.</p>
+  <a href="/shop/">Shop everything</a>
+</main>"""
+            self._send(200, _page("Wholefoods — Home", body, platform="woocommerce"))
+        elif path.startswith("/shop") or path.startswith("/product-category/"):
+            body = f'<main><h1>Shop</h1><ul class="products">{self._WOO_CARDS}</ul></main>'
+            self._send(200, _page("Shop", body, head='<meta name="robots" content="noindex">',
+                                  platform="woocommerce"))
+        elif path.startswith("/product/"):
+            self._send(200, _page("Organic almonds", _PDP_BODY, platform="woocommerce"))
+        elif path.rstrip("/") == "/basket":
+            body = '<main><h1>Your basket</h1><p>Your basket is currently empty right now.</p></main>'
+            self._send(200, _page("Basket", body, platform="woocommerce"))
+        else:
+            body = '<main><h1>Page not found</h1><p>The page you were looking for does not exist.</p></main>'
+            self._send(404, _page("404 Not Found", body, platform="woocommerce"))
 
 
 class StoreServer:

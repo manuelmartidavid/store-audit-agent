@@ -10,6 +10,7 @@ from __future__ import annotations
 import random
 import re
 import secrets
+from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse
 
 # Nav links are checked first, so a footer mega-menu repeating the same links
@@ -19,10 +20,97 @@ NAV_SELECTOR = (
     ".header a[href], #shopify-section-header a[href]"
 )
 ALL_LINKS_SELECTOR = "a[href]"
-PRODUCT_LINK_SELECTOR = "a[href*='/products/']"
 
-_COLLECTION_RE = re.compile(r"^/collections/([^/?#]+)/?$")
-_PRODUCT_RE = re.compile(r"^(?:/collections/[^/?#]+)?/products/([^/?#]+)/?$")
+
+@dataclass(frozen=True)
+class Profile:
+    """The URL shapes one platform uses for the templates discovery has to find.
+
+    Invariant: platform-specific knowledge lives here and nowhere else. A new
+    platform is a new entry in `PROFILES`, not a branch in `crawl.py`.
+    """
+
+    name: str
+    collection_re: "re.Pattern[str]"
+    collection_exclude: frozenset[str]
+    collection_fallback: str
+    product_re: "re.Pattern[str]"
+    product_link_selector: str
+    sitewide_product_page: str
+    cart_path: str
+    search_path: str
+    discover_cart: bool
+
+
+SHOPIFY = Profile(
+    name="shopify",
+    collection_re=re.compile(r"^/collections/([^/?#]+)/?$"),
+    # /collections/all is every store's catch-all, so it says nothing about how
+    # this store merchandises. It stays the fallback, never the discovery.
+    collection_exclude=frozenset({"all"}),
+    collection_fallback="/collections/all",
+    product_re=re.compile(r"^(?:/collections/[^/?#]+)?/products/([^/?#]+)/?$"),
+    product_link_selector="a[href*='/products/']",
+    sitewide_product_page="/collections/all",
+    cart_path="/cart",
+    search_path="/search?q=a",
+    discover_cart=False,
+)
+
+WOOCOMMERCE = Profile(
+    name="woocommerce",
+    collection_re=re.compile(r"^/product-category/([^/?#]+(?:/[^/?#]+)*)/?$"),
+    collection_exclude=frozenset(),
+    collection_fallback="/shop/",
+    product_re=re.compile(r"^/product/([^/?#]+)/?$"),
+    # `/product/` is not a substring of `/products/`, so the two selectors do
+    # not answer for each other.
+    product_link_selector="a[href*='/product/']",
+    sitewide_product_page="/shop/",
+    # A starting point only: WooCommerce lets a store rename the cart slug, so
+    # `discover_cart` reads the store's own cart link first (entry 04 serves
+    # its cart at /basket/ and 404s on /cart/).
+    cart_path="/cart",
+    search_path="/?s=a",
+    discover_cart=True,
+)
+
+PROFILES: dict[str, Profile] = {p.name: p for p in (SHOPIFY, WOOCOMMERCE)}
+
+#: Kept for callers that want Shopify's selector by name.
+PRODUCT_LINK_SELECTOR = SHOPIFY.product_link_selector
+
+# A store's own cart link is the only thing that knows its cart slug. The
+# selector is deliberately two-armed — a class hook (themes name the widget
+# "cart" even when the slug is /basket/) and a slug suffix — because either
+# alone misses a real store.
+CART_LINK_SELECTOR = (
+    "a.cart-contents[href], a[class*='cart'][href], a[class*='basket'][href], "
+    "[class*='mini-cart'] a[href], [class*='cart'] > a[href], "
+    "a[href$='/cart'], a[href$='/cart/'], a[href$='/basket'], a[href$='/basket/']"
+)
+
+# CART_LINK_SELECTOR filters by class, and a class alone cannot tell an
+# add-to-cart button from the cart page — WooCommerce names the button class
+# literally `add_to_cart_button`. That covers the button's typical
+# `?add-to-cart=` href, `/cart/add` and `/checkout`, but not every shape the
+# class produces: WooCommerce's loop button for variable, grouped and external
+# products carries the same class yet links straight to the product's own
+# permalink, with no add-to-cart href at all. `pick_cart` rejects that shape
+# separately, against `profile.product_re` — a cart is never a product page.
+# The two checks are complementary, not redundant: each catches a shape the
+# other misses.
+_NOT_THE_CART_RE = re.compile(r"add[-_]to[-_]cart|/cart/add|/checkout", re.I)
+
+
+def profile_for(platform: str | None) -> Profile:
+    """The discovery profile for a fingerprinted platform.
+
+    Invariant: anything unrecognised gets SHOPIFY. That is precisely what every
+    capture before 0.3.0 did, so an unrecognised store cannot regress relative
+    to the fixtures already frozen against it.
+    """
+    return PROFILES.get((platform or "").strip().lower(), SHOPIFY)
 
 
 def same_origin(url: str, origin: str) -> bool:
@@ -36,24 +124,51 @@ def _path(url: str) -> str:
     return urlparse(url).path or "/"
 
 
-def pick_collection(hrefs: list[str], origin: str) -> str | None:
-    """First `/collections/{handle}` link, excluding `/collections/all`."""
+def pick_collection(hrefs: list[str], origin: str, profile: Profile = SHOPIFY) -> str | None:
+    """First collection link matching `profile`'s URL shape."""
     for href in hrefs:
         if not same_origin(href, origin):
             continue
-        match = _COLLECTION_RE.match(_path(href))
-        if match and match.group(1).lower() != "all":
+        match = profile.collection_re.match(_path(href))
+        if match and match.group(1).lower() not in profile.collection_exclude:
             return _canonical(href)
     return None
 
 
-def pick_product(hrefs: list[str], origin: str) -> str | None:
-    """First `/products/{handle}` link, collection-scoped or not."""
+def pick_product(hrefs: list[str], origin: str, profile: Profile = SHOPIFY) -> str | None:
+    """First product link matching `profile`'s URL shape."""
     for href in hrefs:
         if not same_origin(href, origin):
             continue
-        if _PRODUCT_RE.match(_path(href)):
+        if profile.product_re.match(_path(href)):
             return _canonical(href)
+    return None
+
+
+def pick_cart(hrefs: list[str], origin: str, profile: Profile = SHOPIFY) -> str | None:
+    """First same-origin link that points at the store's own cart page.
+
+    Invariant: reject add-to-cart hrefs before canonicalising. `?add-to-cart=99`
+    lives in the query, which `_canonical` strips — so a check made afterwards
+    would see `/shop/` and call it the cart.
+
+    Invariant: reject `profile.product_re` too. `_NOT_THE_CART_RE` only knows
+    the add-to-cart href shapes; WooCommerce's loop button for variable,
+    grouped and external products carries the cart-matching class but links to
+    the product permalink instead, which only a product-path check can catch.
+    A cart is never a product page, on any platform.
+    """
+    for href in hrefs:
+        if not same_origin(href, origin):
+            continue
+        if _NOT_THE_CART_RE.search(href):
+            continue
+        path = _path(href)
+        if path.strip("/") == "":
+            continue
+        if profile.product_re.match(path):
+            continue
+        return _canonical(href)
     return None
 
 
@@ -90,10 +205,10 @@ def random_404_path(rng: random.Random | None = None) -> str:
     return "/" + "".join(rng.choice("0123456789abcdef") for _ in range(40))
 
 
-def static_targets(origin: str) -> dict[str, str]:
-    """Templates whose URL is fixed by the spec table."""
+def static_targets(origin: str, profile: Profile = SHOPIFY) -> dict[str, str]:
+    """Templates whose URL is fixed by `profile`'s table."""
     return {
         "home": urljoin(origin + "/", "/"),
-        "cart": urljoin(origin + "/", "/cart"),
-        "search": urljoin(origin + "/", "/search?q=a"),
+        "cart": urljoin(origin + "/", profile.cart_path),
+        "search": urljoin(origin + "/", profile.search_path),
     }

@@ -17,20 +17,28 @@ from urllib.parse import urljoin, urlparse
 
 from . import SCHEMA_CRAWL, __version__
 from .axe import Axe
-from .config import TEMPLATES, THROTTLING_PROFILE
+from .config import EXPECTED_FETCHES_PER_CAPTURE, TEMPLATES, THROTTLING_PROFILE
 from .discovery import (
     ALL_LINKS_SELECTOR,
+    CART_LINK_SELECTOR,
     NAV_SELECTOR,
-    PRODUCT_LINK_SELECTOR,
+    Profile,
+    pick_cart,
     pick_collection,
     pick_product,
     pinned_target,
+    profile_for,
     random_404_path,
     same_origin,
     static_targets,
 )
 from .distill import distill
-from .fingerprint import Signals, build as build_fingerprint, empty as empty_fingerprint
+from .fingerprint import (
+    Signals,
+    build as build_fingerprint,
+    detect_platform,
+    empty as empty_fingerprint,
+)
 from .lighthouse import run as run_lighthouse, version as lighthouse_version
 from .manifest import Manifest
 from .redaction import assert_absent
@@ -100,6 +108,7 @@ def crawl(options: Options, *, log=print) -> Result:
     observed = False
     block: dict[str, Any] | None = None
     gate = "none"
+    discovery_platform: str | None = None
 
     session = Session(
         origin,
@@ -109,6 +118,11 @@ def crawl(options: Options, *, log=print) -> Result:
     session.start()
     try:
         robots = _fetch_robots(session, origin, log=log)
+        interval = session.honour_crawl_delay(robots.crawl_delay_s)
+        if robots.crawl_delay_s is not None:
+            projected = interval * EXPECTED_FETCHES_PER_CAPTURE
+            log(f"· robots.txt: Crawl-delay {robots.crawl_delay_s:g}s → {interval:g}s between "
+                f"fetches (~{projected / 60:.0f} min of waiting across this capture)")
 
         gate_result = session.open_gate(password)
         gate = gate_result.gate
@@ -124,7 +138,7 @@ def crawl(options: Options, *, log=print) -> Result:
         else:
             log(f"· gate: {gate}")
             observed = True
-            _crawl_templates(
+            discovery_platform = _crawl_templates(
                 session,
                 origin,
                 robots,
@@ -155,6 +169,8 @@ def crawl(options: Options, *, log=print) -> Result:
                     log(f"  ! lighthouse {template}: {message}")
         fetches = session.fetch_count
         chrome_version = session.browser_version
+        interval = session.min_interval_s
+        declared = robots.crawl_delay_s
     finally:
         session.close()
 
@@ -170,6 +186,14 @@ def crawl(options: Options, *, log=print) -> Result:
     # Invariant: a store we never got into reports platform "unknown", even
     # when the page that blocked us was obviously Shopify (MNC-003).
     crawl_json["fingerprint"] = build_fingerprint(signals, observed=observed) if observed else empty_fingerprint()
+    merged_platform = crawl_json["fingerprint"]["platform"]
+    if discovery_platform is not None and merged_platform != discovery_platform:
+        # A fact, not an interpretation: discovery picked its URL table off
+        # home-only signals, and later-template evidence changed the verdict
+        # (fingerprint.py's detect_platform invariant).
+        log(f"· platform: discovery used {discovery_platform!r} but the merged "
+            f"fixture recorded {merged_platform!r} — a later template's evidence "
+            f"changed the verdict")
     crawl_json["templates"] = {t: templates[t] for t in TEMPLATES}
 
     manifest = Manifest(
@@ -181,6 +205,8 @@ def crawl(options: Options, *, log=print) -> Result:
         axe_core_version=(axe.version if axe else None),
         chrome_version=chrome_version,
         throttling=THROTTLING_PROFILE,
+        fetch_interval_s=interval,
+        crawl_delay_declared=declared,
         templates={
             t: {
                 "crawl": templates[t]["status"],
@@ -231,9 +257,14 @@ def _crawl_templates(
     verify_idempotence: bool,
     pinned: dict,
     log,
-) -> None:
-    """Find and capture each of the six templates in order."""
-    static = static_targets(origin)
+) -> str:
+    """Find and capture each of the six templates in order.
+
+    Returns the platform `detect_platform` reported off the home page's own
+    signals — the verdict that picked the URL table — so `crawl()` can log if
+    the verdict from the fully merged signals disagrees (fingerprint.py's
+    `detect_platform` invariant).
+    """
 
     def capture(template: str, url: str) -> None:
         templates[template] = _capture(
@@ -250,18 +281,33 @@ def _crawl_templates(
         )
 
     # home ------------------------------------------------------------------
-    capture("home", static["home"])
+    capture("home", urljoin(origin + "/", "/"))
 
-    # collection: first /collections/{handle} in the home nav, then anywhere on
-    # the page, then /collections/all.
+    # Which URL table the remaining templates live under. Read off the home
+    # page's own signals, so it is the same verdict the fixture will record.
+    # A store we could not reach yields "unknown", which maps to the Shopify
+    # table — the behaviour every capture before 0.3.0 had.
+    platform, _ = detect_platform(signals)
+    profile = profile_for(platform)
+    log(f"· platform: {platform} → {profile.name} discovery")
+    static = static_targets(origin, profile)
+
+    # Links are read while home is still the current page — by the time the cart
+    # is captured the browser is three navigations away.
+    nav_links = session.query_links(NAV_SELECTOR) if templates["home"]["status"] == "captured" else []
+    all_links = session.query_links(ALL_LINKS_SELECTOR) if templates["home"]["status"] == "captured" else []
+    cart_links = session.query_links(CART_LINK_SELECTOR) if templates["home"]["status"] == "captured" else []
+
+    # collection: first matching link in the home nav, then anywhere on the
+    # page, then the profile's fallback.
     collection_url = pinned_target(pinned, "collection", origin)
     if collection_url:
         log(f"· collection: pinned {collection_url}")
-    elif templates["home"]["status"] == "captured":
-        collection_url = pick_collection(session.query_links(NAV_SELECTOR), origin)
-        if not collection_url:
-            collection_url = pick_collection(session.query_links(ALL_LINKS_SELECTOR), origin)
-    collection_url = collection_url or urljoin(origin + "/", "/collections/all")
+    else:
+        collection_url = pick_collection(nav_links, origin, profile) or pick_collection(
+            all_links, origin, profile
+        )
+    collection_url = collection_url or urljoin(origin + "/", profile.collection_fallback)
     capture("collection", collection_url)
 
     # pdp: first product link in the chosen collection, else anywhere on the site.
@@ -270,31 +316,42 @@ def _crawl_templates(
         log(f"· pdp: pinned {pdp_url}")
     else:
         if templates["collection"]["status"] == "captured":
-            pdp_url = pick_product(session.query_links(PRODUCT_LINK_SELECTOR), origin)
+            pdp_url = pick_product(session.query_links(profile.product_link_selector), origin, profile)
         if not pdp_url:
-            pdp_url = _product_sitewide(session, origin, collection_url, robots, log=log)
+            pdp_url = _product_sitewide(session, origin, collection_url, robots, profile, log=log)
     if pdp_url:
         capture("pdp", pdp_url)
     else:
         log("· pdp: no product link found — absent")
         templates["pdp"] = _blank_template(status="absent")
 
-    capture("cart", static["cart"])
+    # cart: a store may rename the slug, so read its own cart link first.
+    cart_url = pinned_target(pinned, "cart", origin)
+    if cart_url:
+        log(f"· cart: pinned {cart_url}")
+    elif profile.discover_cart:
+        cart_url = pick_cart(cart_links, origin, profile)
+        if cart_url:
+            log(f"· cart: discovered {cart_url}")
+    capture("cart", cart_url or static["cart"])
+
     capture("search", static["search"])
     capture("404", urljoin(origin + "/", random_404_path(rng)))
 
+    return platform
+
 
 def _product_sitewide(
-    session: Session, origin: str, already: str, robots: Robots, *, log
+    session: Session, origin: str, already: str, robots: Robots, profile: Profile, *, log
 ) -> str | None:
-    """Last-resort product search: one extra fetch of /collections/all, no more."""
-    fallback = urljoin(origin + "/", "/collections/all")
+    """Last-resort product search: one extra fetch of the profile's catalog page."""
+    fallback = urljoin(origin + "/", profile.sitewide_product_page)
     if fallback.rstrip("/") == already.rstrip("/") or not robots.allows(fallback):
         return None
     visit = session.goto(fallback)
     if visit.error or (visit.http_status or 500) >= 400:
         return None
-    return pick_product(session.query_links(PRODUCT_LINK_SELECTOR), origin)
+    return pick_product(session.query_links(profile.product_link_selector), origin, profile)
 
 
 def _capture(
