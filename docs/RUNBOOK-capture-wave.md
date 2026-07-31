@@ -122,8 +122,25 @@ without it.
 python -m pytest tests/ -q
 ```
 
-✅ **624 passed, 1 skipped.** Takes ~8–16 minutes. Start it and do phase 0.2 while
+✅ **671 passed, 1 skipped** (as of 2026-07-31). Start it and do phase 0.2 while
 it runs.
+
+**Runtime is 8–30 minutes and the spread is not the suite's fault.** Almost all of
+it is `tests/test_integration.py`, which launches a real browser and runs a full
+six-template crawl with Lighthouse and axe per test — 25 tests × a fixed
+per-test cost. Measured 2026-07-31 on this machine:
+
+    import playwright   18.5s     <-- should be sub-second
+    chromium.launch()    4.5s
+    context + page       2.0s
+                        ------
+                        ~29s of overhead before any test does work
+
+An 18-second module import is filesystem cost, not Python. If the suite is
+crawling, the first thing to check is whether real-time antivirus scanning
+covers the repo, `node_modules/` and the Playwright browser cache — excluding
+them is the usual fix. **A slow run is not a failing run**; don't read it as
+something being broken.
 
 ---
 
