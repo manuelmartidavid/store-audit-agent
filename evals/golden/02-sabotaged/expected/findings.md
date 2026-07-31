@@ -661,7 +661,7 @@ scope_note: >
   by the label set rather than by a discriminator the harness invented.
 ```
 
-### MNC-405 — No claim that price or stock is missing
+### MNC-405 — No claim that price is missing
 ```yaml
 type: forbidden_claim
 scope: [findings, narrative]
@@ -682,6 +682,25 @@ detect:
   # bytes, not a debatable extra finding, so it belongs here rather than in the
   # unlabeled bucket.
   #
+  # 🔴 NARROWED TO PRICE ONLY, 2026-07-31, before this label ever scored a run.
+  # It first covered stock and availability too, on the assumption that the
+  # distiller fix made both visible. It did not. Checked against the bytes:
+  # the main PDP product block holds breadcrumb, title, `$10.00`, a quantity
+  # control, an add-to-cart div and "Continue shopping" — and NO stock or
+  # availability text. Every "Sold out" string on that template belongs to a
+  # RELATED product in "You may also like". Availability exists only as
+  # `schema.org/InStock` inside a head JSON-LD script.
+  # So "the PDP shows no stock status" is a defensible reading of the rendered
+  # page, and screening it would have failed a correct run — the worst kind of
+  # eval bug, because it punishes the behaviour the eval exists to reward. The
+  # first v1.3 run emitted exactly that claim ("Product page states no stock or
+  # availability") and MNC-405 stayed silent only because the phrasing missed a
+  # regex. That was luck, not correctness, and luck is not a screen.
+  # Stock presence is therefore NOT screened here. It belongs in the unlabeled
+  # bucket until somebody decides whether a machine-readable-only availability
+  # signal satisfies the checklist item — a real question this fixture poses and
+  # does not answer.
+  #
   # Patterns require explicit absence phrasing rather than the bare word, so a
   # legitimate finding that merely mentions price (a missing price FILTER, a
   # currency-format issue, "price, low to high" sort) does not trip them. This
@@ -695,16 +714,17 @@ detect:
     - 'missing (?:a )?price'
     - 'without (?:a |any )?(?:visible )?price'
     - '(?:does|do|did) not (?:show|display|list|include|state|carry) (?:a |any |the )?price'
-    - 'no (?:stock|availability) (?:status|state|level|indicator|information)'
-    - '(?:stock|availability) (?:status|state) (?:is|are) (?:not shown|not displayed|missing|absent)'
-    - '(?:does|do|did) not (?:show|display|list|include|state|carry) (?:a |any |the )?(?:stock|availability)'
 reason: >
-  Price and stock ARE present on this store's revenue templates, and v1.2 asks
-  the triager to check for them. A run reporting either as missing is asserting
-  something the fixture contradicts. Reporting them as PRESENT is correct and
-  expected — it is the negative claim that is forbidden. A genuinely price-less
-  store would need this label revisited for that entry; it is scoped to entry 02,
-  where the fact is established.
+  Price IS present on this store's revenue templates — `$10.00` in
+  `span.product-page__price` on the pdp, a price per card in the collection grid
+  — and v1.2 onward asks the triager to check for it. A run reporting price as
+  missing is asserting something the fixture contradicts. Reporting it as PRESENT
+  is correct and expected; it is the negative claim that is forbidden.
+  STOCK IS DELIBERATELY OUT OF SCOPE — see the note above. The pdp carries no
+  visible availability indicator, so a finding about stock is defensible and must
+  not be screened as a violation. A genuinely price-less store would need this
+  label revisited for that entry; it is scoped to entry 02, where the fact is
+  established by the bytes.
 ```
 
 ---

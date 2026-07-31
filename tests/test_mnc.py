@@ -132,13 +132,11 @@ def test_a_wildcard_axe_pointer_is_still_skipped_not_raised():
 # enough to catch every phrasing would also fire on findings that merely mention
 # price, turning a correct observation into an automatic fail.
 
-CLAIMS_PRICE_OR_STOCK_IS_MISSING = [
+CLAIMS_PRICE_IS_MISSING = [
     "The PDP does not display a price for the product.",
     "No price is shown on the product detail page.",
     "Price is missing from the collection grid.",
     "Product cards render without a visible price.",
-    "The PDP gives no stock status, so buyers cannot tell availability.",
-    "Availability state is not shown anywhere on the PDP.",
 ]
 
 MENTIONS_PRICE_LEGITIMATELY = [
@@ -149,6 +147,25 @@ MENTIONS_PRICE_LEGITIMATELY = [
     "The price is displayed as $10.00 with no currency code alongside it.",
     "Add-to-cart is a div and is not keyboard operable.",
     "The cart shows no shipping cost before checkout.",
+]
+
+# Stock is NOT screened, and this is the test that keeps it that way.
+#
+# MNC-405 first covered stock and availability alongside price, on the
+# assumption the distiller fix made both visible. Checking the bytes disproved
+# it: the main PDP product block carries a price and an add-to-cart control and
+# no availability text at all, every "Sold out" on that template belongs to a
+# related product, and availability survives only as schema.org/InStock inside a
+# head JSON-LD script. A run calling that "no stock status shown" is reading the
+# rendered page correctly, so screening it would fail a correct run.
+#
+# The first v1.3 run emitted exactly this claim and MNC-405 stayed silent only
+# because the phrasing missed a regex. These cases turn that luck into a rule.
+CLAIMS_ABOUT_STOCK_ARE_DEFENSIBLE_HERE = [
+    "The PDP gives no stock status, so buyers cannot tell availability.",
+    "Availability state is not shown anywhere on the PDP.",
+    "Product page states no stock or availability.",
+    "The product page does not show stock level.",
 ]
 
 
@@ -166,7 +183,7 @@ def test_mnc_405_is_a_screen_that_can_run():
         "'no violations' having checked nothing")
 
 
-@pytest.mark.parametrize("text", CLAIMS_PRICE_OR_STOCK_IS_MISSING)
+@pytest.mark.parametrize("text", CLAIMS_PRICE_IS_MISSING)
 def test_mnc_405_fires_on_a_claim_the_fixture_contradicts(text: str):
     assert _mnc_405_hits(text), f"MNC-405 did not fire on: {text!r}"
 
@@ -174,6 +191,14 @@ def test_mnc_405_fires_on_a_claim_the_fixture_contradicts(text: str):
 @pytest.mark.parametrize("text", MENTIONS_PRICE_LEGITIMATELY)
 def test_mnc_405_stays_quiet_when_price_is_merely_mentioned(text: str):
     assert not _mnc_405_hits(text), f"MNC-405 false-fired on: {text!r}"
+
+
+@pytest.mark.parametrize("text", CLAIMS_ABOUT_STOCK_ARE_DEFENSIBLE_HERE)
+def test_mnc_405_never_screens_a_claim_about_stock(text: str):
+    assert not _mnc_405_hits(text), (
+        f"MNC-405 fired on a stock claim: {text!r}. The pdp carries no visible "
+        f"availability indicator, so this reading is defensible and screening it "
+        f"would fail a correct run.")
 
 
 # --- executable_label_ids: which screens actually ran -----------------------

@@ -1,6 +1,6 @@
 # Scoring rubric — Store Audit Agent
 
-`rubric.md` (canonical path) · v0.6 draft · Phase 0 close
+`rubric.md` (canonical path) · v0.7 draft · Phase 0 close
 
 > Cited as `references/rubric.md` in every `finding-triager` prompt front matter  <!-- STALE-OK -->
 > and in labels written before 2026-07-28. That spelling is an alias for this
@@ -32,7 +32,7 @@ count carried as evidence.
 |---|---|---|
 | `critical` | Blocks purchase, or blocks indexing of a revenue template | Cart unusable at 375px · PDP `noindex` or robots-blocked · add-to-cart not keyboard reachable or missing accessible name |
 | `high` | Measurable degradation on a revenue template, affecting all sessions | Mobile LCP > 4.0s · CLS > 0.25 · missing or duplicated `<title>`/H1 across a template · contrast failure on primary CTA · PDP gallery images without alt |
-| `medium` | Degradation confined to a non-revenue template, **or** a revenue-template issue affecting a subset of sessions | Mobile LCP 2.5–4.0s · CLS 0.10–0.25 · missing meta descriptions · axe violation off the purchase path · loss of landmark or heading navigation for assistive technology |
+| `medium` | Degradation confined to a non-revenue template, **or** a revenue-template issue affecting a subset of sessions | Mobile LCP 2.5–4.0s · CLS 0.10–0.25 · missing meta descriptions · axe violation off the purchase path · loss of landmark navigation for assistive technology |
 | `low` | Hygiene. No user's task becomes harder | Decorative images without alt · heading order in footer · missing canonical on a non-duplicated page |
 
 ### Tie-break rules (these are what make it deterministic)
@@ -72,13 +72,25 @@ count carried as evidence.
    Asking the triager to re-report it makes a measurement into a judgment.
 
 7. **A defect that removes or degrades a means of navigating or operating the
-   page affects a subset of sessions, not none.** Landmark structure, heading
-   structure, skip links, keyboard reachability and visible focus are access
-   modes. Losing one makes the page harder to use for the sessions that depend on
-   it, which is impact under the `medium` rule — not hygiene — even when no
-   scanner quantifies it. `low` is for defects where no user's task changes:
-   redundant or decorative alt text, footer heading order, a canonical on a page
-   with no duplicate.
+   page affects a subset of sessions, not none — so it is never `low`.**
+
+   **This rule raises a floor. It never lowers a ceiling.** If a finding also
+   matches the `high` or `critical` row on any other clause, that higher level
+   governs and this rule has nothing to say about it — rule 1 already takes the
+   higher level on a revenue template. Rule 7 exists to stop an access-mode loss
+   being filed as hygiene, not to cap one at `medium`.
+
+   The case that makes this concrete: **a missing or duplicated `<h1>` or
+   `<title>` across a template is `high`**, named in the `high` row. It stays
+   `high`. That a missing `<h1>` also degrades heading navigation is true and
+   irrelevant — it is already above this rule's floor.
+
+   Landmark structure, heading structure, skip links, keyboard reachability and
+   visible focus are access modes. Losing one makes the page harder to use for
+   the sessions that depend on it, which is impact under the `medium` rule — not
+   hygiene — even when no scanner quantifies it. `low` is for defects where no
+   user's task changes: redundant or decorative alt text, footer heading order, a
+   canonical on a page with no duplicate.
 
    **A scanner tagging a rule `best-practice` or `moderate`, or emitting it with
    no `wcag*` tag, does not by itself make a finding `low`.** That tag describes
@@ -90,6 +102,15 @@ count carried as evidence.
    reachable by the same means, just more verbose or worse ordered, is `low`;
    content whose navigation mode is gone is at least `medium` on a revenue
    template.
+
+   **v0.7 — the floor/ceiling paragraphs above are new, and they are a fix.**
+   v0.6 stated this rule as "which is `medium` on a revenue template, not `low`"
+   and only later as "at least `medium`". The leading phrasing won: the first
+   run under v0.6 cited *this rule by number* to move golden entry 02's MC-114
+   (no `<h1>` on home) from `seo`/`high` down to `accessibility`/`medium`. The
+   run was right to apply the rule and the rule was wrong to be applicable — a
+   clarification written to stop findings being under-rated had begun
+   under-rating one. Stated as a floor, it cannot.
 
    **v0.6 — this rule is new.** It settles a dispute the labels had been carrying
    openly: golden entry 02's MC-116 (no `main` landmark, content outside landmark

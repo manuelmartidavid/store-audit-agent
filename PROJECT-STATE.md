@@ -504,6 +504,45 @@ not an error**). Resolve those and the split becomes safe. Not before.
       a real gap and is NOT fixed:** nothing stops a future edit-in-place of any
       frozen prompt. Recorded as an open follow-up.
 
+40. **Two CLI smoke runs caught two defects in decision 38/39's own work**
+    (2026-07-31). The Console API key is out of credits, so §3.1's real
+    measurement could not run. `--via claude-cli` runs were used instead —
+    explicitly **NOT COMPARABLE** to an api run (`run_meta.comparability`:
+    max_tokens and thinking are uncontrollable there and ~1.7k tokens of harness
+    context precede every request), so these are pipeline validation, never
+    results. Both runs scored `PASS` with **17/17 recall on the re-verified
+    labels**, which is the pipeline working. What they were actually worth is the
+    two bugs they found:
+    - **§1 rule 7 was written as a level, not a floor.** v1.2's run cited rule 7
+      *by number* to move MC-114 (no `<h1>` on home) from `seo`/`high` down to
+      `accessibility`/`medium`. v0.6 led with "which is `medium` on a revenue
+      template" and only later said "at least `medium`"; the leading phrasing
+      governed. **The run applied the rule correctly and the rule was wrong to be
+      applicable** — a clarification written to stop under-rating had begun
+      under-rating. **rubric v0.7** restates it: *this rule raises a floor, it
+      never lowers a ceiling*, deferring to the `high`/`critical` rows via rule 1
+      and naming the `<h1>`/`<title>` case as staying `high`. `heading` is also
+      dropped from the `medium` row's evidence, since that word invited the
+      collision. **finding-triager v1.3** carries it. Verified: the same run under
+      v1.3 returns MC-114 as `seo`/`high`, rationale "§1 high: missing H1 across a
+      revenue template" — both severity and category corrected.
+    - **MNC-405 was overbroad and would have failed a correct run.** It covered
+      stock as well as price, on the assumption the distiller fix made both
+      visible. The bytes say otherwise: the main pdp product block carries
+      breadcrumb, title, `$10.00`, a quantity control, an add-to-cart div and
+      "Continue shopping" — and **no availability text at all**. Every "Sold out"
+      on that template belongs to a *related* product; availability survives only
+      as `schema.org/InStock` in a head JSON-LD script. So "the pdp shows no stock
+      status" is a defensible reading of the rendered page, and screening it would
+      have marked a correct run an automatic fail. **MNC-405 is narrowed to price
+      only.** The v1.3 run emitted that exact claim and the screen stayed silent
+      only because the phrasing missed a regex — luck, not correctness, and four
+      test cases now hold the line.
+    **Open, and posed by the fixture rather than invented:** does a
+    machine-readable-only availability signal satisfy the presence checklist? Left
+    to the unlabeled bucket.
+    **§3.1's measurement is still not done.** It needs Console credits.
+
 ### Open decision — needs a call, not an inference
 
 **Two category caps bind** (`seo` by 4, `accessibility` by 1). Rubric §4 rule 2
