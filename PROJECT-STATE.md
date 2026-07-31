@@ -121,15 +121,15 @@ output tokens each — and must not be averaged in.
 
 | entry | store | status |
 |---|---|---|
-| 01 clean theme | `theme-dawn-demo.myshopify.com` | selected, **not captured**. Gates `[score_range, findings_above_medium]`; finding count left **ungated** with `max_findings: 3` printed, because the screen found real defects on Dawn and §5's `≤3` would fail on true positives while the two false-positive bars hold. |
-| 02 sabotaged | TSCC (`torontosportscard.myshopify.com`), aov 85 CAD | **frozen & labeled.** 13 planted defects + 4 promoted = 17 MC, 4 MNC. |
-| 03 app-heavy | `makerlab-electronics-ph.myshopify.com` | captured but **stale at 0.1.0** — its `apps[]` names 1 app where 0.2.0+ yields 7. Recapture before use. |
-| 04 WooCommerce | `www.forestwholefoods.co.uk`, aov **null** (fabrication trap) | selected, **not captured**. Eval gates `[]` until labeled — declaring one now would invent a precision expectation for a store nobody has measured. **Screen perf is recorded, not gating** (decision 32): measured 2026-07-31 at home LCP 19.2–19.9s / CLS 0.43, pdp LCP 20.5–23.5s, collection LCP 4.8–6.0s. Real `high` findings, and the must-catch labels this entry currently lacks. |
-| 05 password-gated | TSCC, no password | captured & labeled. The only entry labelable pre-crawl; it describes an absence. Traps: no platform/vertical inference from a Shopify-branded gate; no findings from the `/password` page itself; a blocked audit must still produce a client-deliverable report. |
+| 01 clean theme | `theme-dawn-demo.myshopify.com` | **captured** 2026-07-31, pinned `93e3d64b…`. Not yet labelled or scored. Gates `[score_range, findings_above_medium]`; finding count left **ungated** with `max_findings: 3` printed, because the screen found real defects on Dawn and §5's `≤3` would fail on true positives while the two false-positive bars hold. |
+| 02 sabotaged | TSCC (`torontosportscard.myshopify.com`), aov 85 CAD | **recaptured** 2026-07-31 at 0.3.0, pinned `4bfd303f…`. Labels are those of the retired `b219afac…` capture and are **pending re-verification** — 13 planted defects + 4 promoted = 17 MC, 4 MNC, to be re-checked against the new fixture. |
+| 03 app-heavy | **`www.makerlab.ph`** (never the `.myshopify.com` address — it 301s) | **captured** 2026-07-31 at 0.3.0, pinned `c574b982…`. 6/6, `shopify`, theme `Latestv1`, **7 apps**. Context only; `expect` all `null`, `gates: []`, no labels. |
+| 04 WooCommerce | `www.forestwholefoods.co.uk`, aov **null** (fabrication trap) | **captured** 2026-07-31, pinned `b44e19cf…`. Eval gates `[]` until labeled — declaring one now would invent a precision expectation for a store nobody has measured. **Screen perf is recorded, not gating** (decision 32): measured 2026-07-31 at home LCP 19.2–19.9s / CLS 0.43, pdp LCP 20.5–23.5s, collection LCP 4.8–6.0s. Real `high` findings, and the must-catch labels this entry currently lacks. |
+| 05 password-gated | TSCC, no password | **recaptured** 2026-07-31, pinned `3227f61c…` (`self-derived`). Labelled. The only entry labelable pre-crawl; it describes an absence. Traps: no platform/vertical inference from a Shopify-branded gate; no findings from the `/password` page itself; a blocked audit must still produce a client-deliverable report. |
 
 Entries 02 and 05 are the same store, crawled with and without the password.
-**Entries 01 and 04 are not owned**, so the screen re-runs before each capture and
-`crawler/archive.py` at capture is the only recoverable copy.
+**Entries 01, 03 and 04 are not owned**, so the screen re-runs before each capture
+and `crawler/archive.py` at capture is the only recoverable copy.
 
 Entry 04 was chosen over Nalgene, which disallows `/cart/` in `robots.txt` — that
 would drop a revenue template and conflate *reduced because WooCommerce* with
@@ -137,9 +137,15 @@ would drop a revenue template and conflate *reduced because WooCommerce* with
 
 ### Fixtures on disk
 
-Gitignored; the manifest hash is the commitment. `02` (pre-sabotage baseline,
-0.1.0) · `02-sabotaged` (frozen, `b219afac…`) · `05` (`12899ce7…`, recorded
-`self-derived`) · `makerlab` (stale).
+Gitignored; the manifest hash is the commitment. All five wave fixtures are
+0.3.0, captured 2026-07-31: `01` (`93e3d64b…`) · `02-sabotaged` (`4bfd303f…`,
+replacing the retired `b219afac…`) · `04` (`b44e19cf…`) · `05` (`3227f61c…`,
+recorded `self-derived`) · `makerlab` (`c574b982…`, backing entry 03). `02` is the
+untouched pre-sabotage 0.1.0 baseline from 2026-07-24 and is not part of the wave.
+
+`archives/` is also gitignored and holds one stamped tarball per fixture
+(decision 34), plus `makerlab-INVALID-off-origin-20260731.tar.gz` — the artefact
+of the off-origin failure, kept as evidence and safe to delete.
 
 ### Prompts and runs
 
@@ -357,7 +363,7 @@ not an error**). Resolve those and the split becomes safe. Not before.
       Decision 19 limits the damage (the commitment is the recorded hash, not the
       bytes) and the labels and run JSONs are intact, so this is lost
       **auditability**, not lost results. **Archive filenames need a version
-      stamp before the next re-freeze.**
+      stamp before the next re-freeze.** — *done the same day; decision 34.*
     - **Two fragilities to fold into entry 04's labels when they are written:**
       its `cart` LCP is **4.03s — 30ms over the `high` line**, more fragile than
       anything entry 02 has ever carried; and its bimodal `cls:pdp` (0.000–0.301
@@ -369,6 +375,76 @@ not an error**). Resolve those and the split becomes safe. Not before.
       template landed off-origin and was recorded `absent`, yielding
       `status: blocked` with `block: null` and six HTTP 200s. **The off-origin
       guard behaved correctly — the input was wrong.** Runbook corrected.
+      — *superseded the same day: recaptured from `www.makerlab.ph`, complete
+      6/6. Decision 35.*
+
+34. **Archive names are version- and hash-stamped, and `crawler.archive` refuses
+    to overwrite** (2026-07-31). Decision 33's loss was a bare filename written
+    twice; both halves are now closed. Names take the form
+    `<entry>-<crawler_version>-<manifest_sha12>.tar.gz`. **The version alone does
+    not close the hole** — re-freezing the same fixture under the same crawler
+    version still collides — so the manifest short hash carries the uniqueness,
+    and any collision that does survive is byte-identical and therefore harmless.
+    `archive()` now raises unless `force=True` (`--force` on the CLI), so the
+    guarantee does not depend on anyone following the runbook; three tests in
+    `tests/test_archive.py` cover it, one reproducing the `b219afac…` loss
+    directly. Runbook phase 4.1, the README and the module docstring all taught
+    the bare name and are corrected. All five archives were renamed to the
+    stamped scheme, and **each name was verified against its own tarball's
+    embedded manifest hash** rather than against a table — they agree, so no
+    archive has drifted from the capture it claims to hold.
+    **What this does NOT close:** `archives/` is gitignored (`.gitignore:40`), so
+    the tarballs exist only on the capture machine. Stamping stops a re-freeze
+    from clobbering its predecessor; it does nothing about disk loss, and copying
+    `archives/` off-box is still manual and still unassigned.
+
+35. **Entry 03 is `evals/golden/03-app-heavy` (Makerlab Electronics), and all
+    five entries are now captured and pinned** (2026-07-31). Recaptured from
+    **`https://www.makerlab.ph`** — never the `.myshopify.com` address — giving
+    `status: complete`, 6/6, `platform: shopify` on seven evidence signals, theme
+    `Latestv1`, and **7 apps** where the 0.1.0 capture named one. Same toolchain
+    as the rest of the wave (crawler 0.3.0 / Lighthouse 12.8.2 / axe-core 4.12.1 /
+    Chromium 149.0.7827.55 / `mobile-4g-slow`), captured 13:09:21, manifest
+    `c574b982…`.
+    - **Provenance is recorded in all five `context.yaml` files** — `captured_at`,
+      the four versions, `manifest_sha256`, `throttling`. Only `throttling` is
+      *enforced* across entries (`test_throttling_is_identical_across_every_entry`);
+      the version fields are recorded and compared by eye, so a partial recapture
+      could drift them without the suite noticing.
+    - **Entry 02's pin moved `b219afac…` → `4bfd303f…`.** `expected/findings.md`
+      still declares the old hash in its header and now disagrees. This is a known
+      transient, not a discrepancy to reconcile by reverting:
+      `expected_manifest_sha256()` reads `context.yaml` first and the header only
+      as a fallback, so scoring already uses the new value. **The header is
+      corrected in the same pass that re-labels entry 02.**
+    - **Entry 05's pin was re-derived** (`12899ce7…` → `3227f61c…`) and remains
+      `pin_derived_after_labeling: true` — the labels still predate the bytes, so
+      it reports `self-derived`, not `matched`.
+    - **Entry 03's targets are pinned retroactively.** Its capture ran unpinned
+      (`--origin`, no context file), so discovery chose `/collections/brands` and
+      the Creality K2 Plus PDP; recording them keeps the labels reproducible
+      against a recapture (decision 15's reasoning, applied after the fact). Cart
+      is deliberately left unpinned — entry 04 is the entry that tests cart-slug
+      discovery.
+    - Entry 03 is **not labelled**: `expect` is all `null` with `gates: []`, the
+      same position entry 04 holds and for the same reason.
+    - **Chrome auto-updates and it does not matter.** The system Chrome is now
+      150.0.7871.186, but `crawler/session.py:108` launches Playwright's bundled
+      Chromium, pinned via `requirements.txt`, still 149.0.7827.55. Check the
+      bundled version, never `C:\Program Files\Google\Chrome`.
+
+36. **A test may not hardcode a value the fixture owns** (2026-07-31). Extends
+    decision 10 from labels to the suite. `test_pack_evidence.py` asserted home
+    CLS `numericValue == 0`, a literal belonging to the destroyed `b219afac…`
+    capture; the 0.3.0 capture reads 0.030, so **the suite had been red since the
+    12:15 recapture** and the post-wave handoff's "green at `7b7eca8`" was
+    measured before it. Nothing was broken — CLS is still green (score 1) and
+    still not collapsed into `passed`, so the packer bug the test exists to catch
+    was still caught. The assertion now checks that a green metric keeps *a*
+    number and lets the fixture decide *which*.
+    **The process lesson is the durable part: run the suite AFTER a capture wave,
+    not before it.** A recapture can invalidate any test that pins a fixture
+    value, and the suite is the only thing that will say so.
 
 ### Open decision — needs a call, not an inference
 
