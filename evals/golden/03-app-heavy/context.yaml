@@ -1,0 +1,94 @@
+# Golden entry 03 — app-heavy Shopify store
+#
+# Store: Makerlab Electronics, a Philippine electronics-components and maker-
+# supplies retailer on Shopify. Captured 2026-07-31 under crawler 0.3.0.
+#
+# WHY THIS ENTRY EXISTS: seven apps on a live storefront, six of them detected
+# through theme-app-extension asset paths rather than script hosts. The 0.1.0
+# capture of this store named exactly one, which is why it was recaptured — the
+# entry's value is that app detection has something real to be wrong about.
+#
+# WE DO NOT OWN THIS STORE. Same obligation as entries 01 and 04: its
+# merchandising, apps and theme can change without notice, and the archive is
+# the only recoverable copy of what was measured.
+#
+# ⚠️ ORIGIN — capture from https://www.makerlab.ph, NOT from
+# makerlab-electronics-ph.myshopify.com. The store 301s to its primary custom
+# domain; every template then lands off the declared origin, `_template_status`
+# correctly returns `absent` for all six, and the crawl reports `blocked` with
+# six HTTP 200s and `block: null`. That is the off-origin guard working, not a
+# crawler defect — the input is what is wrong. It cost one capture on
+# 2026-07-31 before it was diagnosed.
+
+store:
+  platform: shopify
+  vertical: electronics
+  market: PH
+  currency: PHP              # ₱ and "PHP" throughout the captured templates;
+                             # read from the capture, not assumed from the TLD
+
+  password_env: null         # public, no gate
+
+  # Null because we do not own the store — the same deliberate null entries 01
+  # and 04 carry. There is no AOV to know, and inventing one is automatic
+  # fail #1. Entry 02 remains the entry that tests quantification WITH a number.
+  aov: null
+  monthly_sessions: null
+  mobile_share: null
+  catalog_size: null
+
+  notes: >
+    Philippine retailer of electronics components and maker supplies —
+    microcontrollers, sensors, prototyping parts and desktop 3D printers —
+    selling to hobbyists, students and small engineering teams. Independent
+    business, not a marketplace seller.
+
+eval:
+  id: "03"
+  path_under_test: full_shopify
+  access: public
+
+  fixtures:
+    captured_at: "2026-07-31T13:09:21+08:00"
+    source: "https://www.makerlab.ph/"
+    crawler_version: "0.3.0"
+    lighthouse_version: "12.8.2"
+    axe_core_version: "4.12.1"
+    chrome_version: "149.0.7827.55"
+    manifest_sha256: "c574b982fa8ff49a7b584cc8376409a01311cf7811e68506fa9478f559996fa6"
+    throttling: "mobile-4g-slow"     # identical across all five entries
+    templates_captured: [home, collection, pdp, cart, search, 404]
+
+    # Lighthouse ran on five of the six. The 404 template returns HTTP 404 and
+    # Lighthouse refuses it (ERRORED_DOCUMENT_REQUEST) — every entry in the wave
+    # records `"404": { lighthouse: failed }`, so this is the normal shape and
+    # not a property of this store.
+
+    # PINNED RETROACTIVELY. This capture ran unpinned (`--origin`, no context
+    # file), so discovery chose both of these; they are recorded here so the
+    # labels written from this fixture stay reproducible against a recapture.
+    # Same reasoning as entries 01 and 04: an unowned store's merchandising is
+    # not ours to hold still. Cart is left unpinned deliberately — /cart
+    # resolved correctly here, and entry 04 is the entry that tests cart-slug
+    # discovery against a store where it is NOT /cart.
+    targets:
+      collection: "https://www.makerlab.ph/collections/brands"
+      pdp: "https://www.makerlab.ph/products/creality-k2-plus-combo-fdm-3d-printer"
+
+  expect:
+    # EMPTY UNTIL LABELED, for the reason entry 04 documents at length: this
+    # store has never been measured, so declaring a precision bar now would mean
+    # inventing an expectation rather than deriving one. Entry 01 can declare
+    # its bar in advance only because rubric §5 supplies it. Set these when
+    # expected/findings.md is written, from the fixture.
+    score: null
+    score_min: null
+    score_max: null
+    band: null
+    status: "ASSESSED"        # public and reachable; INACCESSIBLE only if blocked
+    max_findings: 25          # rubric §5 global ceiling
+    findings_above_medium: null
+    categories_required: []
+    gates: []
+
+  portfolio_safe: false       # a real merchant's store, and not ours to publish

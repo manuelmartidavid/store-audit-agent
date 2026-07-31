@@ -43,16 +43,17 @@ eval:
   access: public
 
   fixtures:
-    # NOT YET CAPTURED. Filled in by the 0.3.0 capture wave (PROJECT-STATE
-    # step 14). The screen below is a pre-check, not a capture.
-    captured_at: null
+    # Captured in the 0.3.0 wave (PROJECT-STATE step 14) on 2026-07-31, one
+    # sitting, one toolchain — see every other entry's identical version block.
+    captured_at: "2026-07-31T12:24:59+08:00"
     source: "https://theme-dawn-demo.myshopify.com/"
-    crawler_version: null
-    lighthouse_version: null
-    axe_core_version: null
-    manifest_sha256: null
+    crawler_version: "0.3.0"
+    lighthouse_version: "12.8.2"
+    axe_core_version: "4.12.1"
+    chrome_version: "149.0.7827.55"
+    manifest_sha256: "93e3d64b2afd61db16574f1b3c62b4d890e78c6607f92389737e735f1a382d9f"
     throttling: "mobile-4g-slow"     # identical across all five entries
-    templates_captured: []
+    templates_captured: [home, collection, pdp, cart, search, 404]
 
     # Pinned because we do not own the store: its merchandising can change, and
     # "first product in the collection" raced the cache on entry 02 badly enough

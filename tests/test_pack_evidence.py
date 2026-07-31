@@ -160,8 +160,14 @@ def test_core_metrics_keep_their_number_even_when_green(pack):
     """The rubric's thresholds are numeric, so a green metric is still evidence."""
     home = pack["lighthouse"]["home"]
     assert "cumulative-layout-shift" in home["audits"]
-    assert home["audits"]["cumulative-layout-shift"]["score"] == 1
-    assert home["audits"]["cumulative-layout-shift"]["numericValue"] == 0
+    cls = home["audits"]["cumulative-layout-shift"]
+    assert cls["score"] == 1              # green on this capture
+    # The value is the fixture's to decide (0.030 under the 0.3.0 capture; it
+    # was 0 under the retired b219afac one, and this line asserted that literal
+    # until the recapture made it stale). What this guards is that a GREEN
+    # metric keeps a number at all rather than collapsing into `passed` — the
+    # packer bug, not the store's CLS.
+    assert isinstance(cls["numericValue"], (int, float))
     assert "cumulative-layout-shift" not in home["passed"]
 
 

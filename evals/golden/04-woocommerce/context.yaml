@@ -51,15 +51,20 @@ eval:
   access: public
 
   fixtures:
-    # NOT YET CAPTURED, and not capturable until D3 and D6 land.
-    captured_at: null
+    # Captured 2026-07-31 in the 0.3.0 wave. D3 and D6 both landed and both are
+    # verified live by this capture: all 6 templates fingerprinted as
+    # woocommerce (0.2.0 would have returned collection, pdp and search
+    # `absent`), and the declared Crawl-delay: 10 was honoured — the manifest
+    # records fetch_interval_s: 10, crawl_delay_declared: 10.
+    captured_at: "2026-07-31T12:30:25+08:00"
     source: "https://www.forestwholefoods.co.uk/"
-    crawler_version: null      # will be >= 0.3.0 — D3 and D6 are prerequisites
-    lighthouse_version: null
-    axe_core_version: null
-    manifest_sha256: null
+    crawler_version: "0.3.0"
+    lighthouse_version: "12.8.2"
+    axe_core_version: "4.12.1"
+    chrome_version: "149.0.7827.55"
+    manifest_sha256: "b44e19cf2d33e907af02a278f80795488c09a0cebe18e48b0434dd1110564419"
     throttling: "mobile-4g-slow"     # identical across all five entries
-    templates_captured: []
+    templates_captured: [home, collection, pdp, cart, search, 404]
 
     # Cart slug: observed https://www.forestwholefoods.co.uk/basket/; /cart/
     # returns 404. Do not "correct" this to /cart/ — it is a WooCommerce

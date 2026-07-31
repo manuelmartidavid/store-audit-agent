@@ -35,13 +35,25 @@ eval:
   access: password_protected     # crawler supplies the password for this entry
 
   fixtures:
-    captured_at: "2026-07-27T16:39:27+08:00"
+    # RE-CAPTURED 2026-07-31 under crawler 0.3.0, replacing the 0.2.0 capture
+    # this entry's labels were written against (b219afac…). That fixture no
+    # longer exists in any form — the recapture overwrote both the directory and
+    # its archive — so the pin below is the only thing scoring can anchor to.
+    #
+    # ⚠️ expected/findings.md still declares `manifest: b219afac…` in its header
+    # and now DISAGREES with this line. That is a known transient, not a
+    # discrepancy to reconcile by reverting: expected_manifest_sha256() reads
+    # context.yaml first and the header only as a fallback, so scoring already
+    # uses the value below. The header is corrected in the same pass that
+    # re-labels this entry against the new fixture — price and stock are
+    # detectable now, so that pass is rewriting the labels anyway.
+    captured_at: "2026-07-31T12:15:53+08:00"
     source: "https://torontosportscard.myshopify.com/"
-    crawler_version: "0.2.0"
+    crawler_version: "0.3.0"
     lighthouse_version: "12.8.2"
     axe_core_version: "4.12.1"
     chrome_version: "149.0.7827.55"
-    manifest_sha256: "b219afac6f8234ff98ce6c4eaf004bdb4063aaf1155de78b0fe19c6512946d20"
+    manifest_sha256: "4bfd303fc9b134ab425bc50ca2ede27646b5657b0696d8ab77de938471f50a6e"
     theme_id: "155926888680"          # tsc-theme-v3, live; name alone is ambiguous (two themes share source)
     throttling: "mobile-4g-slow"     # must match every other entry
     templates_captured: [home, collection, pdp, cart, search, 404]
