@@ -64,6 +64,58 @@ def test_verify_reads_the_manifest_back_out_of_the_tar(tmp_path):
     assert archive_mod.verify(out, "0" * 64) is False
 
 
+def test_an_existing_archive_is_never_silently_overwritten(tmp_path):
+    """This is the b219afac loss, reproduced.
+
+    On 2026-07-31 a re-freeze wrote `archives/02-sabotaged.tar.gz` over the
+    tarball holding the only copy of the retired fixture, printed a success
+    line and exited 0. Eighteen scored runs lost the bytes behind them.
+    Version-stamped names make the collision unlikely; refusing the write is
+    what makes it impossible.
+    """
+    fixture = _fixture(tmp_path)
+    out = tmp_path / "02-sabotaged.tar.gz"
+    first = archive_mod.archive(fixture, out)
+
+    (fixture / "manifest.yaml").write_text("crawler_version: 0.3.0\n", encoding="utf-8")
+    try:
+        archive_mod.archive(fixture, out)
+    except SystemExit as exit_:
+        assert "--force" in str(exit_)
+    else:
+        raise AssertionError("archiving over an existing archive must fail loudly")
+
+    # The point of the refusal: the predecessor is still intact.
+    assert archive_mod.manifest_sha256_in(out) == first
+
+
+def test_force_overwrites_an_existing_archive(tmp_path):
+    fixture = _fixture(tmp_path)
+    out = tmp_path / "02-sabotaged.tar.gz"
+    first = archive_mod.archive(fixture, out)
+
+    (fixture / "manifest.yaml").write_text("crawler_version: 0.3.0\n", encoding="utf-8")
+    second = archive_mod.archive(fixture, out, force=True)
+
+    assert second != first
+    assert archive_mod.manifest_sha256_in(out) == second
+
+
+def test_the_cli_refuses_to_clobber_unless_forced(tmp_path):
+    fixture = _fixture(tmp_path)
+    out = tmp_path / "02-sabotaged.tar.gz"
+    assert archive_mod.main([str(fixture), "-o", str(out)]) == 0
+
+    try:
+        archive_mod.main([str(fixture), "-o", str(out)])
+    except SystemExit as exit_:
+        assert "--force" in str(exit_)
+    else:
+        raise AssertionError("the CLI must refuse to overwrite without --force")
+
+    assert archive_mod.main([str(fixture), "-o", str(out), "--force"]) == 0
+
+
 def test_a_fixture_with_no_manifest_is_refused(tmp_path):
     fixture = tmp_path / "empty"
     fixture.mkdir()

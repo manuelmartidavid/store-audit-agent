@@ -267,10 +267,12 @@ entries 01 and 04 the archive is the only recoverable copy.
 > 🔴 **Stamp every archive name. Never write a bare one.** On 2026-07-31 a
 > re-freeze wrote `archives/02-sabotaged.tar.gz` over the tarball that held the
 > retired `b219afac…` fixture — the only copy anywhere — and 18 scored runs lost
-> the bytes behind their results. `crawler.archive` opens the output `w:gz`, so a
-> bare name overwrites its predecessor silently and successfully. Stamp with the
-> crawler version **and** the manifest's short hash: the version is the part you
-> read, the hash is the part that makes a collision impossible.
+> the bytes behind their results. `crawler.archive` now refuses to write over an
+> existing archive — replacing one takes an explicit `--force` — but do not let
+> that refusal become the naming scheme. Stamp with the crawler version **and**
+> the manifest's short hash: the version is the part you read, the hash is the
+> part that makes a collision impossible, and the refusal is only the backstop
+> for when both are forgotten.
 
 ```powershell
 foreach ($f in '02-sabotaged','05','01','04','makerlab') {

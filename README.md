@@ -182,9 +182,10 @@ python -m crawler.archive fixtures/02-sabotaged -o archives/02-sabotaged-0.3.0-4
 python -m crawler.archive --check archives/02-sabotaged-0.3.0-4bfd303fc9b1.tar.gz --expect <manifest sha256>
 ```
 
-Stamp the name with the crawler version and the manifest's short hash. A bare
-`02-sabotaged.tar.gz` overwrites whatever it replaces — that is how the retired
-`b219afac…` fixture was destroyed on 2026-07-31.
+Stamp the name with the crawler version and the manifest's short hash. Writing a
+bare `02-sabotaged.tar.gz` a second time is how the retired `b219afac…` fixture
+was destroyed on 2026-07-31; the tool now refuses to overwrite an existing
+archive unless you pass `--force`.
 
 Copy `archives/` somewhere off this machine. The `--expect` value is the
 `manifest:` line in that entry's `expected/findings.md`.
