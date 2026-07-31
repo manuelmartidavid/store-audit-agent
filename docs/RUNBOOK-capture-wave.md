@@ -216,8 +216,17 @@ python -m crawler --context evals/golden/01-clean-theme/context.yaml --out fixtu
 python -m crawler --context evals/golden/04-woocommerce/context.yaml --out fixtures/04/
 
 # 5. app-heavy, confirm as entry 03
-python -m crawler --origin https://makerlab-electronics-ph.myshopify.com --out fixtures/makerlab/
+#    NOT the myshopify.com address: this store 301s to its primary custom
+#    domain, every template then lands off the declared origin, and the crawl
+#    reports `blocked` with six HTTP 200s. Corrected 2026-07-31 after exactly
+#    that happened.
+python -m crawler --origin https://www.makerlab.ph --out fixtures/makerlab/
 ```
+
+> **Any Shopify store with a custom domain redirects away from its
+> `.myshopify.com` address.** Always give `--origin` the domain the store
+> actually serves. The off-origin guard is working correctly when this happens —
+> the input is what is wrong.
 
 > Entry 04 takes ~2.5 minutes longer than the rest, entirely in `Crawl-delay`
 > waiting. **That's arithmetic, not a hang.**

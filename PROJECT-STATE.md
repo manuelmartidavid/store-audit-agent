@@ -330,6 +330,46 @@ not an error**). Resolve those and the split becomes safe. Not before.
     Characterise it with `--runs 5` before capture; if it stays bimodal, record the
     fragility in the label or accept that CLS is not a label for this entry.
 
+33. **The capture wave ran on 2026-07-31, and 0.3.0 is validated against live
+    stores** — four of five fixtures captured under crawler 0.3.0 / Lighthouse
+    12.8.2 / Chrome 149.0.7827.55. Full detail and next actions:
+    `docs/HANDOFF-2026-07-31.md`.
+    - **Steps 11–13 all verified live, not just against the local storefront.**
+      Entry 04 captured **six of six templates as `woocommerce`** where 0.2.0
+      would have returned collection, pdp and search `absent`; it **discovered
+      its cart at `/basket/` unaided** (that target is deliberately not pinned);
+      and it honoured `Crawl-delay: 10` (`fetch_interval_s: 10`). Prices now
+      survive distillation — entry 02 went from **zero `$` in any template** to
+      hits on home, collection, pdp and search, with `price`/`stock`/`availab`/
+      `sold-out` class hooks throughout.
+    - **Entry 02's planted defects reproduce.** home LCP 3.87s `medium`,
+      collection 3.88s `medium` with **CLS 0.2681** (P-03), pdp **10.65s
+      `high`**. The P-01/P-02 boundary pair is intact, now 128ms under 4.0s
+      (was 85ms). Pins held; the PDP is the Upper Deck box.
+    - **Entry 01 is genuinely clean**: LCP 1.82–3.16s, **CLS 0.0000 on every
+      template**, perf 0.86–0.98, only the pdp in the `medium` band. It is a real
+      precision test.
+    - **`b219afac…` no longer exists in any form.** The recapture replaced
+      `fixtures/02-sabotaged` and the archive step overwrote
+      `archives/02-sabotaged.tar.gz` — same filename, no version stamp — so the
+      fixture 18 recorded runs were scored against is gone from disk and from
+      every tarball. Retiring it was the plan; deleting the only copy was not.
+      Decision 19 limits the damage (the commitment is the recorded hash, not the
+      bytes) and the labels and run JSONs are intact, so this is lost
+      **auditability**, not lost results. **Archive filenames need a version
+      stamp before the next re-freeze.**
+    - **Two fragilities to fold into entry 04's labels when they are written:**
+      its `cart` LCP is **4.03s — 30ms over the `high` line**, more fragile than
+      anything entry 02 has ever carried; and its bimodal `cls:pdp` (0.000–0.301
+      on the screen) landed at **0.0000** in the capture, so there is no CLS
+      finding on that template. Its collection also read 2.96s here against
+      4.75–6.01s on the screen — a large screen-vs-capture disagreement.
+    - **makerlab is not captured.** The runbook gave `--origin` the
+      `.myshopify.com` address; the store 301s to `www.makerlab.ph`, so every
+      template landed off-origin and was recorded `absent`, yielding
+      `status: blocked` with `block: null` and six HTTP 200s. **The off-origin
+      guard behaved correctly — the input was wrong.** Runbook corrected.
+
 ### Open decision — needs a call, not an inference
 
 **Two category caps bind** (`seo` by 4, `accessibility` by 1). Rubric §4 rule 2
