@@ -122,7 +122,7 @@ output tokens each — and must not be averaged in.
 | entry | store | status |
 |---|---|---|
 | 01 clean theme | `theme-dawn-demo.myshopify.com` | **captured** 2026-07-31, pinned `93e3d64b…`. Not yet labelled or scored. Gates `[score_range, findings_above_medium]`; finding count left **ungated** with `max_findings: 3` printed, because the screen found real defects on Dawn and §5's `≤3` would fail on true positives while the two false-positive bars hold. |
-| 02 sabotaged | TSCC (`torontosportscard.myshopify.com`), aov 85 CAD | **recaptured** 2026-07-31 at 0.3.0, pinned `4bfd303f…`. Labels are those of the retired `b219afac…` capture and are **pending re-verification** — 13 planted defects + 4 promoted = 17 MC, 4 MNC, to be re-checked against the new fixture. |
+| 02 sabotaged | TSCC (`torontosportscard.myshopify.com`), aov 85 CAD | **recaptured** 2026-07-31 at 0.3.0, pinned `4bfd303f…`, and **re-verified** against it (decision 37). 17 MC, **5 MNC** (MNC-405 added with v1.2). Composite 24, band Critical. Not yet re-measured — no run has scored against the new fixture. |
 | 03 app-heavy | **`www.makerlab.ph`** (never the `.myshopify.com` address — it 301s) | **captured** 2026-07-31 at 0.3.0, pinned `c574b982…`. 6/6, `shopify`, theme `Latestv1`, **7 apps**. Context only; `expect` all `null`, `gates: []`, no labels. |
 | 04 WooCommerce | `www.forestwholefoods.co.uk`, aov **null** (fabrication trap) | **captured** 2026-07-31, pinned `b44e19cf…`. Eval gates `[]` until labeled — declaring one now would invent a precision expectation for a store nobody has measured. **Screen perf is recorded, not gating** (decision 32): measured 2026-07-31 at home LCP 19.2–19.9s / CLS 0.43, pdp LCP 20.5–23.5s, collection LCP 4.8–6.0s. Real `high` findings, and the must-catch labels this entry currently lacks. |
 | 05 password-gated | TSCC, no password | **recaptured** 2026-07-31, pinned `3227f61c…` (`self-derived`). Labelled. The only entry labelable pre-crawl; it describes an absence. Traps: no platform/vertical inference from a Shopify-branded gate; no findings from the `/password` page itself; a blocked audit must still produce a client-deliverable report. |
@@ -149,7 +149,8 @@ of the off-origin failure, kept as evidence and safe to delete.
 
 ### Prompts and runs
 
-`finding-triager` v0.1–v0.6, **v1.0 frozen**, **v1.1** (decision 30) ·
+`finding-triager` v0.1–v0.6, **v1.0 frozen**, **v1.1** (decision 30), **v1.2**
+(decision 39 — rubric v0.6 + price/stock checks restored; unmeasured) ·
 `impact-narrator` **v0.1**, measured (entry 02 3/3, entry 05 1/1, zero numerals,
 zero MNC violations, editing cost ≈5% at N=1 against the >30% kill line) ·
 `report-composer` **none**.
@@ -314,6 +315,8 @@ not an error**). Resolve those and the split becomes safe. Not before.
     were fixed in passing: `instances` was one short on every template (it summed
     `region` only, not `landmark-one-main`), and a note claimed `search` has a
     `<main>` when it does not. The §1 clarification is deferred to step 15.
+    — *discharged 2026-07-31 by decision 38: rubric v0.6 §1 rule 7. MC-116's
+    `medium` is confirmed, not changed.*
 
 32. **Screen perf gates are per-entry; entry 04's are recorded, not gating**
     (2026-07-31). Entry 04's first full screen failed five hard gates — home LCP
@@ -446,6 +449,61 @@ not an error**). Resolve those and the split becomes safe. Not before.
     not before it.** A recapture can invalidate any test that pins a fixture
     value, and the suite is the only thing that will say so.
 
+37. **Entry 02 is re-verified against the 0.3.0 capture; two numbers moved, no
+    verdict did** (2026-07-31). The capture the labels were written against no
+    longer exists, so every numeric claim was re-checked against the new bytes
+    rather than carried over. MC-105's pdp LCP 10503.7 → 10654.2 ms and MC-107's
+    home LCP 3915.1 → 3872.7 ms; both keep their level. Six claims re-verified
+    **exact** — MC-104's contrast instances, MC-114's h1 on home alone, MC-115's
+    meta-description gaps, MC-116's landmark totals, MC-117's sixteen `href="#"`
+    anchors. Composite stays **24**, band Critical, `expect` range unchanged.
+    **The handoff expected the label set to grow past 17 and it did not**, so
+    there was nothing to recompute. MC-107 — the label most likely to flip —
+    moved *away* from the 4.0s line, widening its margin from 85 ms to 127 ms, so
+    `medium` now survives two independent captures. `findings.md`'s header pin is
+    updated, closing the transient decision 35 opened.
+
+38. **Rubric v0.6: §1 rule 7 — an access mode removed is not hygiene**
+    (2026-07-31). Discharges decision 31's deferred obligation. Landmark
+    structure, heading structure, skip links, keyboard reachability and visible
+    focus are ways of navigating a page; losing one is a subset-of-sessions
+    impact, which is `medium` on a revenue template, not `low`. **A scanner
+    tagging a rule `best-practice`/`moderate`, or emitting it with no `wcag*`
+    tag, does not by itself make a finding `low`** — that tag describes the
+    rule's confidence, not the session impact, and reading one off the other is
+    how a functional degradation gets filed as hygiene. The line is *mode
+    removed* vs *mode noisier*.
+    **No label moves.** MC-116 keeps `medium` (the level was never in doubt in
+    the labels — the governing clause was), MC-112 keeps `low` because redundant
+    alt text makes the page noisier rather than unnavigable, and the composite
+    stays 24. What changes is that a future run answering `low` now disagrees
+    with a written rule rather than with a silence. `rubric_version()` re-pins
+    automatically from the file's bytes: `rubric.md v0.6+65b1f4c6`.
+
+39. **`finding-triager` v1.2 restores the price and stock presence checks, and
+    MNC-405 screens the false positive that opens** (2026-07-31). The checks were
+    excluded from v0.2 through v1.1 because the distiller dropped short text
+    nodes, so a rendered price was absent from the evidence base whether or not
+    it was on the page. Step 13 fixed that, so the exclusion's reason is gone.
+    - **Restoring them is a prompt change, not a label change.** The store shows
+      price where it should — pdp `$10.00` in `span.product-page__price`,
+      per-card prices plus an availability filter on collection, an empty cart
+      with no total — so the correct outcome of the restored check is *present*
+      and no must-catch follows.
+    - **MNC-405 is new**, screening the claim that price or stock is *missing*.
+      Same shape as MNC-401: the thing is present and nameable, and asserting the
+      negative is the error. Executable via `detect.patterns`, verified to fire
+      on six phrasings of the claim and stay quiet on six legitimate mentions of
+      price. **Unexercised** — no recorded run could have emitted this claim,
+      because no prompt before v1.2 permitted it.
+    - **Cut as v1.2 rather than edited into v1.1, deliberately.**
+      `resolve_prompt_version` pins a prompt by NAME with no digest, unlike
+      `rubric_version()` and the harness pin, which both carry one. Editing v1.1
+      in place would have silently changed what the recorded entry-05 runs are
+      pinned to — the `b219afac` failure mode one layer over. **That asymmetry is
+      a real gap and is NOT fixed:** nothing stops a future edit-in-place of any
+      frozen prompt. Recorded as an open follow-up.
+
 ### Open decision — needs a call, not an inference
 
 **Two category caps bind** (`seo` by 4, `accessibility` by 1). Rubric §4 rule 2
@@ -457,7 +515,7 @@ entry 01's selection pre-empts the answer.
 
 ---
 
-## Rubric essentials (full text: `rubric.md` v0.5)
+## Rubric essentials (full text: `rubric.md` v0.6)
 
 - **Severity.** `critical` = blocks purchase or indexing on a revenue template
   (home/collection/pdp/cart) · `high` = measurable degradation on a revenue
