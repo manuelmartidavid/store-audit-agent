@@ -107,7 +107,12 @@ def test_effort_never_touches_the_score():
 def test_labels_parse_from_the_human_file():
     labels = eval_triage.parse_labels(ENTRY / "expected" / "findings.md")
     assert len([k for k in labels if k.startswith("MC-")]) == 17   # 13 planted + 4 promoted
-    assert len([k for k in labels if k.startswith("MNC-")]) == 4
+    # 5 since 2026-07-31: MNC-405 (no claim that price or stock is missing) was
+    # added with finding-triager v1.2, which restored the presence checks that
+    # make the claim reachable. Counts are asserted rather than derived on
+    # purpose — a label silently vanishing from the file is the failure this
+    # catches, and deriving the number from the file would make it vacuous.
+    assert len([k for k in labels if k.startswith("MNC-")]) == 5
     assert labels["MC-102"]["severity"] == "critical"
 
 

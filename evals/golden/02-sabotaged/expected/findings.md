@@ -8,12 +8,20 @@
     manifest:    4bfd303fc9b134ab425bc50ca2ede27646b5657b0696d8ab77de938471f50a6e
     captured_at: 2026-07-31T12:15:53+08:00
     crawler:     0.3.0 · lighthouse 12.8.2 · axe-core 4.12.1 · chrome 149.0.7827.55
-    rubric:      rubric.md v0.3 (labeled against); still valid under
-                 v0.4 — v0.4 changed §4 rule 3 (blocked stores now carry `status: INACCESSIBLE`
+    rubric:      rubric.md v0.3 (labeled against); still valid under v0.4, v0.5 and v0.6.
+                 v0.4 changed §4 rule 3 (blocked stores now carry `status: INACCESSIBLE`
                  alongside the `null` score), the bands table, and added §4 rule 5. It did NOT
                  touch §1 severity, §2 effort or §3 confidence — the only sections the triager
-                 prompt inlines — so every prompt version through v1.0 is valid under both, and
-                 no label verdict changes.
+                 prompt inlines.
+                 v0.5 did touch §1: it struck `· store unreachable` from the `critical` row and
+                 added §1 rule 6. No entry-02 label rests on that case — this store is reachable
+                 — so no verdict here moves.
+                 v0.6 adds §1 rule 7 (an access mode removed is a subset-of-sessions impact,
+                 not hygiene; a scanner's `best-practice`/`moderate` tag does not by itself
+                 make a finding `low`). It CONFIRMS MC-116's `medium` rather than changing it,
+                 and touches no other label: MC-112 stays `low` because redundant alt text
+                 makes the page noisier, not unnavigable — the mode-removed/mode-noisier line
+                 rule 7 draws. Composite unchanged at 24.
     amended:     2026-07-28, three amendments with different provenance. Stated
                  separately because they do not share it:
 
@@ -486,17 +494,20 @@ notes: >
   nodes while keeping `header`, `nav` and `footer` — `distill.py` keeps every
   LANDMARK_TAG unconditionally, `main` included, so one would have survived. The
   finding is uniform across all six templates, which strengthens the label.
-  Severity is disputed, and stands pending a rubric ruling. Three of four
-  recorded runs answer `low` ("hygiene, no measurable session impact"); the one
-  answering `medium` cites "axe violation off the purchase path", which the
+  Severity was disputed and is now SETTLED by rubric §1 rule 7 (v0.6, 2026-07-31)
+  — the clarification decision 31 deferred to this re-label. Three of four
+  recorded runs answered `low` ("hygiene, no measurable session impact"); the one
+  answering `medium` cited "axe violation off the purchase path", which the
   fixture contradicts — both rules fire on pdp and cart. Both are axe
-  `best-practice`/`moderate` with no `wcag*` tag, so nothing in the evidence base
-  makes the impact measurable and `low` is a defensible read of §1 as written.
-  The label keeps `medium` on §1's "revenue-template issue affecting a subset of
-  sessions" clause: landmark navigation is a primary AT navigation mode, and its
-  loss is a functional degradation rather than the nil-effect shape every §1
-  `low` example has. Closing the gap means clarifying §1 — deferred to the
-  capture wave's re-label, since §1 is inlined verbatim by every prompt.
+  `best-practice`/`moderate` with no `wcag*` tag, and the `low` reading rested
+  entirely on that: no wcag tag, therefore no measurable impact.
+  Rule 7 rejects that inference explicitly — a scanner's tag describes the rule's
+  own confidence, not the session impact — and states the governing clause:
+  landmark navigation is an access mode, its loss is a subset-of-sessions
+  degradation, and that is `medium` on a revenue template. **The label does not
+  move; the rule it rests on is now written down.** A future run answering `low`
+  is now disagreeing with a rule rather than with a silence, which is the
+  difference between a severity disagreement and an ambiguity in the ground truth.
 match:
   any_of:
     - "axe:landmark-one-main"
@@ -648,6 +659,52 @@ scope_note: >
   there and both exempt a run that finds them. The rule forbids fabrication on
   the controls; it does not forbid observation, and the difference is now carried
   by the label set rather than by a discriminator the harness invented.
+```
+
+### MNC-405 — No claim that price or stock is missing
+```yaml
+type: forbidden_claim
+scope: [findings, narrative]
+detect:
+  rule: claim_that_price_or_stock_is_absent_where_the_fixture_shows_it
+  # ADDED 2026-07-31, with finding-triager v1.2. Through v1.1 the presence
+  # checklist excluded price and stock because the distiller dropped short text
+  # nodes, which made this claim unreachable — no prompt asked for it and no
+  # evidence supported it. The step-13 fix put prices back in the evidence base
+  # and v1.2 restored the checks, so the claim is now reachable and, on this
+  # fixture, false: the pdp carries `$10.00` in `span.product-page__price`, the
+  # collection grid carries a price per card plus an availability filter, and
+  # the cart is empty so it correctly shows no total.
+  #
+  # Same shape as MNC-401: the thing is present and nameable, and asserting the
+  # negative about it is the error. Not a precision-bar issue — a false positive
+  # of this kind is a factual claim about a revenue template contradicted by the
+  # bytes, not a debatable extra finding, so it belongs here rather than in the
+  # unlabeled bucket.
+  #
+  # Patterns require explicit absence phrasing rather than the bare word, so a
+  # legitimate finding that merely mentions price (a missing price FILTER, a
+  # currency-format issue, "price, low to high" sort) does not trip them. This
+  # is deliberately narrow: the screen should fire on the claim, not the topic.
+  # UNEXERCISED — no recorded run has ever emitted this claim, because no prompt
+  # before v1.2 permitted it. Read a first violation as a screen finally getting
+  # its chance, not as a regression.
+  patterns:
+    - 'no price (?:is )?(?:shown|displayed|visible|present|listed)'
+    - '(?:price|pricing) (?:is|are) (?:not shown|not displayed|not visible|missing|absent)'
+    - 'missing (?:a )?price'
+    - 'without (?:a |any )?(?:visible )?price'
+    - '(?:does|do|did) not (?:show|display|list|include|state|carry) (?:a |any |the )?price'
+    - 'no (?:stock|availability) (?:status|state|level|indicator|information)'
+    - '(?:stock|availability) (?:status|state) (?:is|are) (?:not shown|not displayed|missing|absent)'
+    - '(?:does|do|did) not (?:show|display|list|include|state|carry) (?:a |any |the )?(?:stock|availability)'
+reason: >
+  Price and stock ARE present on this store's revenue templates, and v1.2 asks
+  the triager to check for them. A run reporting either as missing is asserting
+  something the fixture contradicts. Reporting them as PRESENT is correct and
+  expected — it is the negative claim that is forbidden. A genuinely price-less
+  store would need this label revisited for that entry; it is scoped to entry 02,
+  where the fact is established.
 ```
 
 ---

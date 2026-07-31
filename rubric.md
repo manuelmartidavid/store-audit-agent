@@ -1,6 +1,6 @@
 # Scoring rubric — Store Audit Agent
 
-`rubric.md` (canonical path) · v0.5 draft · Phase 0 close
+`rubric.md` (canonical path) · v0.6 draft · Phase 0 close
 
 > Cited as `references/rubric.md` in every `finding-triager` prompt front matter  <!-- STALE-OK -->
 > and in labels written before 2026-07-28. That spelling is an alias for this
@@ -32,8 +32,8 @@ count carried as evidence.
 |---|---|---|
 | `critical` | Blocks purchase, or blocks indexing of a revenue template | Cart unusable at 375px · PDP `noindex` or robots-blocked · add-to-cart not keyboard reachable or missing accessible name |
 | `high` | Measurable degradation on a revenue template, affecting all sessions | Mobile LCP > 4.0s · CLS > 0.25 · missing or duplicated `<title>`/H1 across a template · contrast failure on primary CTA · PDP gallery images without alt |
-| `medium` | Degradation confined to a non-revenue template, **or** a revenue-template issue affecting a subset of sessions | Mobile LCP 2.5–4.0s · CLS 0.10–0.25 · missing meta descriptions · axe violation off the purchase path |
-| `low` | Hygiene. No measurable session impact | Decorative images without alt · heading order in footer · missing canonical on a non-duplicated page |
+| `medium` | Degradation confined to a non-revenue template, **or** a revenue-template issue affecting a subset of sessions | Mobile LCP 2.5–4.0s · CLS 0.10–0.25 · missing meta descriptions · axe violation off the purchase path · loss of landmark or heading navigation for assistive technology |
+| `low` | Hygiene. No user's task becomes harder | Decorative images without alt · heading order in footer · missing canonical on a non-duplicated page |
 
 ### Tie-break rules (these are what make it deterministic)
 
@@ -70,6 +70,36 @@ count carried as evidence.
    Governing rule, applied: *scripts measure, the model judges.* Reachability is
    measured — `crawl.status` is deterministic and the scorer already reads it.
    Asking the triager to re-report it makes a measurement into a judgment.
+
+7. **A defect that removes or degrades a means of navigating or operating the
+   page affects a subset of sessions, not none.** Landmark structure, heading
+   structure, skip links, keyboard reachability and visible focus are access
+   modes. Losing one makes the page harder to use for the sessions that depend on
+   it, which is impact under the `medium` rule — not hygiene — even when no
+   scanner quantifies it. `low` is for defects where no user's task changes:
+   redundant or decorative alt text, footer heading order, a canonical on a page
+   with no duplicate.
+
+   **A scanner tagging a rule `best-practice` or `moderate`, or emitting it with
+   no `wcag*` tag, does not by itself make a finding `low`.** That tag describes
+   the rule's own confidence and provenance, not the session impact — the two are
+   independent, and reading one off the other is how a functional degradation
+   gets filed as hygiene.
+
+   The distinction is *mode removed* versus *mode noisier*. Content that is still
+   reachable by the same means, just more verbose or worse ordered, is `low`;
+   content whose navigation mode is gone is at least `medium` on a revenue
+   template.
+
+   **v0.6 — this rule is new.** It settles a dispute the labels had been carrying
+   openly: golden entry 02's MC-116 (no `main` landmark, content outside landmark
+   regions, firing on all six templates including pdp and cart) sat between `low`
+   on "no measurable session impact" and `medium` on "a revenue-template issue
+   affecting a subset of sessions". Three of four recorded runs answered `low`,
+   citing the absence of a `wcag*` tag; the label held `medium` and recorded the
+   gap rather than resolving it unilaterally (decision 31). Neither the level nor
+   the weights move — this states which clause governs, so the next run's `low`
+   is a disagreement with a rule rather than with a silence.
 
 ---
 

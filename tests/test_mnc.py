@@ -13,6 +13,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
@@ -20,6 +22,13 @@ _spec = importlib.util.spec_from_file_location("mnc", ROOT / "triage" / "mnc.py"
 mnc = importlib.util.module_from_spec(_spec)
 sys.modules["mnc"] = mnc
 _spec.loader.exec_module(mnc)
+
+_et_spec = importlib.util.spec_from_file_location("eval_triage", ROOT / "triage" / "eval_triage.py")
+eval_triage = importlib.util.module_from_spec(_et_spec)
+sys.modules["eval_triage"] = eval_triage
+_et_spec.loader.exec_module(eval_triage)
+
+ENTRY_02_LABELS = ROOT / "evals" / "golden" / "02-sabotaged" / "expected" / "findings.md"
 
 
 def call(labels, findings):
@@ -107,6 +116,64 @@ def test_a_crawl_pointer_with_a_path_segment_does_not_raise():
 def test_a_wildcard_axe_pointer_is_still_skipped_not_raised():
     labels = {"MNC-004": {"match": {"any_of": ["axe:*"]}}}
     assert call(labels, [{"id": "F-01", "evidence": ["axe:color-contrast"]}]) == []
+
+
+# --- MNC-405, against the real entry-02 label file --------------------------
+#
+# Every test above drives a synthetic label. These drive the patterns actually
+# shipped in evals/golden/02-sabotaged, because that is where the risk lives:
+# they are hand-written regexes, added 2026-07-31 when finding-triager v1.2
+# restored the price/stock presence checks and made the claim reachable for the
+# first time. A regex that quietly stops matching is precisely the "screen that
+# passes by not running" this whole file exists to catch, and MNC-405 has never
+# fired on a real run — so nothing else would notice if it broke.
+#
+# Both directions are asserted. Firing alone is not enough: patterns loose
+# enough to catch every phrasing would also fire on findings that merely mention
+# price, turning a correct observation into an automatic fail.
+
+CLAIMS_PRICE_OR_STOCK_IS_MISSING = [
+    "The PDP does not display a price for the product.",
+    "No price is shown on the product detail page.",
+    "Price is missing from the collection grid.",
+    "Product cards render without a visible price.",
+    "The PDP gives no stock status, so buyers cannot tell availability.",
+    "Availability state is not shown anywhere on the PDP.",
+]
+
+MENTIONS_PRICE_LEGITIMATELY = [
+    # A missing price FILTER is a real finding about a control, not a claim that
+    # prices are absent — the distinction the patterns have to hold.
+    "The collection page has no price filter, so shoppers cannot narrow by budget.",
+    "Price, low to high sorting is available on the collection.",
+    "The price is displayed as $10.00 with no currency code alongside it.",
+    "Add-to-cart is a div and is not keyboard operable.",
+    "The cart shows no shipping cost before checkout.",
+]
+
+
+def _mnc_405_hits(text: str) -> list:
+    labels = eval_triage.parse_labels(ENTRY_02_LABELS)
+    return [h for h in mnc.declared_violations(labels, blob=text, findings=[])
+            if h["rule"] == "MNC-405"]
+
+
+def test_mnc_405_is_a_screen_that_can_run():
+    labels = eval_triage.parse_labels(ENTRY_02_LABELS)
+    assert "MNC-405" in labels, "MNC-405 vanished from the entry-02 label file"
+    assert "MNC-405" in mnc.executable_label_ids(labels), (
+        "MNC-405 parses but carries no runnable screen — it would report "
+        "'no violations' having checked nothing")
+
+
+@pytest.mark.parametrize("text", CLAIMS_PRICE_OR_STOCK_IS_MISSING)
+def test_mnc_405_fires_on_a_claim_the_fixture_contradicts(text: str):
+    assert _mnc_405_hits(text), f"MNC-405 did not fire on: {text!r}"
+
+
+@pytest.mark.parametrize("text", MENTIONS_PRICE_LEGITIMATELY)
+def test_mnc_405_stays_quiet_when_price_is_merely_mentioned(text: str):
+    assert not _mnc_405_hits(text), f"MNC-405 false-fired on: {text!r}"
 
 
 # --- executable_label_ids: which screens actually ran -----------------------
