@@ -986,11 +986,23 @@ def self_test(entry: Path, fixtures: Path) -> int:
                        if f["severity"] in ("critical", "high")) == expect.get("findings_above_medium"),
                    str(sum(1 for f in synthetic["findings"]
                            if f["severity"] in ("critical", "high")))))
-    checks.append(("roadmap puts the trivial critical first",
-                   result["roadmap"][:1] == [next(f["id"] for f in synthetic["findings"]
-                                                  if f["severity"] == "critical"
-                                                  and f["effort"] == "trivial")],
-                   " > ".join(result["roadmap"][:4])))
+    # Roadmap ordering only says something when the entry HAS a trivial
+    # `critical` to rank first. A clean-store entry declares none, and `next()`
+    # with no default turned that into a StopIteration crash instead of a check
+    # that does not apply — the same hardcoded-to-one-entry shape triage/mnc.py
+    # exists to prevent. Announce the skip rather than dropping the check
+    # silently: a self-test that quietly stops checking something is the failure
+    # mode this whole function is for.
+    trivial_critical = next((f["id"] for f in synthetic["findings"]
+                             if f["severity"] == "critical"
+                             and f["effort"] == "trivial"), None)
+    if trivial_critical is None:
+        print("  n/a   roadmap ordering — this entry declares no trivial "
+              "`critical` finding to rank first")
+    else:
+        checks.append(("roadmap puts the trivial critical first",
+                       result["roadmap"][:1] == [trivial_critical],
+                       " > ".join(result["roadmap"][:4])))
 
     failures = 0
     for name, ok, detail in checks:

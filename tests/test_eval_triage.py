@@ -116,6 +116,22 @@ def test_labels_parse_from_the_human_file():
     assert labels["MC-102"]["severity"] == "critical"
 
 
+def test_self_test_runs_on_an_entry_with_no_critical_finding():
+    """Entry 01 is the clean store, so it declares no `critical` finding at all.
+
+    The roadmap check looked up "the trivial critical" with `next()` and no
+    default, which turned "this entry has none" into a StopIteration crash
+    rather than a check that does not apply — the same hardcoded-to-entry-02
+    shape triage/mnc.py exists to prevent, one module over. A clean entry must
+    be self-testable; it is the entry the precision bar is measured on.
+    """
+    entry = ROOT / "evals" / "golden" / "01-clean-theme"
+    fixtures = ROOT / "fixtures" / "01"
+    if not (fixtures / "crawl.json").exists():
+        pytest.skip("fixtures/ is gitignored; run where the capture lives")
+    assert eval_triage.self_test(entry, fixtures) == 0
+
+
 def test_em_dash_severity_is_null_not_a_string():
     labels = eval_triage.parse_labels(ENTRY / "expected" / "findings.md")
     assert labels["MC-113"]["severity"] is None

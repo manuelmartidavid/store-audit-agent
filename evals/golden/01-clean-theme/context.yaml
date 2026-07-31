@@ -66,7 +66,7 @@ eval:
     # Rubric §5's false-positive pass condition, declared BEFORE capture so this
     # entry's grader exists before its answers do (step 8's rule; entry 02's
     # gates were left empty precisely because its answers already existed).
-    score: null                 # no labels yet — set when findings.md is written
+    score: 93                   # labeled 2026-07-31; 4 medium/low findings, Σ 7 penalties
     score_min: 90               # rubric §5
     score_max: 100
     band: "Healthy"             # 85+ per rubric §4

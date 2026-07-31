@@ -121,7 +121,7 @@ output tokens each — and must not be averaged in.
 
 | entry | store | status |
 |---|---|---|
-| 01 clean theme | `theme-dawn-demo.myshopify.com` | **captured** 2026-07-31, pinned `93e3d64b…`. Not yet labelled or scored. Gates `[score_range, findings_above_medium]`; finding count left **ungated** with `max_findings: 3` printed, because the screen found real defects on Dawn and §5's `≤3` would fail on true positives while the two false-positive bars hold. |
+| 01 clean theme | `theme-dawn-demo.myshopify.com` | **captured & labelled** 2026-07-31, pinned `93e3d64b…`. 4 MC (all medium/low), 2 MNC, composite **93 Healthy**. Not yet scored against a run. Gates `[score_range, findings_above_medium]` both met by the labels; finding count left **ungated** with `max_findings: 3` printed, and the label set has 4 — exactly the case D4 anticipated. MNC-201 (74 artifact contrast violations) is the entry's primary trap. |
 | 02 sabotaged | TSCC (`torontosportscard.myshopify.com`), aov 85 CAD | **recaptured** 2026-07-31 at 0.3.0, pinned `4bfd303f…`, and **re-verified** against it (decision 37). 17 MC, **5 MNC** (MNC-405 added with v1.2). Composite 24, band Critical. Not yet re-measured — no run has scored against the new fixture. |
 | 03 app-heavy | **`www.makerlab.ph`** (never the `.myshopify.com` address — it 301s) | **captured** 2026-07-31 at 0.3.0, pinned `c574b982…`. 6/6, `shopify`, theme `Latestv1`, **7 apps**. Context only; `expect` all `null`, `gates: []`, no labels. |
 | 04 WooCommerce | `www.forestwholefoods.co.uk`, aov **null** (fabrication trap) | **captured** 2026-07-31, pinned `b44e19cf…`. Eval gates `[]` until labeled — declaring one now would invent a precision expectation for a store nobody has measured. **Screen perf is recorded, not gating** (decision 32): measured 2026-07-31 at home LCP 19.2–19.9s / CLS 0.43, pdp LCP 20.5–23.5s, collection LCP 4.8–6.0s. Real `high` findings, and the must-catch labels this entry currently lacks. |
@@ -543,14 +543,53 @@ not an error**). Resolve those and the split becomes safe. Not before.
     to the unlabeled bucket.
     **§3.1's measurement is still not done.** It needs Console credits.
 
-### Open decision — needs a call, not an inference
+41. **Entry 01 is labelled, and its trap was found rather than planted**
+    (2026-07-31). Four must-catch findings, all `medium` or `low`: MC-201 no meta
+    description on home/collection/cart/search (`medium`), MC-202 pdp LCP 3.16s
+    (`medium`), MC-203 home `<title>` is the bare store handle `theme-dawn-demo`
+    (`medium`), MC-204 heading order skips a level on search (`low`).
+    **Composite 93, band Healthy, nothing above `medium`** — both pre-declared
+    gates (`score_range` 90–100, `findings_above_medium` 0) are met by labels
+    written from the fixture, not tuned to the bar. `max_findings: 3` is exceeded
+    by one, which is exactly why design D4 left it ungated.
+    - **The entry's real asset is MNC-201.** axe reports **74 `color-contrast`
+      violations across all six templates**, `serious`, tagged `wcag2aa`/`wcag143`
+      — and every one is an artifact. All 74 report contrast **1.01** with
+      foreground **#fdfdfd** on background **#ffffff**: one ratio, one colour
+      pair, across headings, prices, links, form labels and footer text. A real
+      contrast defect varies. This is Dawn's `animate--slide-in` scroll-reveal
+      starting elements near `opacity: 0`, with axe blending foreground into
+      background. Shopify's reference theme does not ship invisible text.
+      **Both scanners report it and both are wrong**, which makes it a better
+      false-positive test than anything that could have been planted.
+    - **MNC-202** forbids the "this is a demonstration store" claim. The pdp's
+      meta description says so outright, so the fact sits in the evidence base
+      waiting to be repeated — true, and not a defect.
+    - **Two candidate findings were checked and deliberately not labelled**, and
+      recorded as known non-defects rather than screened: cart carries two `<h1>`s
+      (Dawn renders both and hides one by cart state; axe emits nothing, and the
+      distilled tree cannot express CSS visibility), and home's `<h1>` is the
+      logo-link header pattern with its accessible name on the image. Screening
+      either would have been the MNC-405 mistake again — failing a run for a
+      defensible reading.
+    - **`self_test` could not run on a clean entry.** It looked up "the trivial
+      `critical`" with `next()` and no default, so an entry declaring no
+      `critical` crashed with `StopIteration` instead of skipping a check that
+      does not apply — the hardcoded-to-entry-02 shape `triage/mnc.py` exists to
+      prevent, one module over. Fixed to print `n/a` loudly rather than drop the
+      check silently, with a regression test.
 
-**Two category caps bind** (`seo` by 4, `accessibility` by 1). Rubric §4 rule 2
-says that means the weights are wrong, not the cap — but this store has two
-`critical`s in two categories, close to the pathological case the cap exists for.
-**Entry 01 settles it cheaply:** a cap binding on a clean theme means the weights
-are wrong. It is a rubric change, so it waits for that evidence. Nothing about
-entry 01's selection pre-empts the answer.
+### Open decision — RESOLVED 2026-07-31 by entry 01
+
+**Two category caps bind on entry 02** (`seo` by 4, `accessibility` by 1). Rubric
+§4 rule 2 sets the test: *"The cap is set so that it binds only in pathological
+cases; if it is binding on ordinary stores, the weights are wrong, not the cap."*
+
+**Entry 01 is now labelled and no cap binds — the closest is `seo` at 4 against a
+cap of 25.** A clean store does not come near them. So the caps binding on entry
+02 is the pathological case working as designed, not evidence that the weights
+are wrong, and **rubric §4's weights stand unchanged.** Entry 02's own label file
+recorded this as open pending exactly this evidence; it now has it.
 
 ---
 

@@ -201,6 +201,68 @@ def test_mnc_405_never_screens_a_claim_about_stock(text: str):
         f"would fail a correct run.")
 
 
+# --- entry 01's screens, against the real label file -------------------------
+#
+# Entry 01 is the false-positive test, so its MNC rules ARE the entry. MNC-201
+# in particular is the one that matters: axe reports 74 serious wcag2aa contrast
+# violations on that store and every one is an artifact of Dawn's scroll-reveal
+# animation (all 74 at ratio 1.01, #fdfdfd on #ffffff). If that screen ever
+# stops firing, the entry silently stops testing the thing it exists for.
+
+ENTRY_01_LABELS = ROOT / "evals" / "golden" / "01-clean-theme" / "expected" / "findings.md"
+
+
+def _entry_01_hits(rule: str, findings: list, blob: str | None = None) -> list:
+    labels = eval_triage.parse_labels(ENTRY_01_LABELS)
+    text = blob if blob is not None else json.dumps(findings, ensure_ascii=False)
+    return [h for h in mnc.declared_violations(labels, blob=text, findings=findings)
+            if h["rule"] == rule]
+
+
+def test_entry_01_screens_are_all_executable():
+    labels = eval_triage.parse_labels(ENTRY_01_LABELS)
+    declared = {k for k in labels if k.startswith("MNC-")}
+    assert declared == {"MNC-201", "MNC-202"}
+    assert declared <= mnc.executable_label_ids(labels), (
+        "an entry-01 MNC parses but carries no runnable screen")
+
+
+@pytest.mark.parametrize("pointer", ["axe:color-contrast",
+                                     "lighthouse:audits/color-contrast"])
+def test_mnc_201_catches_a_contrast_finding_from_either_scanner(pointer: str):
+    hits = _entry_01_hits("MNC-201", [{"id": "F-01", "title": "Low contrast text",
+                                       "evidence": [pointer]}])
+    assert hits, f"MNC-201 did not fire on a finding citing {pointer!r}"
+
+
+@pytest.mark.parametrize("pointer", ["lighthouse:audits/meta-description",
+                                     "axe:heading-order",
+                                     "crawl:home/html/head/title[theme-dawn-demo]"])
+def test_mnc_201_leaves_the_real_findings_alone(pointer: str):
+    # The three must-catch labels cite these. A contrast screen that also fired
+    # on them would fail every correct run.
+    assert not _entry_01_hits("MNC-201", [{"id": "F-02", "title": "x",
+                                           "evidence": [pointer]}])
+
+
+@pytest.mark.parametrize("text", [
+    "This is a demonstration store, not a real business.",
+    "The catalog is placeholder content.",
+    "Product pages use a test store catalog.",
+])
+def test_mnc_202_catches_the_store_is_not_real_claim(text: str):
+    assert _entry_01_hits("MNC-202", [], blob=text), f"MNC-202 missed: {text!r}"
+
+
+@pytest.mark.parametrize("text", [
+    "The home page title is the bare store handle.",
+    "The demo of the cart flow completed without error.",
+    "Four templates lack a meta description.",
+])
+def test_mnc_202_stays_quiet_on_ordinary_audit_prose(text: str):
+    assert not _entry_01_hits("MNC-202", [], blob=text), f"MNC-202 false-fired: {text!r}"
+
+
 # --- executable_label_ids: which screens actually ran -----------------------
 
 def test_executable_label_ids_includes_forbidden_finding_scope_all():
