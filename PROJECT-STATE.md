@@ -56,6 +56,11 @@ Top project risk: **fabricated impact claims.** Every quantified claim must cite
 waits on, and it is Marti's: it needs live stores, `TSCC_STOREFRONT_PASSWORD`, and
 `planting/screen_candidate.py` re-run immediately before each capture (D5).
 
+> **Follow `docs/RUNBOOK-capture-wave.md`** — the ordered, copy-pasteable version
+> of everything below, including the machine fixes that come first.
+> `evals/FREEZE-CHECKLIST.md` holds the reasoning behind each step; the runbook
+> holds the sequence. The runbook defers to the checklist on any conflict.
+
 - `02-sabotaged` — recapture → re-freeze → **re-label**. Price and stock become
   detectable under 0.3.0, so the presence checklist gains back two items and the
   label set likely grows past 17. This retires `b219afac…`; the fixture-hash pin
