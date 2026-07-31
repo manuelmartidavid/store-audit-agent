@@ -2,9 +2,12 @@
 
     schema:      findings/v0.1
     labeled:     2026-07-27, from fixtures/02-sabotaged (frozen)
-    manifest:    b219afac6f8234ff98ce6c4eaf004bdb4063aaf1155de78b0fe19c6512946d20
-    captured_at: 2026-07-27T16:39:27+08:00
-    crawler:     0.2.0 · lighthouse 12.8.2 · axe-core 4.12.1 · chrome 149.0.7827.55
+    re-verified: 2026-07-31, against the 0.3.0 recapture — see the re-verification
+                 block below. Every label was re-checked against the new bytes;
+                 two carried numbers that moved and no verdict changed.
+    manifest:    4bfd303fc9b134ab425bc50ca2ede27646b5657b0696d8ab77de938471f50a6e
+    captured_at: 2026-07-31T12:15:53+08:00
+    crawler:     0.3.0 · lighthouse 12.8.2 · axe-core 4.12.1 · chrome 149.0.7827.55
     rubric:      rubric.md v0.3 (labeled against); still valid under
                  v0.4 — v0.4 changed §4 rule 3 (blocked stores now carry `status: INACCESSIBLE`
                  alongside the `null` score), the bands table, and added §4 rule 5. It did NOT
@@ -75,6 +78,44 @@ MC-105/MC-107 are the same Lighthouse audit id on two different templates.
 Every label below is read from the frozen fixture, not from sabotage-spec.md.
 Where the measurement disagreed with the planting intent, the measurement won
 (decisions 10, 18-superseded). Composite computed by rubric §4.
+
+### Re-verification 2026-07-31 — against the 0.3.0 recapture
+
+The capture these labels were written against (`b219afac…`) was destroyed by the
+recapture and no copy survives (decision 33). Every numeric claim below was
+therefore re-checked against the new bytes (`4bfd303f…`) rather than carried
+over. **Two numbers moved; no verdict did.**
+
+| label | claim | 0.3.0 capture | verdict |
+|---|---|---|---|
+| MC-102 | collection noindex | `is-crawlable` score 0 | holds |
+| MC-104 | contrast {collection 4, pdp 3, cart 1} + 404 1 | 4 / 3 / 1 / 1 | **exact** |
+| MC-105 | pdp LCP 10503.7 ms | **10654.2 ms** | `high`, moved |
+| MC-106 | collection CLS 0.268 | 0.26807 | `high`, holds |
+| MC-107 | home LCP 3915.1 ms | **3872.7 ms** | `medium`, moved |
+| MC-108 | axe emits no `label` violation | 0 on all six templates | holds |
+| MC-114 | `page-has-heading-one` on home alone | home 1, others 0 | **exact** |
+| MC-115 | meta-description absent on home/cart/search/404 | score 0 on home, cart, search; 404 has no LHR | **exact** |
+| MC-116 | instances 22/15/19/3/5/8 | `landmark-one-main` 1 each + `region` 21/14/18/2/4/7 | **exact** |
+| MC-117 | sixteen home anchors `href="#"` | 16 | **exact** |
+
+`python -m triage.eval_triage --self-test` is green against the new fixture:
+composite reproduces at **24**, recall 1.0, every `match.any_of` pointer resolves,
+no label matches twice. The six labels whose human `evidence:` spelling does not
+resolve are the same ones the 2026-07-28 amendment already documents — that count
+could not be compared against the old fixture, which no longer exists.
+
+**Newly observable, and not yet labelled.** The step-13 distiller fix means price
+and stock now survive distillation: the pdp carries `$10.00` in
+`span.product-page__price`, the collection grid carries per-card prices and an
+availability filter, and the cart is empty so it legitimately carries no total.
+Under the old capture these were absent from the distilled tree, which is why the
+triager prompt was told to skip the two presence checks. **Restoring those checks
+is a prompt change (v1.1), not a label change** — the store shows price where it
+should, so the correct outcome of the restored check is *present*, and no
+must-catch follows from it. What may follow is a must-not-claim: a run reporting
+price or stock as missing on pdp or collection is now a false positive that
+nothing screens. That is left as an open decision below, not written in.
 
 ## Composite (script-computed from the must-catch set)
 
@@ -198,10 +239,12 @@ category: performance
 severity: high              # LCP > 4.0s on a revenue template (§1)
 effort: small               # ship a sized/responsive image
 confidence: high
-evidence: lighthouse:audits/largest-contentful-paint   # 10503.7 ms
+evidence: lighthouse:audits/largest-contentful-paint   # 10654.2 ms (0.3.0 recapture)
 notes: >
   The featured image ships as a 1562 KB JPEG verbatim (master URL, no
   transform) — Shopify does not transcode JPEGs the way it does PNGs.
+  Re-verified 2026-07-31: 10503.7 ms → 10654.2 ms. Nowhere near the 4.0s
+  boundary, so the `high` verdict is not in question at either value.
 match:
   any_of:
     - "lighthouse:audits/largest-contentful-paint"
@@ -229,13 +272,18 @@ category: performance
 severity: medium            # LCP 2.5–4.0s (§1); boundary value takes lower level
 effort: small
 confidence: high
-evidence: lighthouse:audits/largest-contentful-paint   # 3915.1 ms
+evidence: lighthouse:audits/largest-contentful-paint   # 3872.7 ms (0.3.0 recapture)
 partner: MC-105             # the boundary pair: home medium / pdp high across 4.0s
 fragile: >
-  3915 ms is 85 ms under the 4.0s boundary and home jitters 3.9–4.2s across
-  captures (a prior capture read 4.16s = high). The FROZEN fixture is 3.92s =
+  3872.7 ms is 127 ms under the 4.0s boundary and home jitters 3.9–4.2s across
+  captures (a prior capture read 4.16s = high). The FROZEN fixture is 3.87s =
   medium, so the label is medium (decision 10). A recapture may flip it; that is
   a property of the store, recorded here so it is not mistaken for a regression.
+  **This is the label the recapture was most likely to flip, and it did not.**
+  Re-verified 2026-07-31: 3915.1 ms → 3872.7 ms, so the margin widened from 85 ms
+  to 127 ms and the `medium` verdict survives a second independent capture. The
+  boundary pair still straddles 4.0s (home 3.87s medium / pdp 10.65s high), which
+  is the whole point of the pair.
 match:
   any_of:
     - "lighthouse:audits/largest-contentful-paint"
