@@ -6,10 +6,15 @@ one into a single file you can store somewhere durable.
 Invariant: check the archive against `manifest.yaml`'s sha256, never the
 tarball's own — gzip embeds an mtime, so the tarball hash changes between runs.
 
+`-o` is opened `w:gz` and will overwrite an existing archive without complaint,
+so stamp the name with the crawler version and the manifest's short hash. A bare
+`02-sabotaged.tar.gz` is what destroyed the only copy of the retired `b219afac…`
+fixture on 2026-07-31.
+
 Usage:
-    python -m crawler.archive fixtures/02-sabotaged -o archives/02-sabotaged.tar.gz
-    python -m crawler.archive --check archives/02-sabotaged.tar.gz \
-        --expect b219afac6f8234ff98ce6c4eaf004bdb4063aaf1155de78b0fe19c6512946d20
+    python -m crawler.archive fixtures/02-sabotaged -o archives/02-sabotaged-0.3.0-4bfd303fc9b1.tar.gz
+    python -m crawler.archive --check archives/02-sabotaged-0.3.0-4bfd303fc9b1.tar.gz \
+        --expect 4bfd303fc9b134ab425bc50ca2ede27646b5657b0696d8ab77de938471f50a6e
 """
 
 from __future__ import annotations

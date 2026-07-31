@@ -178,9 +178,13 @@ the disposable dev store the spec designates for this.
 is not reproducible — only restorable.
 
 ```bash
-python -m crawler.archive fixtures/02-sabotaged -o archives/02-sabotaged.tar.gz
-python -m crawler.archive --check archives/02-sabotaged.tar.gz --expect <manifest sha256>
+python -m crawler.archive fixtures/02-sabotaged -o archives/02-sabotaged-0.3.0-4bfd303fc9b1.tar.gz
+python -m crawler.archive --check archives/02-sabotaged-0.3.0-4bfd303fc9b1.tar.gz --expect <manifest sha256>
 ```
+
+Stamp the name with the crawler version and the manifest's short hash. A bare
+`02-sabotaged.tar.gz` overwrites whatever it replaces — that is how the retired
+`b219afac…` fixture was destroyed on 2026-07-31.
 
 Copy `archives/` somewhere off this machine. The `--expect` value is the
 `manifest:` line in that entry's `expected/findings.md`.

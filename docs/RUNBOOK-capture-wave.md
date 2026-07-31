@@ -264,13 +264,26 @@ discovery has to find `/basket/` unaided — this is the live test of the 0.3.0 
 `fixtures/` is gitignored, so **a lost capture is a lost golden entry** — and for
 entries 01 and 04 the archive is the only recoverable copy.
 
+> 🔴 **Stamp every archive name. Never write a bare one.** On 2026-07-31 a
+> re-freeze wrote `archives/02-sabotaged.tar.gz` over the tarball that held the
+> retired `b219afac…` fixture — the only copy anywhere — and 18 scored runs lost
+> the bytes behind their results. `crawler.archive` opens the output `w:gz`, so a
+> bare name overwrites its predecessor silently and successfully. Stamp with the
+> crawler version **and** the manifest's short hash: the version is the part you
+> read, the hash is the part that makes a collision impossible.
+
 ```powershell
-python -m crawler.archive fixtures/02-sabotaged -o archives/02-sabotaged.tar.gz
-python -m crawler.archive fixtures/05          -o archives/05.tar.gz
-python -m crawler.archive fixtures/01          -o archives/01.tar.gz
-python -m crawler.archive fixtures/04          -o archives/04.tar.gz
-python -m crawler.archive fixtures/makerlab    -o archives/makerlab.tar.gz
+foreach ($f in '02-sabotaged','05','01','04','makerlab') {
+  $sha = (Get-FileHash "fixtures\$f\manifest.yaml" -Algorithm SHA256).Hash.ToLower().Substring(0,12)
+  $out = "archives/$f-0.3.0-$sha.tar.gz"
+  if (Test-Path $out) { Write-Host "SKIP  $out already exists"; continue }
+  python -m crawler.archive "fixtures/$f" -o $out
+}
 ```
+
+Change `0.3.0` to whatever `crawler_version` the capture actually recorded. The
+short hash is the first 12 of `manifest.yaml`'s sha256 — the same value the tool
+prints in full, and the same one phase 4.2 pins.
 
 ### ▢ 4.2 Record provenance in each `context.yaml`
 
