@@ -621,3 +621,119 @@ def test_the_report_evidences_the_resolver_preference_instead_of_asserting_it(ca
 
     notes = capsys.readouterr().out
     assert "resolver: IPv4 tried before IPv6" in notes
+
+
+# --- soft gates: measured and reported, but not disqualifying ----------------
+#
+# Entry 04 failed lcp/cls on its 2026-07-31 screen (home LCP 19.2-19.9s, CLS
+# 0.43, pdp LCP 20.5-23.5s). Those gates were entry 01's selection criteria --
+# the design's perf screen is headed "Demo" and covers entry 01 candidates only.
+# Entry 04 was selected on permalinks, robots.txt and ICP match, and exists to
+# exercise the reduced path and the null-AOV trap; neither needs a fast store,
+# and the brief targets low-traffic SMB stores. Same reasoning the docstring
+# already applies to hygiene: screening these out means hunting for a store that
+# flatters the agent.
+
+
+def test_a_gate_is_hard_unless_it_says_otherwise():
+    """Default must stay hard, or an unmarked gate silently stops disqualifying."""
+    assert sc.Gate("reachable:home", True, "HTTP 200").hard is True
+
+
+def test_soft_families_downgrade_every_gate_in_that_family():
+    gates = [
+        sc.Gate("lcp:home", False, "x"),
+        sc.Gate("cls:pdp", False, "y"),
+        sc.Gate("reachable:home", False, "z"),
+    ]
+    out = sc.apply_soft_gates(gates, frozenset({"lcp", "cls"}))
+    assert [g.hard for g in out] == [False, False, True]
+
+
+def test_nothing_is_downgraded_when_no_family_is_soft():
+    """Entry 01's path: the perf bar it was selected against must not move."""
+    gates = [sc.Gate("lcp:home", False, "x")]
+    assert sc.apply_soft_gates(gates, frozenset())[0].hard is True
+
+
+def test_soft_gates_are_named_by_family_not_by_full_gate_name():
+    """`lcp` must cover lcp:home, lcp:collection and lcp:pdp without listing them."""
+    gates = [sc.Gate(f"lcp:{t}", False, "x") for t in ("home", "collection", "pdp")]
+    assert all(g.hard is False for g in sc.apply_soft_gates(gates, frozenset({"lcp"})))
+
+
+def test_entry_04_records_perf_while_entry_01_still_gates_on_it():
+    assert sc.ENTRIES["04"]["soft_gates"] == frozenset({"lcp", "cls"})
+    assert sc.ENTRIES["01"].get("soft_gates", frozenset()) == frozenset()
+
+
+# Stub documents that pass every HEAD gate for their platform, so a non-zero exit
+# in the tests below can only come from lcp/cls. Without this the entry-04 test
+# would "pass" on `platform` and `permalinks` failing instead — green for a reason
+# that has nothing to do with soft gates.
+_WOO_DOC = (
+    '<head><title>Forest Whole Foods</title>'
+    '<meta name="description" content="Organic wholefoods"></head>'
+    '<body class="woocommerce">'
+    '<script src="/wp-content/plugins/woocommerce/assets/js/frontend.js"></script>'
+    '<a href="/product-category/bakery/">Bakery</a></body>'
+)
+_SHOPIFY_DOC = (
+    '<head><title>Dawn demo</title>'
+    '<meta name="description" content="A demo store"></head>'
+    '<body><script src="https://cdn.shopify.com/s/files/1/assets/theme.js"></script>'
+    '</body>'
+)
+
+
+def _stub_perf(monkeypatch, lcp_ms, cls_val, doc):
+    """Drive main()'s perf loop without a browser."""
+    class _Run:
+        blocked = None
+        samples = [_StubSample(lcp_ms, cls_val)]
+
+    monkeypatch.setattr(sc.time, "sleep", lambda *_a: None)
+    monkeypatch.setattr(sc, "_fetch", lambda url, timeout=30: (200, doc, url))
+    monkeypatch.setattr(sc.measure, "sample_url", lambda *a, **k: _Run())
+
+
+def test_the_stubs_clear_every_hard_gate_on_their_own(monkeypatch, capsys):
+    """Guards the two tests below: if the stub ever stops satisfying the head
+    gates, they would go green on the wrong failure instead of on soft gates."""
+    _stub_perf(monkeypatch, lcp_ms=1000, cls_val=0.0, doc=_WOO_DOC)
+    assert sc.main(["--entry", "04"]) == 0
+    _stub_perf(monkeypatch, lcp_ms=1000, cls_val=0.0, doc=_SHOPIFY_DOC)
+    assert sc.main(["--entry", "01"]) == 0
+
+
+def test_a_failing_soft_gate_does_not_trigger_re_selection(monkeypatch, capsys):
+    """The whole point: entry 04's real numbers must not disqualify it."""
+    _stub_perf(monkeypatch, lcp_ms=20000, cls_val=0.43, doc=_WOO_DOC)
+    assert sc.main(["--entry", "04"]) == 0
+
+
+def test_entry_01_is_still_disqualified_by_the_same_numbers(monkeypatch, capsys):
+    """The bar entry 01 was selected against has not moved."""
+    _stub_perf(monkeypatch, lcp_ms=20000, cls_val=0.43, doc=_SHOPIFY_DOC)
+    assert sc.main(["--entry", "01"]) == 2
+
+
+def test_a_failing_hard_gate_still_disqualifies_entry_04(monkeypatch, capsys):
+    """Softening perf must not soften anything else."""
+    _stub_perf(monkeypatch, lcp_ms=20000, cls_val=0.43, doc=_WOO_DOC)
+    monkeypatch.setattr(sc, "_fetch", lambda url, timeout=30: (500, "", url))
+    assert sc.main(["--entry", "04"]) == 2
+
+
+def test_a_failing_soft_gate_is_reported_rather_than_hidden(monkeypatch, capsys):
+    """A number that stops gating must not stop being visible — it becomes a label.
+
+    Asserts on the perf section's own header, not on the substring "NOT a gate",
+    which the seo-hygiene header already contains and would satisfy vacuously.
+    """
+    _stub_perf(monkeypatch, lcp_ms=20000, cls_val=0.43, doc=_WOO_DOC)
+    sc.main(["--entry", "04"])
+    out = capsys.readouterr().out
+    assert "perf (recorded, NOT a gate for entry 04" in out
+    assert "20.00" in out, "the measurement itself must still print"
+    assert "lcp:home" in out, "and must still be attributed to its template"

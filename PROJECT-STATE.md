@@ -124,7 +124,7 @@ output tokens each — and must not be averaged in.
 | 01 clean theme | `theme-dawn-demo.myshopify.com` | selected, **not captured**. Gates `[score_range, findings_above_medium]`; finding count left **ungated** with `max_findings: 3` printed, because the screen found real defects on Dawn and §5's `≤3` would fail on true positives while the two false-positive bars hold. |
 | 02 sabotaged | TSCC (`torontosportscard.myshopify.com`), aov 85 CAD | **frozen & labeled.** 13 planted defects + 4 promoted = 17 MC, 4 MNC. |
 | 03 app-heavy | `makerlab-electronics-ph.myshopify.com` | captured but **stale at 0.1.0** — its `apps[]` names 1 app where 0.2.0+ yields 7. Recapture before use. |
-| 04 WooCommerce | `www.forestwholefoods.co.uk`, aov **null** (fabrication trap) | selected, **not captured**. Gates `[]` until labeled — declaring one now would invent a precision expectation for a store nobody has measured. |
+| 04 WooCommerce | `www.forestwholefoods.co.uk`, aov **null** (fabrication trap) | selected, **not captured**. Eval gates `[]` until labeled — declaring one now would invent a precision expectation for a store nobody has measured. **Screen perf is recorded, not gating** (decision 32): measured 2026-07-31 at home LCP 19.2–19.9s / CLS 0.43, pdp LCP 20.5–23.5s, collection LCP 4.8–6.0s. Real `high` findings, and the must-catch labels this entry currently lacks. |
 | 05 password-gated | TSCC, no password | captured & labeled. The only entry labelable pre-crawl; it describes an absence. Traps: no platform/vertical inference from a Shopify-branded gate; no findings from the `/password` page itself; a blocked audit must still produce a client-deliverable report. |
 
 Entries 02 and 05 are the same store, crawled with and without the password.
@@ -309,6 +309,27 @@ not an error**). Resolve those and the split becomes safe. Not before.
     `region` only, not `landmark-one-main`), and a note claimed `search` has a
     `<main>` when it does not. The §1 clarification is deferred to step 15.
 
+32. **Screen perf gates are per-entry; entry 04's are recorded, not gating**
+    (2026-07-31). Entry 04's first full screen failed five hard gates — home LCP
+    19.2–19.9s, CLS 0.43, collection LCP 4.8–6.0s, pdp LCP 20.5–23.5s — and exited
+    2, a re-selection trigger. **The store was kept.** The perf bar is entry 01's
+    selection criterion: the design's perf screen is headed *Demo* and covers
+    entry-01 candidates only, while entry 04 was selected on default permalinks,
+    `robots.txt` blocking nothing we need, and ICP match. Entry 04 exists to
+    exercise the reduced path and the null-AOV trap; neither needs a fast store,
+    and the brief targets low-traffic SMB stores — this one is the customer, not
+    the exception. `Gate` gained `hard: bool = True` and entries may declare
+    `soft_gates` by family (`lcp` covers `lcp:home`, `lcp:collection`, `lcp:pdp`).
+    Soft gates are still measured and still printed, in their own block and never
+    dropped, because **the numbers become labels** — the same treatment and the
+    same stated reason as hygiene ("screening them out means hunting for a store
+    that flatters the agent"). Entry 01's bar is untouched and tested.
+    **One genuine problem is recorded, not solved:** `cls:pdp` read **0.000–0.301
+    across two runs** — bimodal, straddling the 0.25 line, so whichever value the
+    frozen fixture catches decides between a `high` finding and no finding at all.
+    Characterise it with `--runs 5` before capture; if it stays bimodal, record the
+    fragility in the label or accept that CLS is not a label for this entry.
+
 ### Open decision — needs a call, not an inference
 
 **Two category caps bind** (`seo` by 4, `accessibility` by 1). Rubric §4 rule 2
@@ -375,9 +396,15 @@ number, a lost hour, or a retracted figure.
   correct default route, gateway pings in 1ms); it is **router/ISP-side**.
   Consequence: **`urllib` has no Happy Eyeballs**, so it blocks the full ~60s
   connect timeout on the dead AAAA before falling back to IPv4. Measured **63.81s**
-  on entry 04's `robots.txt` against **0.16s** once IPv4 is preferred. **This is
-  what produced entry 04's retracted "LCP 19–23s" figures — the store answers in
-  under a second.**
+  on entry 04's `robots.txt` against **0.16s** once IPv4 is preferred.
+  - **Do not read that 0.16s as "the store is fast" — that inference was made on
+    2026-07-30 and was wrong.** It measured a 416-byte text file over `urllib`,
+    which proves the *route* was fixed and says nothing about page LCP under
+    `mobile-4g-slow` with images and plugins. Entry 04's 2026-07-31 screen, with
+    IPv4 preferred, read **home LCP 19.23–19.88s, CLS 0.428–0.435; pdp LCP
+    20.54–23.51s** — the same range as the figures this file had marked
+    "retracted". **They reproduce; the retraction is withdrawn.** The store is
+    genuinely slow, which is fine — see the entry-04 row above.
   - `planting/screen_candidate.py` calls `prefer_ipv4()` at the top of `main` and
     prints a `resolver:` note. It **reorders, never filters** — dropping `AF_INET6`
     would make a genuinely IPv6-only host unreachable, trading a host quirk for a

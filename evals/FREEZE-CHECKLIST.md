@@ -65,8 +65,12 @@ files, **read the live state; do not theorize.**
 ### A3. Apply the IPv4 preference ▢
 
 This machine's router advertises IPv6 with no upstream transit, so a dual-stack
-host costs `urllib` ~60s per fetch (measured 63.81s against 0.16s). It produced
-entry 04's **retracted** "LCP 19–23s" figures.
+host costs `urllib` ~60s per fetch (measured 63.81s against 0.16s).
+
+> **That 0.16s does not mean the store is fast.** It measured a 416-byte text file
+> over `urllib` — it proves the route was fixed, not that pages render quickly.
+> Entry 04's screen with IPv4 preferred still read home LCP 19.2–19.9s and pdp
+> 20.5–23.5s. Fix the route *and* measure the pages; they are different claims.
 
 ```
 netsh interface ipv6 set prefixpolicy ::ffff:0:0/96 60 4     # elevated shell

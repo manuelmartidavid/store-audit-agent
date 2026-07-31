@@ -24,6 +24,14 @@ HARD GATES — any failure disqualifies the candidate:
     cls            CLS <= 0.25 on home/collection/pdp                -> a high
     permalinks     WooCommerce only: default /shop|/product-category|/product
 
+`lcp` and `cls` are HARD for entry 01 and RECORDED-ONLY for entry 04, per that
+entry's `soft_gates`. Entry 01 is the false-positive test and was selected
+against the perf bar; entry 04 was selected on permalinks, robots.txt and ICP
+match, to exercise the reduced path and the null-AOV trap. Neither of those needs
+a fast store, and the brief targets low-traffic SMB stores. A soft gate is still
+measured and still printed — in its own block, never dropped — because its
+numbers become labels.
+
 `platform` builds a `crawler.fingerprint.Signals` from the home page's raw HTML
 — asset URLs, the `generator` meta tag, the `<body>` class list — which is
 everything the branch deciding "shopify" or "woocommerce" actually reads. A
@@ -63,7 +71,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from html import unescape as _html_unescape
 from pathlib import Path
 from urllib.parse import urlparse, urlsplit
@@ -112,11 +120,18 @@ class HeadFacts:
 
 @dataclass(frozen=True)
 class Gate:
-    """One screen verdict. `passed is False` disqualifies the candidate."""
+    """One screen verdict. A failing HARD gate disqualifies the candidate.
+
+    Invariant: `hard` defaults to True. A gate that forgets to say what it is
+    must keep disqualifying — the failure mode of the other default is a
+    criterion that silently stops being one, which is the vacuous pass this
+    file already refuses twice elsewhere.
+    """
 
     name: str
     passed: bool
     detail: str
+    hard: bool = True
 
 
 def _attrs(tag: str) -> dict[str, str]:
@@ -426,6 +441,21 @@ def permalink_gate(html: str, host: str, platform: str) -> Gate:
 
 # --- performance ------------------------------------------------------------
 
+def apply_soft_gates(gates: list[Gate], soft: frozenset[str]) -> list[Gate]:
+    """Mark every gate whose FAMILY is in `soft` as recorded-not-gating.
+
+    The family is the part before the colon, so `lcp` covers `lcp:home`,
+    `lcp:collection` and `lcp:pdp` without enumerating templates — a per-entry
+    list that had to name every template would drift the moment one was added.
+
+    Invariant: this only ever downgrades. It cannot make a gate hard, so a
+    typo'd family name loses a criterion loudly (the gate still gates) rather
+    than gaining one silently.
+    """
+    return [g if g.name.split(":")[0] not in soft else replace(g, hard=False)
+            for g in gates]
+
+
 def perf_gates(template: str, run: "measure.SampleRun") -> list[Gate]:
     """LCP and CLS must stay off the `high` side on EVERY run.
 
@@ -490,6 +520,20 @@ ENTRIES: dict[str, dict] = {
     "04": {
         "origin": "https://www.forestwholefoods.co.uk",
         "platform": "woocommerce",
+        # Measured, printed, and NOT disqualifying — the same treatment hygiene
+        # gets, for the same stated reason: screening these out means hunting
+        # for a store that flatters the agent.
+        #
+        # The perf bar is entry 01's selection criterion. The design's perf
+        # screen is headed "Demo" and covers entry-01 candidates only; entry 04
+        # was selected on default permalinks, robots.txt blocking nothing we
+        # need, and ICP match, and exists to exercise the reduced path and the
+        # null-AOV trap. Neither needs a fast store, and the brief targets
+        # low-traffic SMB stores — this one is the customer, not the exception.
+        # Its 2026-07-31 screen read home LCP 19.2-19.9s, CLS 0.43, pdp LCP
+        # 20.5-23.5s: real `high` findings, and exactly the must-catch labels
+        # this entry currently lacks.
+        "soft_gates": frozenset({"lcp", "cls"}),
         "templates": {
             "home": "/",
             "collection": "/shop/",
@@ -738,9 +782,22 @@ def main(argv: list[str] | None = None) -> int:
             gates.extend(perf_gates(template, run))
 
     # --- report -------------------------------------------------------------
+    gates = apply_soft_gates(gates, entry.get("soft_gates", frozenset()))
+    hard = [g for g in gates if g.hard]
+    soft = [g for g in gates if not g.hard]
+
     print("gates")
-    for gate in gates:
+    for gate in hard:
         print(f"  [{'PASS' if gate.passed else 'FAIL'}] {gate.name:<20} {gate.detail}")
+
+    # Printed in their own block rather than dropped. A number that stops
+    # disqualifying must not stop being visible — these become labels, and a
+    # reader must not mistake a green exit for a fast store.
+    if soft:
+        print(f"\nperf (recorded, NOT a gate for entry {args.entry} — these become labels)")
+        for gate in soft:
+            print(f"  [{'ok ' if gate.passed else 'OVER'}] {gate.name:<20} {gate.detail}")
+
     print("\nseo hygiene (recorded, NOT a gate — these become labels)")
     for line in hygiene:
         print(line)
@@ -751,16 +808,20 @@ def main(argv: list[str] | None = None) -> int:
     if args.skip_perf:
         print("\nPERF NOT SCREENED — lcp/cls gates were not evaluated")
 
-    failed = [g for g in gates if not g.passed]
+    failed = [g for g in hard if not g.passed]
     if failed:
         print(f"\nRE-SELECTION TRIGGER — {len(failed)} hard gate(s) failed: "
               f"{', '.join(g.name for g in failed)}")
         return 2
+    over = [g for g in soft if not g.passed]
     if args.skip_perf:
-        print(f"\nall {len(gates)} head gates passed — perf NOT screened, "
+        print(f"\nall {len(hard)} head gates passed — perf NOT screened, "
               f"entry {args.entry} is NOT cleared to capture")
         return 3
-    print(f"\nall {len(gates)} hard gates passed — entry {args.entry} is fit to capture")
+    print(f"\nall {len(hard)} hard gates passed — entry {args.entry} is fit to capture")
+    if over:
+        print(f"  ({len(over)} recorded perf measurement(s) over the rubric line: "
+              f"{', '.join(g.name for g in over)} — label these, don't re-select)")
     return 0
 
 

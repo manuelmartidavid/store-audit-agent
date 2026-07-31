@@ -145,10 +145,30 @@ python -m planting.screen_candidate --entry 04
 | **3** | perf gates never ran | fine if you passed `--skip-perf`; otherwise investigate |
 | **1** | operational failure | investigate |
 
-**Expected quirks:**
-- Entry 04 hasn't been screened since the `platform` gate landed — expect ~10 head
-  gates and exit 3.
-- Both reports should now print a `resolver: IPv4 tried before IPv6` line. If it's
+**Entry 04 prints a `perf (recorded, NOT a gate…)` block, and that is correct.**
+Its LCP/CLS are measured but not disqualifying (decision 32) — the perf bar is
+entry 01's selection criterion, and entry 04 exists to exercise the reduced path
+and the null-AOV trap on a store that matches the ICP. Expect exit **0** with a
+trailing line naming the measurements that sit over the rubric line. **Those are
+labels, not a re-selection trigger.** Entry 01's bar is unchanged: the same
+numbers still exit 2 there.
+
+### ▢ 2.1 Characterise entry 04's `cls:pdp` before capturing
+
+Its first screen read **0.000–0.301 across two runs** — bimodal, straddling the
+0.25 line, so whichever value the fixture catches decides between a `high` finding
+and no finding at all.
+
+```powershell
+python -m planting.screen_candidate --entry 04 --runs 5
+```
+
+If it stays bimodal, tell me — it becomes a recorded label-fragility note, or
+grounds to accept CLS isn't a label for this entry. Either way it's a labelling
+decision, not a reason to drop the store.
+
+**Other expected quirks:**
+- Both reports should print a `resolver: IPv4 tried before IPv6` line. If it's
   missing, you're running old code.
 - Don't compare gate *counts* to older notes. The count is a property of the
   screen and changes with the code; compare verdicts.
