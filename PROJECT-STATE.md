@@ -579,6 +579,44 @@ not an error**). Resolve those and the split becomes safe. Not before.
       prevent, one module over. Fixed to print `n/a` loudly rather than drop the
       check silently, with a regression test.
 
+42. **Development runs go through `--via claude-cli`; the Console API is reserved
+    for results — and entry 01 is off limits to both until its one paid run**
+    (2026-08-03). The Console key ran out of credits mid-§3.1. Rather than stall,
+    the CLI path carries development work on the operator's own subscription,
+    which is what it was built for ("for testing the pipeline without spending
+    Console credits"). Standing rule, not a stopgap:
+
+    | work | backend |
+    |---|---|
+    | prompt iteration, pipeline changes, MNC tuning — **against entry 02** | `--via claude-cli` |
+    | smoke-testing a new prompt version | `--via claude-cli` |
+    | entry 01's precision measurement | **API, once** |
+    | anything reported as a result | **API** |
+
+    - 🔴 **Never point a CLI run at entry 01.** PROMOTION-PROTOCOL rule 4 makes
+      the out-of-sample opportunity **single-use per entry** — label, freeze,
+      *then* run — and the closing section requires "a prompt that was not tuned
+      against that entry". A CLI run whose output informs a prompt change burns
+      entry 01's out-of-sample status permanently, exactly as entry 02 lost its
+      own, and the protocol is explicit that it cannot be recovered
+      retroactively. Entry 01 is the only first-attempt precision number the
+      project has left. Entry 02 is already in-sample, so it is the correct
+      target for unlimited CLI iteration — there is nothing left there to
+      contaminate.
+    - **CLI-derived prompt decisions are provisional.** `max_tokens` and thinking
+      are uncontrollable on that path and ~1.7k tokens of harness scaffolding
+      precede every request, so a prompt tuned on the CLI was tuned against a
+      different substrate. Confirm through the SDK before treating any prompt
+      comparison as settled.
+    - **Name CLI runs `-cli-`** (`v1.2-cli-run1.json`), as the existing records
+      do, so `run_meta.comparability` is not the only thing standing between a
+      pipeline check and a reported result.
+    - Production forces the API regardless — a shipped product cannot run on a
+      personal subscription — so this defers the migration, it does not avoid it.
+      A 306k-token prompt is also heavy for a subscription metered for
+      interactive use; expect usage limits before Console credits would have
+      bound.
+
 ### Open decision — RESOLVED 2026-07-31 by entry 01
 
 **Two category caps bind on entry 02** (`seo` by 4, `accessibility` by 1). Rubric
