@@ -345,9 +345,10 @@ def provenance(run: dict[str, Any], brief_path: Path, prompt_version: str, *,
                 f"the prompt on disk does not reproduce what this run saw.\n"
                 f"  run_meta.rendered_sha256: {recorded_rendered}\n"
                 f"  re-render of {template}: no match\n"
-                "The template was edited in place after the run, or the rendered "
-                "file was edited before it. If the run was rendered with a "
-                "non-default --indent, pass the same value as --render-indent.")
+                "Either the template was edited in place after the run, the "
+                "rendered file was edited before it, or the run was rendered "
+                "with a non-default --indent — the recorded corpus used "
+                "--indent 0, so try --render-indent 0 first.")
 
     return {
         "prompt_version": resolved_prompt,

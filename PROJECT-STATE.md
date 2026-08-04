@@ -632,6 +632,8 @@ not an error**). Resolve those and the split becomes safe. Not before.
     `--render-indent` on both eval CLIs is the escape hatch for a run rendered
     with a non-default `--indent`. Design:
     `docs/superpowers/specs/2026-08-04-prompt-digest-pinning-design.md`.
+    The recorded corpus (all narrator runs, and triager runs before v1.2's)
+    was rendered with `--indent 0`; re-scoring one needs `--render-indent 0`.
 
 ### Open decision — RESOLVED 2026-07-31 by entry 01
 

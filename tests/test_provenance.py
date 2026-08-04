@@ -429,3 +429,81 @@ def test_the_golden_entries_declare_the_pin_status_they_actually_have():
     golden = ROOT / "evals" / "golden"
     assert eval_triage.fixture_pin_is_self_derived(golden / "05-password-gated")
     assert not eval_triage.fixture_pin_is_self_derived(golden / "02-sabotaged")
+
+
+def test_render_indent_zero_is_required_to_match_the_recorded_corpus(tmp_path):
+    """The recorded corpus (all narrator runs, and triager runs before v1.2's)
+    was rendered with `--indent 0`. Re-scoring one of those runs with the
+    default render must refuse, and passing --render-indent 0 must match —
+    covering the render_indent=args.render_indent pass-through in main(),
+    which nothing exercised before this test."""
+    entry, fixtures = _pinned_entry_and_fixtures(tmp_path)
+    prompts = _prompt_dir(tmp_path)
+    pack = _pack_file(tmp_path)
+    template = prompts / "finding-triager" / "v9.0.md"
+    text, _ = render_prompt.render(template, pack, 0, "PACK")
+    meta = {
+        "prompt_version": "finding-triager/v9.0",
+        "rendered_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "pack_sha256": hashlib.sha256(pack.read_bytes()).hexdigest(),
+    }
+
+    with pytest.raises(SystemExit):
+        eval_triage.provenance(entry, fixtures, "finding-triager/v9.0", "pack/v0.2",
+                               pack_path=pack, run_meta=meta, prompts_dir=prompts)
+
+    record = eval_triage.provenance(entry, fixtures, "finding-triager/v9.0", "pack/v0.2",
+                                    pack_path=pack, run_meta=meta, prompts_dir=prompts,
+                                    render_indent=0)
+    assert record["prompt_pin"] == "matched"
+
+
+def test_mismatch_message_does_not_accuse_the_template(tmp_path):
+    """Finding 1: the recorded corpus was rendered with --indent 0, so
+    re-scoring it at the default indent is a false positive for 'edited in
+    place'. The message must present the possible causes evenhandedly rather
+    than asserting the template was edited, and must still say 'does not
+    reproduce' in its first line (other tests assert on that phrase)."""
+    entry, fixtures = _pinned_entry_and_fixtures(tmp_path)
+    prompts = _prompt_dir(tmp_path)
+    pack = _pack_file(tmp_path)
+    meta = _run_meta_for(prompts, "finding-triager/v9.0", pack)  # rendered at indent=None
+    with pytest.raises(SystemExit) as caught:
+        eval_triage.provenance(entry, fixtures, "finding-triager/v9.0", "pack/v0.2",
+                               pack_path=pack, run_meta=meta, prompts_dir=prompts,
+                               render_indent=0)  # wrong indent, not an edit
+    message = str(caught.value)
+    assert message.startswith("the prompt on disk does not reproduce what this run saw.")
+    assert "does not reproduce" in message
+    # Must not flatly assert the template was edited — that's the false
+    # accusation this finding exists to fix.
+    assert "The template was edited in place after the run, or the rendered" \
+        not in message
+    assert "--render-indent 0" in message
+    assert "--indent 0" in message
+
+
+def test_pack_mismatch_message_notes_the_missing_pack_sha256(tmp_path):
+    """Finding 3: when run_meta carries rendered_sha256 but not pack_sha256,
+    the pack-mismatch check is skipped, so a wrong --pack silently lands in
+    the re-render mismatch message. The message must say so explicitly."""
+    entry, fixtures = _pinned_entry_and_fixtures(tmp_path)
+    prompts = _prompt_dir(tmp_path)
+    pack = _pack_file(tmp_path)
+    template = prompts / "finding-triager" / "v9.0.md"
+    text, _ = render_prompt.render(template, pack, None, "PACK")
+    meta = {
+        "prompt_version": "finding-triager/v9.0",
+        "rendered_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        # no pack_sha256 recorded
+    }
+    # Now swap in a pack whose bytes differ from what was actually rendered.
+    wrong_pack = tmp_path / "wrong-pack.json"
+    wrong_pack.write_text('{"pack": "pack/v0.2", "evidence": ["different"]}', encoding="utf-8")
+
+    with pytest.raises(SystemExit) as caught:
+        eval_triage.provenance(entry, fixtures, "finding-triager/v9.0", "pack/v0.2",
+                               pack_path=wrong_pack, run_meta=meta, prompts_dir=prompts)
+    message = str(caught.value)
+    assert message.startswith("the prompt on disk does not reproduce what this run saw.")
+    assert "cannot be ruled out" in message

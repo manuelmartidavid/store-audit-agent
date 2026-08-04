@@ -313,13 +313,20 @@ def provenance(entry: Path, fixtures: Path, prompt_version: str, pack_version: s
                                                   render_indent):
             prompt_pin = "matched"
         else:
+            pack_caveat = ""
+            if not recorded_pack:
+                pack_caveat = (
+                    " This run records no pack_sha256, so a wrong --pack cannot "
+                    "be ruled out either.")
             raise SystemExit(
                 f"the prompt on disk does not reproduce what this run saw.\n"
                 f"  run_meta.rendered_sha256: {recorded_rendered}\n"
                 f"  re-render of {template}: no match\n"
-                "The template was edited in place after the run, or the rendered "
-                "file was edited before it. If the run was rendered with a "
-                "non-default --indent, pass the same value as --render-indent.")
+                "Either the template was edited in place after the run, the "
+                "rendered file was edited before it, or the run was rendered "
+                "with a non-default --indent — the recorded corpus used "
+                "--indent 0, so try --render-indent 0 first."
+                f"{pack_caveat}")
 
     return {
         "fixture_manifest_sha256": computed,

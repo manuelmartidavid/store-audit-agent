@@ -597,6 +597,29 @@ def test_gated_satisfies_the_gate_word_scan():
     assert errors == []
 
 
+def test_render_indent_zero_pass_through_matches_the_narrator_prompt(tmp_path):
+    """The recorded narrator corpus was rendered with --indent 0 (Finding 1/2
+    of the mismatch-message review). Nothing exercised the
+    render_indent=args.render_indent pass-through in eval_narrative.provenance
+    before this test — dropping it would leave the suite green."""
+    import hashlib
+    from triage import render_prompt
+
+    brief_path = tmp_path / "b.json"
+    brief_path.write_text('{"schema": "brief/v0.1"}', encoding="utf-8")
+    prompts = _narrator_prompts(tmp_path)
+    template = prompts / "impact-narrator" / "v9.0.md"
+    text, _ = render_prompt.render(template, brief_path, 0, "BRIEF")
+    run = {"run_meta": {
+        "prompt_version": "impact-narrator/v9.0",
+        "rendered_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "brief_sha256": hashlib.sha256(brief_path.read_bytes()).hexdigest(),
+    }}
+    record = eval_narrative.provenance(run, brief_path, "impact-narrator/v9.0",
+                                       render_indent=0, prompts_dir=prompts)
+    assert record["prompt_pin"] == "matched"
+
+
 def test_could_not_navigate_still_fails_the_gate_word_scan():
     """Regression guard: adding 'gated' must not loosen the word-boundary
     fix that already rejects 'navigate'."""
