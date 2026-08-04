@@ -617,6 +617,22 @@ not an error**). Resolve those and the split becomes safe. Not before.
       interactive use; expect usage limits before Console credits would have
       bound.
 
+43. **The prompt pin is bound to its bytes** (2026-08-04). Closes the one §8
+    item that was "the b219afac shape of failure with a different noun".
+    `resolve_prompt_version` now returns `name+sha8` of the template's bytes
+    (the `rubric_version` pattern) and refuses a file whose front matter
+    disagrees with its filename. Stronger, when the evidence allows it:
+    `eval_triage.provenance` re-renders the template with the pack and
+    requires the result to hash to the run's `rendered_sha256` (LF or CRLF —
+    the hash is over file bytes and the newline is the platform's), recording
+    `prompt_pin: matched` — or refusing to score, with `pack_sha256`
+    disambiguating whether the pack or the template moved. `eval_narrative`
+    does the same through `{{BRIEF}}`. Old bare-JSON runs and pack-less evals
+    degrade to `exists`, not to silence; the pin vocabulary is unchanged.
+    `--render-indent` on both eval CLIs is the escape hatch for a run rendered
+    with a non-default `--indent`. Design:
+    `docs/superpowers/specs/2026-08-04-prompt-digest-pinning-design.md`.
+
 ### Open decision — RESOLVED 2026-07-31 by entry 01
 
 **Two category caps bind on entry 02** (`seo` by 4, `accessibility` by 1). Rubric
