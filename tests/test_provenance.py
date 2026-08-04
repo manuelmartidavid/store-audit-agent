@@ -279,17 +279,114 @@ def test_the_harness_pin_is_bound_to_the_file_it_versions(tmp_path):
     assert eval_triage.harness_version(edited) != live
 
 
-def test_the_prompt_pin_says_existence_and_not_more(tmp_path):
-    """`prompt_pin: exists` is the whole of what is checkable.
+def _pack_file(tmp_path: Path) -> Path:
+    pack = tmp_path / "pack.json"
+    pack.write_text('{"pack": "pack/v0.2", "evidence": []}', encoding="utf-8")
+    return pack
 
-    The run files carry no prompt identity, so there is nothing to compare the
-    asserted version against — only the file it names, which must be there.
-    Saying `matched` here would be the overstatement this key exists to stop.
-    """
-    fixtures = _fixtures(tmp_path, "crawler_version: 0.2.0\n")
+
+def _run_meta_for(prompts: Path, name: str, pack: Path, *, crlf: bool = False) -> dict:
+    """What run_triager would have recorded for this template + pack."""
+    family, version = name.split("/")
+    text, _ = render_prompt.render(prompts / family / f"{version}.md", pack, None, "PACK")
+    if crlf:
+        text = text.replace("\n", "\r\n")
+    return {
+        "prompt_version": name,
+        "rendered_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "pack_sha256": hashlib.sha256(pack.read_bytes()).hexdigest(),
+    }
+
+
+def _pinned_entry_and_fixtures(tmp_path):
+    fixtures = _fixtures(tmp_path, "crawler_version: 0.3.0\n")
     digest = hashlib.sha256((fixtures / "manifest.yaml").read_bytes()).hexdigest()
-    entry = _entry(tmp_path, digest)
-    record = eval_triage.provenance(entry, fixtures, "finding-triager/v1.0", "pack/v0.2")
+    return _entry(tmp_path, digest), fixtures
+
+
+def test_a_faithful_re_render_pins_the_prompt_as_matched(tmp_path):
+    entry, fixtures = _pinned_entry_and_fixtures(tmp_path)
+    prompts = _prompt_dir(tmp_path)
+    pack = _pack_file(tmp_path)
+    meta = _run_meta_for(prompts, "finding-triager/v9.0", pack)
+    record = eval_triage.provenance(entry, fixtures, "finding-triager/v9.0",
+                                    "pack/v0.2", pack_path=pack, run_meta=meta,
+                                    prompts_dir=prompts)
+    assert record["prompt_pin"] == "matched"
+    assert record["prompt_version"].startswith("finding-triager/v9.0+")
+
+
+def test_a_typo_fix_after_the_run_refuses_to_score(tmp_path):
+    """The b219afac shape of failure, prompt edition — reproduced directly."""
+    entry, fixtures = _pinned_entry_and_fixtures(tmp_path)
+    prompts = _prompt_dir(tmp_path)
+    pack = _pack_file(tmp_path)
+    meta = _run_meta_for(prompts, "finding-triager/v9.0", pack)
+    path = prompts / "finding-triager" / "v9.0.md"
+    path.write_text(path.read_text(encoding="utf-8").replace("Triage", "Assess"),
+                    encoding="utf-8")
+    with pytest.raises(SystemExit) as caught:
+        eval_triage.provenance(entry, fixtures, "finding-triager/v9.0", "pack/v0.2",
+                               pack_path=pack, run_meta=meta, prompts_dir=prompts)
+    assert "does not reproduce" in str(caught.value)
+
+
+def test_a_crlf_rendered_run_still_matches(tmp_path):
+    """rendered_sha256 hashes file bytes, and write_text picks the platform
+    newline — both spellings of one render are the same prompt."""
+    entry, fixtures = _pinned_entry_and_fixtures(tmp_path)
+    prompts = _prompt_dir(tmp_path)
+    pack = _pack_file(tmp_path)
+    meta = _run_meta_for(prompts, "finding-triager/v9.0", pack, crlf=True)
+    record = eval_triage.provenance(entry, fixtures, "finding-triager/v9.0",
+                                    "pack/v0.2", pack_path=pack, run_meta=meta,
+                                    prompts_dir=prompts)
+    assert record["prompt_pin"] == "matched"
+
+
+def test_the_wrong_pack_is_named_as_the_wrong_pack(tmp_path):
+    """When the pack on disk isn't the one the run saw, the message must blame
+    the pack, not the prompt."""
+    entry, fixtures = _pinned_entry_and_fixtures(tmp_path)
+    prompts = _prompt_dir(tmp_path)
+    pack = _pack_file(tmp_path)
+    meta = _run_meta_for(prompts, "finding-triager/v9.0", pack)
+    pack.write_text('{"pack": "pack/v0.2", "evidence": ["changed"]}', encoding="utf-8")
+    with pytest.raises(SystemExit) as caught:
+        eval_triage.provenance(entry, fixtures, "finding-triager/v9.0", "pack/v0.2",
+                               pack_path=pack, run_meta=meta, prompts_dir=prompts)
+    assert "pack" in str(caught.value)
+    assert "run_meta.pack_sha256" in str(caught.value)
+
+
+def test_asserting_the_wrong_version_against_a_run_record_is_fatal(tmp_path):
+    """eval_narrative already refuses this; eval_triage never compared at all."""
+    entry, fixtures = _pinned_entry_and_fixtures(tmp_path)
+    meta = {"prompt_version": "finding-triager/v1.0"}
+    with pytest.raises(SystemExit) as caught:
+        eval_triage.provenance(entry, fixtures, "finding-triager/v1.1", "pack/v0.2",
+                               run_meta=meta)
+    assert "does not match the run's record" in str(caught.value)
+
+
+def test_exists_is_the_honest_ceiling_without_run_meta_or_pack(tmp_path):
+    """`matched` needs both the run's rendered_sha256 and the pack to re-render
+    with. An old bare-JSON run, or an eval without --pack, can claim existence
+    and nothing more — saying `matched` there would be the overstatement this
+    key exists to stop.
+    """
+    entry, fixtures = _pinned_entry_and_fixtures(tmp_path)
+    prompts = _prompt_dir(tmp_path)
+    pack = _pack_file(tmp_path)
+    # old run: no run_meta at all, pack present
+    record = eval_triage.provenance(entry, fixtures, "finding-triager/v9.0",
+                                    "pack/v0.2", pack_path=pack, run_meta=None,
+                                    prompts_dir=prompts)
+    assert record["prompt_pin"] == "exists"
+    # new run, but no pack on disk to re-render with
+    meta = _run_meta_for(prompts, "finding-triager/v9.0", pack)
+    record = eval_triage.provenance(entry, fixtures, "finding-triager/v9.0",
+                                    "pack/v0.2", run_meta=meta, prompts_dir=prompts)
     assert record["prompt_pin"] == "exists"
 
 

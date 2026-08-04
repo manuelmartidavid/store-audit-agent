@@ -169,6 +169,19 @@ def resolve_prompt_version(name: str, prompts_dir: Path = PROMPTS_DIR) -> str:
     return f"{name}+{digest}"
 
 
+def _rendered_digests(template: Path, data_path: Path, placeholder: str,
+                      indent: int | None = None) -> set[str]:
+    """Every byte-hash one render could legitimately carry.
+
+    `rendered_sha256` was taken over file bytes, and `write_text` picks the
+    platform's newline — so the LF and CRLF spellings of one render are the
+    same prompt.
+    """
+    text, _ = render_prompt.render(template, data_path, indent, placeholder)
+    return {hashlib.sha256(variant.encode("utf-8")).hexdigest()
+            for variant in (text, text.replace("\n", "\r\n"))}
+
+
 def expected_manifest_sha256(entry: Path) -> str | None:
     """The fixture hash the labels were written against.
 
@@ -207,7 +220,10 @@ _PACK_VERSION_RE = re.compile(r"^pack/v\d+\.\d+$")
 
 
 def provenance(entry: Path, fixtures: Path, prompt_version: str, pack_version: str,
-               *, allow_unpinned: bool = False, pack_path: Path | None = None) -> dict[str, Any]:
+               *, allow_unpinned: bool = False, pack_path: Path | None = None,
+               run_meta: dict[str, Any] | None = None,
+               render_indent: int | None = None,
+               prompts_dir: Path = PROMPTS_DIR) -> dict[str, Any]:
     """Verify every provenance pin. Exits rather than scoring blind."""
     manifest = Path(fixtures) / "manifest.yaml"
     computed = (hashlib.sha256(manifest.read_bytes()).hexdigest()
@@ -264,11 +280,52 @@ def provenance(entry: Path, fixtures: Path, prompt_version: str, pack_version: s
     if pinned:
         fixture_pin = "self-derived" if fixture_pin_is_self_derived(entry) else "matched"
 
+    resolved_prompt = resolve_prompt_version(prompt_version, prompts_dir)
+    prompt_name = resolved_prompt.split("+", 1)[0]
+    meta = run_meta or {}
+
+    recorded_name = meta.get("prompt_version")
+    if recorded_name and recorded_name != prompt_name:
+        raise SystemExit(
+            f"--prompt-version does not match the run's record.\n"
+            f"  --prompt-version: {prompt_name}\n"
+            f"  run_meta.prompt_version: {recorded_name}\n"
+            "The run was not produced by the prompt version being asserted here.")
+
+    # The strong check: the template on disk, rendered with the pack on disk,
+    # must hash to what the model actually saw. Needs both halves — old
+    # bare-JSON runs and pack-less evals stay scoreable at "exists".
+    prompt_pin = "exists"
+    recorded_rendered = meta.get("rendered_sha256")
+    if recorded_rendered and pack_path is not None:
+        recorded_pack = meta.get("pack_sha256")
+        computed_pack = hashlib.sha256(Path(pack_path).read_bytes()).hexdigest()
+        if recorded_pack and recorded_pack != computed_pack:
+            raise SystemExit(
+                f"pack bytes do not match the run's pin.\n"
+                f"  run_meta.pack_sha256: {recorded_pack}\n"
+                f"  {pack_path}: {computed_pack}\n"
+                "The pack on disk is not the pack this run saw, so the prompt "
+                "cannot be verified against it. Point --pack at the pack the "
+                "run was rendered from.")
+        template = prompts_dir / f"{prompt_name}.md"
+        if recorded_rendered in _rendered_digests(template, pack_path, "PACK",
+                                                  render_indent):
+            prompt_pin = "matched"
+        else:
+            raise SystemExit(
+                f"the prompt on disk does not reproduce what this run saw.\n"
+                f"  run_meta.rendered_sha256: {recorded_rendered}\n"
+                f"  re-render of {template}: no match\n"
+                "The template was edited in place after the run, or the rendered "
+                "file was edited before it. If the run was rendered with a "
+                "non-default --indent, pass the same value as --render-indent.")
+
     return {
         "fixture_manifest_sha256": computed,
         "fixture_pin": fixture_pin,
-        "prompt_version": resolve_prompt_version(prompt_version),
-        "prompt_pin": "exists",
+        "prompt_version": resolved_prompt,
+        "prompt_pin": prompt_pin,
         "rubric_version": rubric_version(),
         "pack_version": pack_version,
         "pack_pin": pack_pin,
@@ -1059,6 +1116,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--pack-version", default=None)
     parser.add_argument("--pack", type=Path, default=None,
                         help="pack JSON to verify --pack-version against (else the pin is asserted, not checked)")
+    parser.add_argument("--render-indent", type=int, default=None,
+                        help="the --indent the run's prompt was rendered with, if any "
+                             "(needed to re-derive rendered_sha256 for the prompt pin)")
     parser.add_argument("--allow-unpinned-fixture", action="store_true",
                         help="score against a fixture the entry does not pin (not a result)")
     parser.add_argument("--self-test", action="store_true")
@@ -1091,7 +1151,8 @@ def main(argv: list[str] | None = None) -> int:
         "provenance": provenance(args.entry, args.fixtures, args.prompt_version,
                                  args.pack_version,
                                  allow_unpinned=args.allow_unpinned_fixture,
-                                 pack_path=args.pack)
+                                 pack_path=args.pack, run_meta=run_meta,
+                                 render_indent=args.render_indent)
                       | {"run_file": str(args.output), "run_meta": run_meta},
         "result": result,
     }
