@@ -318,7 +318,7 @@ def provenance(run: dict[str, Any], brief_path: Path, prompt_version: str) -> di
             "this run was actually rendered against.")
 
     recorded_prompt_version = run_meta.get("prompt_version")
-    if recorded_prompt_version and recorded_prompt_version != resolved_prompt:
+    if recorded_prompt_version and recorded_prompt_version != resolved_prompt.split("+", 1)[0]:
         raise SystemExit(
             f"--prompt-version does not match the run's record.\n"
             f"  --prompt-version: {resolved_prompt}\n"

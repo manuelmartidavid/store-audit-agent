@@ -23,6 +23,8 @@ eval_triage = importlib.util.module_from_spec(_spec)
 sys.modules["eval_triage"] = eval_triage
 _spec.loader.exec_module(eval_triage)
 
+from triage import render_prompt  # noqa: E402  (eval_triage's exec put ROOT on sys.path)
+
 
 def _entry(tmp_path: Path, pin: str | None, *, self_derived: bool = False) -> Path:
     entry = tmp_path / "entry"
@@ -81,6 +83,57 @@ def test_an_unknown_prompt_version_is_fatal(tmp_path):
     assert "names no prompt file" in str(caught.value)
     with pytest.raises(SystemExit):
         eval_triage.provenance(entry, fixtures, "unpinned", "pack/v0.2")
+
+
+def _prompt_dir(tmp_path: Path, name: str = "finding-triager/v9.0",
+                body: str = "Triage this store.\n\n{{PACK}}\n") -> Path:
+    """A prompts/ tree holding one template whose front matter matches `name`."""
+    prompts = tmp_path / "prompts"
+    family, version = name.split("/")
+    path = prompts / family / f"{version}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"---\nprompt: {family}\nversion: {version}\n---\n{body}",
+                    encoding="utf-8")
+    return prompts
+
+
+def test_the_prompt_pin_carries_a_digest_of_the_file_bytes(tmp_path):
+    prompts = _prompt_dir(tmp_path)
+    resolved = eval_triage.resolve_prompt_version("finding-triager/v9.0", prompts)
+    name, _, digest = resolved.partition("+")
+    assert name == "finding-triager/v9.0"
+    assert len(digest) == 8 and int(digest, 16) >= 0
+
+
+def test_editing_a_prompt_in_place_moves_its_pin(tmp_path):
+    """The 'just fix a typo' edit the handoff warns about, made visible."""
+    prompts = _prompt_dir(tmp_path)
+    before = eval_triage.resolve_prompt_version("finding-triager/v9.0", prompts)
+    path = prompts / "finding-triager" / "v9.0.md"
+    path.write_text(path.read_text(encoding="utf-8") + "\ntypo fix\n", encoding="utf-8")
+    after = eval_triage.resolve_prompt_version("finding-triager/v9.0", prompts)
+    assert before != after
+    assert before.split("+")[0] == after.split("+")[0]
+
+
+def test_a_file_whose_front_matter_disagrees_with_its_name_is_fatal(tmp_path):
+    """v1.2.md copied to v1.3.md without editing the header must not resolve."""
+    prompts = _prompt_dir(tmp_path)
+    copy = prompts / "finding-triager" / "v9.1.md"
+    copy.write_text((prompts / "finding-triager" / "v9.0.md").read_text(encoding="utf-8"),
+                    encoding="utf-8")
+    with pytest.raises(SystemExit) as caught:
+        eval_triage.resolve_prompt_version("finding-triager/v9.1", prompts)
+    assert "front matter" in str(caught.value)
+
+
+def test_every_live_prompt_resolves_and_self_identifies():
+    templates = sorted((ROOT / "prompts").glob("*/v*.md"))
+    assert templates, "no live prompts found — glob is wrong"
+    for path in templates:
+        name = f"{path.parent.name}/{path.stem}"
+        resolved = eval_triage.resolve_prompt_version(name, ROOT / "prompts")
+        assert resolved.startswith(name + "+")
 
 
 def test_the_rubric_version_is_read_from_the_file_not_hardcoded(tmp_path):

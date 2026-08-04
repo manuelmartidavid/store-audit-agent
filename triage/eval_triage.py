@@ -39,6 +39,8 @@ from crawler import pointers as ptr  # noqa: E402
 
 from triage import mnc  # noqa: E402
 
+from triage import render_prompt  # noqa: E402
+
 from triage.scoring import (  # noqa: E402,F401  (re-exported: 371 tests import these from here)
     BAND_INACCESSIBLE,
     BANDS,
@@ -142,7 +144,13 @@ def harness_version(path: Path = HARNESS_PATH) -> str:
 
 
 def resolve_prompt_version(name: str, prompts_dir: Path = PROMPTS_DIR) -> str:
-    """Check that a prompt version names a file that exists, and return it."""
+    """Resolve a prompt version to `name+sha8` of the file's bytes.
+
+    Existence is the floor. The digest binds the pin to the bytes — the rubric
+    pattern — so editing a frozen prompt in place moves every pin recorded
+    after it. The front-matter check catches a file copied to a new version
+    name whose header still declares the old one.
+    """
     if not name or name == "unpinned":
         raise SystemExit(
             "--prompt-version is required: a run scored without a prompt pin is not "
@@ -150,7 +158,15 @@ def resolve_prompt_version(name: str, prompts_dir: Path = PROMPTS_DIR) -> str:
     path = prompts_dir / f"{name}.md"
     if not path.exists():
         raise SystemExit(f"--prompt-version {name!r} names no prompt file ({path})")
-    return name
+    declared = render_prompt.prompt_version(path.read_text(encoding="utf-8"))
+    if declared != name:
+        raise SystemExit(
+            f"--prompt-version {name!r} names a file whose front matter declares "
+            f"{declared!r} ({path}).\n"
+            "The filename and the front matter must agree before either can be a "
+            "pin — fix whichever one is wrong.")
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()[:8]
+    return f"{name}+{digest}"
 
 
 def expected_manifest_sha256(entry: Path) -> str | None:
