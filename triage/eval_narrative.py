@@ -296,13 +296,18 @@ def harness_version(path: Path = HARNESS_PATH) -> str:
     return f"{HARNESS_VERSION}+{digest}"
 
 
-def provenance(run: dict[str, Any], brief_path: Path, prompt_version: str) -> dict[str, Any]:
+def provenance(run: dict[str, Any], brief_path: Path, prompt_version: str, *,
+               render_indent: int | None = None,
+               prompts_dir: Path = eval_triage.PROMPTS_DIR) -> dict[str, Any]:
     """Verify the run's pins and return them.
 
-    Recomputes the brief's hash from the file passed on the command line and
-    checks the prompt version against what the run recorded. Exits on a mismatch.
+    Recomputes the brief's hash from the file passed on the command line,
+    checks the prompt version against what the run recorded, and — when the
+    run carries rendered_sha256 — requires the template on disk to re-render
+    to exactly what the model saw. Exits on any mismatch.
     """
-    resolved_prompt = eval_triage.resolve_prompt_version(prompt_version)
+    resolved_prompt = eval_triage.resolve_prompt_version(prompt_version, prompts_dir)
+    prompt_name = resolved_prompt.split("+", 1)[0]
 
     run_meta = run.get("run_meta") or {}
     computed_brief_sha256 = hashlib.sha256(Path(brief_path).read_bytes()).hexdigest()
@@ -318,7 +323,7 @@ def provenance(run: dict[str, Any], brief_path: Path, prompt_version: str) -> di
             "this run was actually rendered against.")
 
     recorded_prompt_version = run_meta.get("prompt_version")
-    if recorded_prompt_version and recorded_prompt_version != resolved_prompt.split("+", 1)[0]:
+    if recorded_prompt_version and recorded_prompt_version != prompt_name:
         raise SystemExit(
             f"--prompt-version does not match the run's record.\n"
             f"  --prompt-version: {resolved_prompt}\n"
@@ -326,8 +331,27 @@ def provenance(run: dict[str, Any], brief_path: Path, prompt_version: str) -> di
             "The run was not produced by the prompt version being asserted "
             "here.")
 
+    # The strong check. The brief was already verified against the run's own
+    # brief_sha256 above, so a mismatch here can only be the template.
+    prompt_pin = "exists"
+    recorded_rendered = run_meta.get("rendered_sha256")
+    if recorded_rendered:
+        template = prompts_dir / f"{prompt_name}.md"
+        if recorded_rendered in eval_triage._rendered_digests(
+                template, brief_path, "BRIEF", render_indent):
+            prompt_pin = "matched"
+        else:
+            raise SystemExit(
+                f"the prompt on disk does not reproduce what this run saw.\n"
+                f"  run_meta.rendered_sha256: {recorded_rendered}\n"
+                f"  re-render of {template}: no match\n"
+                "The template was edited in place after the run, or the rendered "
+                "file was edited before it. If the run was rendered with a "
+                "non-default --indent, pass the same value as --render-indent.")
+
     return {
         "prompt_version": resolved_prompt,
+        "prompt_pin": prompt_pin,
         "brief_sha256": computed_brief_sha256,
         "rubric_version": eval_triage.rubric_version(),
         "narrative_harness": harness_version(),
@@ -345,6 +369,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="evals/golden/<entry> — its labels supply the screens")
     parser.add_argument("--prompt-version", required=True,
                         help="required on purpose — an unpinned run is not a result")
+    parser.add_argument("--render-indent", type=int, default=None,
+                        help="the --indent the run's prompt was rendered with, if any "
+                             "(needed to re-derive rendered_sha256 for the prompt pin)")
     args = parser.parse_args(argv)
 
     run = json.loads(args.run.read_text(encoding="utf-8"))
@@ -353,7 +380,8 @@ def main(argv: list[str] | None = None) -> int:
     labels = eval_triage.parse_labels(args.entry / "expected" / "findings.md")
 
     result = evaluate(narrative, brief, labels)
-    result["provenance"] = provenance(run, args.brief, args.prompt_version)
+    result["provenance"] = provenance(run, args.brief, args.prompt_version,
+                                      render_indent=args.render_indent)
 
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0 if result["passed"] else 1

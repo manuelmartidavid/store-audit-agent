@@ -339,6 +339,64 @@ def test_a_prompt_version_mismatch_between_cli_and_run_meta_is_fatal(tmp_path):
         raise AssertionError("expected SystemExit for a prompt-version mismatch")
 
 
+def _narrator_prompts(tmp_path):
+    prompts = tmp_path / "prompts"
+    path = prompts / "impact-narrator" / "v9.0.md"
+    path.parent.mkdir(parents=True)
+    path.write_text("---\nprompt: impact-narrator\nversion: v9.0\n---\n"
+                    "Narrate this.\n\n{{BRIEF}}\n", encoding="utf-8")
+    return prompts
+
+
+def _narrator_run_meta(prompts, brief_path):
+    import hashlib
+    from triage import render_prompt
+    text, _ = render_prompt.render(prompts / "impact-narrator" / "v9.0.md",
+                                   brief_path, None, "BRIEF")
+    return {
+        "prompt_version": "impact-narrator/v9.0",
+        "rendered_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "brief_sha256": hashlib.sha256(brief_path.read_bytes()).hexdigest(),
+    }
+
+
+def test_a_faithful_re_render_pins_the_narrator_prompt_as_matched(tmp_path):
+    brief_path = tmp_path / "b.json"
+    brief_path.write_text('{"schema": "brief/v0.1"}', encoding="utf-8")
+    prompts = _narrator_prompts(tmp_path)
+    run = {"run_meta": _narrator_run_meta(prompts, brief_path)}
+    record = eval_narrative.provenance(run, brief_path, "impact-narrator/v9.0",
+                                       prompts_dir=prompts)
+    assert record["prompt_pin"] == "matched"
+    assert record["prompt_version"].startswith("impact-narrator/v9.0+")
+
+
+def test_a_narrator_prompt_edited_after_the_run_refuses_to_score(tmp_path):
+    brief_path = tmp_path / "b.json"
+    brief_path.write_text('{"schema": "brief/v0.1"}', encoding="utf-8")
+    prompts = _narrator_prompts(tmp_path)
+    run = {"run_meta": _narrator_run_meta(prompts, brief_path)}
+    path = prompts / "impact-narrator" / "v9.0.md"
+    path.write_text(path.read_text(encoding="utf-8").replace("Narrate", "Describe"),
+                    encoding="utf-8")
+    try:
+        eval_narrative.provenance(run, brief_path, "impact-narrator/v9.0",
+                                  prompts_dir=prompts)
+    except SystemExit as e:
+        assert "does not reproduce" in str(e)
+    else:
+        raise AssertionError("expected SystemExit for an edited narrator prompt")
+
+
+def test_a_run_without_rendered_sha256_reads_exists(tmp_path):
+    """Pre-run_narrator records have nothing to re-render against; they stay
+    scoreable, honestly labelled."""
+    brief_path = tmp_path / "b.json"
+    brief_path.write_text('{"schema": "brief/v0.1"}', encoding="utf-8")
+    record = eval_narrative.provenance({}, brief_path, "impact-narrator/v0.1")
+    assert record["prompt_pin"] == "exists"
+
+
 def test_the_harness_version_derives_a_sha8_from_the_files_bytes():
     """Mirrors eval_triage.harness_version(): the bare constant was a comment,
     not a pin, until an edit could move it."""
